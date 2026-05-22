@@ -21,7 +21,7 @@
 ## Installation
 
 ```bash
-git clone https://github.com/your-username/investdaytip.git
+git clone https://github.com/dfdezdom/investdaytip.git
 cd investdaytip
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
