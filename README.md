@@ -52,6 +52,7 @@ investdaytip -r asia                 # Only Asia
 investdaytip -r eu -a stocks         # Only European stocks
 investdaytip -r asia -a etfs         # Only Asian ETFs
 investdaytip -t AAPL MSFT VOO        # Custom ticker list
+investdaytip --tickers-file tickers.txt # Custom ticker file (lines, spaces, commas)
 investdaytip --export-html report.html # Export report with interactive filters
 investdaytip --export-html             # Uses investDayTip-aaaammdd-hhmm.html
 investdaytip --workers 20            # More parallelism
@@ -64,6 +65,7 @@ investdaytip --help
 |---|---|---|
 | `-n, --top N` | Number of recommendations | `5` |
 | `-t, --tickers ...` | Custom ticker list (overrides universe) | curated universe |
+| `--tickers-file PATH` | Text file with custom tickers (merged with `--tickers` if both are used) | disabled |
 | `-a, --asset-class {all,stocks,etfs}` | Asset class filter | `all` |
 | `-r, --region {all,us,eu,asia}` | Region filter | `all` |
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
@@ -92,6 +94,39 @@ It also includes:
 - Full-width responsive layout (uses available browser width)
 - Pre-rendered rows + client-side interactivity (works even if JS is restricted)
 - Direct platform links in table columns: `Ticker` (Google Finance), `T` (TradingView), `Y` (Yahoo Finance)
+
+#### Google Finance exact links
+
+The `Ticker` column uses exact Google Finance quote URLs when a ticker suffix is recognized
+(format: `https://www.google.com/finance/quote/SYMBOL:EXCHANGE?hl=en`).
+
+Current suffix mapping includes:
+
+- US (no suffix) → `NASDAQ` by default, with explicit overrides for known symbols (for example `HWM` → `NYSE`)
+- Germany `.DE` → `ETR`, `.F` → `FRA`
+- France `.PA` → `EPA`
+- Netherlands `.AS` → `AMS`
+- UK `.L` → `LON`
+- Spain `.MC` → `BME`
+- Italy `.MI` → `BIT`
+- Switzerland `.SW` → `SWX`
+- Sweden `.ST` → `STO`
+- Denmark `.CO` → `CPH`
+- Finland `.HE` → `HEL`
+- Norway `.OL` → `OSL`
+- Japan `.T` → `TYO`
+- Hong Kong `.HK` → `HKG`
+- Singapore `.SI` → `SGX`
+- India `.NS` → `NSE`
+- South Korea `.KS` → `KRX`
+- Taiwan `.TW` → `TPE`
+- Australia `.AX` → `ASX`
+- Canada `.TO` → `TSE`
+- China `.SS` → `SHA`, `.SZ` → `SHE`
+
+When a suffix is not mapped, the report falls back to Google Finance search URL.
+
+TradingView links use the same exchange mapping logic.
 
 ### Programmatic API
 
@@ -123,6 +158,7 @@ Each recommendation includes:
 | **Ticker link** | Opens Google Finance in a new tab |
 | **T / Y** | Opens TradingView / Yahoo Finance in a new tab |
 | **Price** | Current price in native currency |
+| **P/E** | Trailing price-to-earnings ratio (stocks; `-` when unavailable) |
 | **1M Δ** | % change vs ~22 trading days ago |
 | **1Y Δ** | % change vs ~252 trading days ago |
 | **Score** | Composite 0-100 weighted score |

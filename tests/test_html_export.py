@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from investdaytip.data_source import EtfData, StockData
-from investdaytip.html_export import export_recommendations_html, infer_region_from_ticker
+from investdaytip.html_export import _google_finance_url, _tradingview_url, export_recommendations_html, infer_region_from_ticker
 from investdaytip.scoring import ScoredAsset
 
 
@@ -53,6 +53,7 @@ def test_export_html_contains_filters_and_rows(tmp_path: Path):
         asset_class="all",
         region="all",
         tickers=None,
+        tickers_file="tickers-files-examples/semiconductors_relevant_tickers.txt",
     )
 
     html = out.read_text(encoding="utf-8")
@@ -63,3 +64,19 @@ def test_export_html_contains_filters_and_rows(tmp_path: Path):
     assert "CSPX.L" in html
     assert '"asset_class": "all"' in html
     assert '"top_n": 10' in html
+    assert '"tickers_file": "tickers-files-examples/semiconductors_relevant_tickers.txt"' in html
+
+
+def test_google_finance_url_uses_exact_exchange_when_mapped():
+    assert _google_finance_url("NVDA") == "https://www.google.com/finance/quote/NVDA:NASDAQ?hl=en"
+    assert _google_finance_url("HWM") == "https://www.google.com/finance/quote/HWM:NYSE?hl=en"
+    assert _google_finance_url("VWS.CO") == "https://www.google.com/finance/quote/VWS:CPH?hl=en"
+    assert _google_finance_url("600519.SS") == "https://www.google.com/finance/quote/600519:SHA?hl=en"
+
+
+def test_tradingview_url_uses_exchange_override_when_mapped():
+    assert _tradingview_url("HWM") == "https://www.tradingview.com/symbols/NYSE:HWM"
+
+
+def test_google_finance_url_falls_back_to_search_when_unmapped():
+    assert _google_finance_url("FOO.XY") == "https://www.google.com/finance?hl=en&q=FOO.XY"

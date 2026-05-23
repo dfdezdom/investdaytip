@@ -1,0 +1,29 @@
+# InvestDayTip example ticker file: Quantum Computing sector (global-relevant)
+# One ticker per line. Compatible with --tickers-file.
+
+# Pure-play / quantum-focused
+IONQ
+RGTI
+QBTS
+QUBT
+
+# Major technology companies with meaningful quantum programs
+IBM
+GOOGL
+MSFT
+AMZN
+INTC
+NVDA
+
+# Hardware / photonics / infrastructure players often linked to quantum ecosystems
+HON
+BA
+AAPL
+TSM
+ASML
+ANET
+LMT
+
+# Quantum communications / related advanced networking exposure
+CIEN
+FSLR

@@ -1,0 +1,68 @@
+# InvestDayTip example ticker file: Energy sector (global-relevant)
+# One ticker per line. Compatible with --tickers-file.
+
+# Integrated Oil & Gas (majors)
+XOM
+CVX
+SHEL
+BP
+TTE
+ENI.MI
+EQNR
+PBR
+
+# E&P / upstream leaders
+COP
+EOG
+PXD
+OXY
+APA
+DVN
+MRO
+
+# Oilfield services / equipment / infrastructure
+SLB
+HAL
+BKR
+NOV
+FTI
+WMB
+KMI
+TRP
+ENB
+
+# Utilities / power / grid
+NEE
+DUK
+SO
+AEP
+EXC
+NGG
+IBE.MC
+ENEL.MI
+
+# Renewables / clean energy / storage
+FSLR
+ENPH
+SEDG
+VWS.CO
+ORSTED.CO
+NXT
+PLUG
+RUN
+BE
+
+# Nuclear / uranium ecosystem
+CCJ
+SMR
+UEC
+UUUU
+NXE
+
+# Asia energy leaders
+600519.SS
+0857.HK
+0386.HK
+0883.HK
+5020.T
+9501.T

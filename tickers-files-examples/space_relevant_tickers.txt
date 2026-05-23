@@ -1,0 +1,40 @@
+# InvestDayTip example ticker file: Space sector (global-relevant)
+# One ticker per line. Compatible with --tickers-file.
+
+# Pure-play / direct space exposure
+RKLB
+SPIR
+PL
+BKSY
+ASTS
+IRDM
+VSAT
+GSAT
+
+# Major aerospace & defense with strong space businesses
+LMT
+NOC
+RTX
+BA
+GD
+LHX
+HII
+TXT
+
+# Satellite, communications, and payload ecosystems
+MDA.TO
+CGI
+HWM
+KTOS
+MAXR
+
+# Launch/satellite manufacturing ecosystem (Europe)
+AIR.PA
+BA.L
+OHB.DE
+SESF.PK
+
+# Japan / Asia aerospace exposure
+7011.T
+7012.T
+6501.T

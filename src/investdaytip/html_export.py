@@ -55,8 +55,14 @@ def _fmt_pct(value: Any) -> str:
 
 
 def _google_finance_url(ticker: str) -> str:
-  query = quote_plus(ticker)
-  return f"https://www.google.com/finance?hl=en&q={query}"
+  base, _ = _split_ticker(ticker)
+  google_exchange, _ = _exchange_mapping(ticker)
+  if not google_exchange:
+    query = quote_plus(ticker)
+    return f"https://www.google.com/finance?hl=en&q={query}"
+  symbol = quote_plus(base)
+  exch = quote_plus(google_exchange)
+  return f"https://www.google.com/finance/quote/{symbol}:{exch}?hl=en"
 
 
 def _split_ticker(ticker: str) -> tuple[str, str]:
@@ -68,17 +74,29 @@ def _split_ticker(ticker: str) -> tuple[str, str]:
 
 
 def _exchange_mapping(ticker: str) -> tuple[str | None, str | None]:
-  _, suffix = _split_ticker(ticker)
+  base, suffix = _split_ticker(ticker)
   # (Google Finance exchange, TradingView exchange)
+  us_overrides = {
+    # Unsuffixed US tickers are ambiguous; these overrides fix known NYSE symbols.
+    "HWM": ("NYSE", "NYSE"),
+  }
+  if suffix == "" and base in us_overrides:
+    return us_overrides[base]
+
   mapping = {
     "": ("NASDAQ", "NASDAQ"),
     "DE": ("ETR", "XETR"),
+    "F": ("FRA", "FWB"),
     "PA": ("EPA", "EURONEXT"),
     "AS": ("AMS", "EURONEXT"),
     "L": ("LON", "LSE"),
     "MC": ("BME", "BME"),
     "MI": ("BIT", "MIL"),
     "SW": ("SWX", "SIX"),
+    "ST": ("STO", "OMXSTO"),
+    "CO": ("CPH", "OMXCOP"),
+    "HE": ("HEL", "OMXHEX"),
+    "OL": ("OSL", "OSL"),
     "T": ("TYO", "TSE"),
     "HK": ("HKG", "HKEX"),
     "SI": ("SGX", "SGX"),
@@ -86,6 +104,9 @@ def _exchange_mapping(ticker: str) -> tuple[str | None, str | None]:
     "KS": ("KRX", "KRX"),
     "TW": ("TPE", "TWSE"),
     "AX": ("ASX", "ASX"),
+    "TO": ("TSE", "TSX"),
+    "SS": ("SHA", "SSE"),
+    "SZ": ("SHE", "SZSE"),
   }
   return mapping.get(suffix, (None, None))
 
@@ -112,31 +133,34 @@ def _build_links(ticker: str) -> dict[str, str]:
 
 
 def _as_row(index: int, s: ScoredAsset) -> dict[str, Any]:
-    d = s.data
-    return {
-        "rank": index,
-        "asset_type": s.asset_type.lower(),
-        "ticker": d.ticker,
-        "ticker_url": _google_finance_url(d.ticker),
-        "links": _build_links(d.ticker),
-        "name": d.name or "-",
-        "sector": d.sector or "-",
-        "region": infer_region_from_ticker(d.ticker),
-        "price": d.current_price,
-        "price_text": _fmt_price(d.current_price, getattr(d, "currency", None)),
-        "return_1m": d.return_1m,
-        "return_1m_text": _fmt_pct(d.return_1m),
-        "return_12m": d.return_12m,
-        "return_12m_text": _fmt_pct(d.return_12m),
-        "score": round(s.total, 2),
-        "breakdown": " / ".join(f"{int(round(v))}" for v in s.breakdown.values()),
-        "why": "; ".join(s.rationale[:3]) if s.rationale else "-",
-    }
+  d = s.data
+  pe_value = getattr(d, "trailing_pe", None)
+  return {
+    "rank": index,
+    "asset_type": s.asset_type.lower(),
+    "ticker": d.ticker,
+    "ticker_url": _google_finance_url(d.ticker),
+    "links": _build_links(d.ticker),
+    "name": d.name or "-",
+    "sector": d.sector or "-",
+    "region": infer_region_from_ticker(d.ticker),
+    "price": d.current_price,
+    "price_text": _fmt_price(d.current_price, getattr(d, "currency", None)),
+    "pe": pe_value,
+    "pe_text": f"{float(pe_value):.2f}" if isinstance(pe_value, (int, float)) else "-",
+    "return_1m": d.return_1m,
+    "return_1m_text": _fmt_pct(d.return_1m),
+    "return_12m": d.return_12m,
+    "return_12m_text": _fmt_pct(d.return_12m),
+    "score": round(s.total, 2),
+    "breakdown": " / ".join(f"{int(round(v))}" for v in s.breakdown.values()),
+    "why": "; ".join(s.rationale[:3]) if s.rationale else "-",
+  }
 
 
 def _render_initial_rows(rows: list[dict[str, Any]]) -> str:
   if not rows:
-    return '<tr><td colspan="14" class="muted">No recommendations were generated for this run.</td></tr>'
+    return '<tr><td colspan="15" class="muted">No recommendations were generated for this run.</td></tr>'
 
   out: list[str] = []
   for r in rows:
@@ -155,6 +179,7 @@ def _render_initial_rows(rows: list[dict[str, Any]]) -> str:
       f"<td class=\"desktop-only region-col\">{escape(str(r['region']).upper())}</td>"
       f"<td class=\"desktop-only\">{escape(str(r['sector']))}</td>"
       f"<td class=\"num\">{escape(str(r['price_text']))}</td>"
+      f"<td class=\"num\">{escape(str(r['pe_text']))}</td>"
       f"<td class=\"num {one_m_class}\">{escape(str(r['return_1m_text']))}</td>"
       f"<td class=\"num {one_y_class}\">{escape(str(r['return_12m_text']))}</td>"
       f"<td class=\"num\"><strong>{escape(score_txt)}</strong></td>"
@@ -173,6 +198,7 @@ def export_recommendations_html(
     asset_class: str,
     region: str,
     tickers: list[str] | None,
+  tickers_file: str | None = None,
 ) -> str:
     """Write a self-contained, filterable HTML report to ``destination``."""
     rows = [_as_row(i, s) for i, s in enumerate(results, start=1)]
@@ -182,6 +208,7 @@ def export_recommendations_html(
         "asset_class": asset_class,
         "region": region,
         "tickers": tickers or [],
+        "tickers_file": tickers_file,
         "row_count": len(rows),
     }
 
@@ -356,6 +383,7 @@ def export_recommendations_html(
           <th class="desktop-only sortable region-col" data-sort-key="region" data-sort-type="text" tabindex="0" aria-sort="none">Region<span class="sort-indicator">↕</span></th>
           <th class="desktop-only sortable" data-sort-key="sector" data-sort-type="text" tabindex="0" aria-sort="none">Sector/Category<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="price" data-sort-type="number" tabindex="0" aria-sort="none">Price<span class="sort-indicator">↕</span></th>
+          <th class="num sortable" data-sort-key="pe" data-sort-type="number" tabindex="0" aria-sort="none">P/E<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="return_1m" data-sort-type="number" tabindex="0" aria-sort="none">1M<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="return_12m" data-sort-type="number" tabindex="0" aria-sort="none">1Y<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="score" data-sort-type="number" tabindex="0" aria-sort="none">Score<span class="sort-indicator">↕</span></th>
@@ -389,6 +417,7 @@ def export_recommendations_html(
         `region=${{metadata.region}}`,
         metadata.tickers.length ? `tickers=${{metadata.tickers.join(",")}}` : "tickers=curated",
       ];
+      if (metadata.tickers_file) chips.push(`tickers_file=${{metadata.tickers_file}}`);
       $("runParams").innerHTML = chips.map(c => `<span class=\"chip\">${{c}}</span>`).join("");
       const when = new Date(metadata.generated_at).toLocaleString();
       $("generatedAt").textContent = `Generated: ${{when}} · Rows: ${{metadata.row_count}}`;
@@ -468,6 +497,7 @@ def export_recommendations_html(
             <td class=\"desktop-only region-col\">${{r.region.toUpperCase()}}</td>
             <td class=\"desktop-only\">${{r.sector}}</td>
             <td class=\"num\">${{r.price_text}}</td>
+            <td class=\"num\">${{r.pe_text}}</td>
             <td class=\"num ${{oneMClass}}\">${{r.return_1m_text}}</td>
             <td class=\"num ${{oneYClass}}\">${{r.return_12m_text}}</td>
             <td class=\"num\"><strong>${{scoreText}}</strong></td>
@@ -476,7 +506,7 @@ def export_recommendations_html(
           </tr>
         `;
       }}).join("");
-      $("tbody").innerHTML = body || '<tr><td colspan="14" class="muted">No rows match the selected filters.</td></tr>';
+      $("tbody").innerHTML = body || '<tr><td colspan="15" class="muted">No rows match the selected filters.</td></tr>';
     }}
 
     function rerender() {{

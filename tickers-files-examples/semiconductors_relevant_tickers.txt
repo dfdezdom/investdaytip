@@ -1,0 +1,41 @@
+# InvestDayTip example ticker file: Semiconductor sector (global)
+# One ticker per line. Compatible with --tickers-file.
+
+# US / ADR
+NVDA
+AMD
+INTC
+QCOM
+AVGO
+TXN
+MU
+ADI
+ON
+NXPI
+MRVL
+MCHP
+AMAT
+LRCX
+KLAC
+ARM
+GFS
+TSM
+ASML
+STM
+
+# Europe
+IFX.DE
+BESI.AS
+ASM.AS
+SOI.PA
+
+# Asia
+2330.TW
+2303.TW
+2454.TW
+3711.TW
+000660.KS
+005930.KS
+8035.T
+6920.T
+4063.T

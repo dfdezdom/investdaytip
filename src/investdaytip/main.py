@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from datetime import datetime
+from pathlib import Path
 
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
@@ -56,9 +57,49 @@ def _fmt_pct(value) -> str:
     return f"[{color}]{sign}{pct:.2f}%[/{color}]"
 
 
+def _fmt_pe(value) -> str:
+    if value is None:
+        return "—"
+    try:
+        return f"{float(value):.2f}"
+    except (TypeError, ValueError):
+        return "—"
+
+
 def _default_export_html_filename(now: datetime | None = None) -> str:
     ts = (now or datetime.now()).strftime("%Y%m%d-%H%M")
     return f"investDayTip-{ts}.html"
+
+
+def _load_tickers_from_file(file_path: str) -> list[str]:
+    """Load tickers from a text file.
+
+    Accepted separators: newlines, spaces, tabs, or commas.
+    Lines may include comments after '#'.
+    """
+    text = Path(file_path).read_text(encoding="utf-8")
+    out: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        for tok in line.replace(",", " ").split():
+            t = tok.strip()
+            if t:
+                out.append(t)
+    return out
+
+
+def _merge_ticker_lists(cli_tickers: list[str] | None, file_tickers: list[str]) -> list[str] | None:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for ticker in (cli_tickers or []) + file_tickers:
+        key = ticker.upper()
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(ticker)
+    return merged or None
 
 
 def _render(results: list[ScoredAsset], console: Console) -> None:
@@ -77,6 +118,7 @@ def _render(results: list[ScoredAsset], console: Console) -> None:
     table.add_column("Name")
     table.add_column("Sector/Category", style="dim")
     table.add_column("Price", justify="right")
+    table.add_column("P/E", justify="right")
     table.add_column("1M Δ", justify="right")
     table.add_column("1Y Δ", justify="right")
     table.add_column("Score", justify="right", style="bold green")
@@ -93,6 +135,7 @@ def _render(results: list[ScoredAsset], console: Console) -> None:
             d.name or "—",
             d.sector or "—",
             _fmt_price(d.current_price, getattr(d, "currency", None)),
+            _fmt_pe(getattr(d, "trailing_pe", None)),
             _fmt_pct(d.return_1m),
             _fmt_pct(d.return_12m),
             f"{s.total:.1f}",
@@ -116,6 +159,14 @@ def main(argv: list[str] | None = None) -> int:
                         help="Number of recommendations to return (default: 5).")
     parser.add_argument("-t", "--tickers", nargs="+", default=None,
                         help="Custom ticker list. Defaults to a curated universe.")
+    parser.add_argument(
+        "--tickers-file",
+        default=None,
+        help=(
+            "Path to a text file with custom tickers (supports lines, spaces, commas; "
+            "'#' for comments). Merged with --tickers if both are provided."
+        ),
+    )
     parser.add_argument("-a", "--asset-class", choices=["all", "stocks", "etfs"], default="all",
                         help="Which asset class to analyze when no -t is given (default: all).")
     parser.add_argument("-r", "--region", choices=["all", "us", "eu", "asia"], default="all",
@@ -133,6 +184,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     args = parser.parse_args(argv)
+
+    file_tickers: list[str] = []
+    if args.tickers_file:
+        try:
+            file_tickers = _load_tickers_from_file(args.tickers_file)
+        except Exception as exc:
+            Console().print(f"[red]Could not read --tickers-file: {exc}[/red]")
+            return 1
+
+    effective_tickers = _merge_ticker_lists(args.tickers, file_tickers)
 
     console = Console()
     console.print(
@@ -157,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
 
         try:
             results = recommend(
-                tickers=args.tickers,
+                tickers=effective_tickers,
                 top_n=args.top,
                 max_workers=args.workers,
                 asset_class=args.asset_class,
@@ -179,7 +240,8 @@ def main(argv: list[str] | None = None) -> int:
                 top_n=args.top,
                 asset_class=args.asset_class,
                 region=args.region,
-                tickers=args.tickers,
+                tickers=effective_tickers,
+                tickers_file=args.tickers_file,
             )
             console.print(f"[green]HTML report exported:[/green] {out_path}")
         except Exception as exc:

@@ -1,0 +1,52 @@
+# InvestDayTip example ticker file: Artificial Intelligence sector (global-relevant)
+# One ticker per line. Compatible with --tickers-file.
+
+# AI platforms / hyperscalers / core software
+MSFT
+GOOGL
+AMZN
+META
+ORCL
+CRM
+ADBE
+SNOW
+PLTR
+C3AI
+
+# AI compute / semiconductors / hardware stack
+NVDA
+AMD
+AVGO
+TSM
+ASML
+QCOM
+MU
+AMAT
+LRCX
+KLAC
+ANET
+SMCI
+DELL
+HPE
+
+# Data / model infrastructure / analytics
+NOW
+DDOG
+MDB
+ESTC
+TEAM
+PANW
+CRWD
+
+# Robotics / autonomy / edge AI
+TSLA
+ISRG
+ABBN.SW
+6861.T
+
+# China / Asia AI-heavy leaders
+BABA
+TCEHY
+9988.HK
+0700.HK
+9984.T
