@@ -53,6 +53,7 @@ investdaytip -r eu -a stocks         # Only European stocks
 investdaytip -r asia -a etfs         # Only Asian ETFs
 investdaytip -t AAPL MSFT VOO        # Custom ticker list
 investdaytip --tickers-file tickers.txt # Custom ticker file (lines, spaces, commas)
+investdaytip --tickers-file tickers-files-examples/semiconductors_relevant_tickers.txt
 investdaytip --export-html report.html # Export report with interactive filters
 investdaytip --export-html             # Uses investDayTip-aaaammdd-hhmm.html
 investdaytip --workers 20            # More parallelism
@@ -207,6 +208,22 @@ Tickers use Yahoo Finance suffixes:
 - **EU:** `.DE` Xetra · `.PA` Paris · `.AS` Amsterdam · `.L` London · `.MC` Madrid · `.MI` Milan · `.SW` Swiss
 - **Asia:** `.T` Tokyo · `.HK` Hong Kong · `.SI` Singapore · `.NS` NSE India · `.KS` Korea · `.TW` Taiwan · `.AX` Australia
 
+### Ticker File Examples
+
+The repository includes ready-to-use ticker sets in `tickers-files-examples/` for thematic analyses:
+
+- `semiconductors_relevant_tickers.txt`
+- `artificial_intelligence_relevant_tickers.txt`
+- `quantum_computing_relevant_tickers.txt`
+- `energy_relevant_tickers.txt`
+- `space_relevant_tickers.txt`
+
+Example:
+
+```bash
+investdaytip -n 15 --tickers-file tickers-files-examples/artificial_intelligence_relevant_tickers.txt --export-html
+```
+
 ---
 
 ## Data Source
@@ -236,6 +253,12 @@ tests/
 ├── test_html_export.py    # HTML export tests
 ├── test_scoring.py        # Stock scoring tests
 └── test_etf_scoring.py    # ETF scoring tests
+tickers-files-examples/
+├── semiconductors_relevant_tickers.txt
+├── artificial_intelligence_relevant_tickers.txt
+├── quantum_computing_relevant_tickers.txt
+├── energy_relevant_tickers.txt
+└── space_relevant_tickers.txt
 ```
 
 ---
