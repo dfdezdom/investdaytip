@@ -111,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="Custom ticker list. Defaults to a curated universe.")
     parser.add_argument("-a", "--asset-class", choices=["all", "stocks", "etfs"], default="all",
                         help="Which asset class to analyze when no -t is given (default: all).")
-    parser.add_argument("-r", "--region", choices=["all", "us", "eu"], default="all",
+    parser.add_argument("-r", "--region", choices=["all", "us", "eu", "asia"], default="all",
                         help="Which region to analyze when no -t is given (default: all).")
     parser.add_argument("--workers", type=int, default=10,
                         help="Parallel fetch workers (default: 10).")

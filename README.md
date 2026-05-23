@@ -41,13 +41,15 @@ pip install -e ".[dev]"
 ### CLI
 
 ```bash
-investdaytip                         # Top 5 from full universe (US + EU, stocks + ETFs)
+investdaytip                         # Top 5 from full universe (US + EU + Asia, stocks + ETFs)
 investdaytip -n 10                   # Top 10
 investdaytip -a stocks               # Only stocks
 investdaytip -a etfs                 # Only ETFs
 investdaytip -r us                   # Only US
 investdaytip -r eu                   # Only Europe
+investdaytip -r asia                 # Only Asia
 investdaytip -r eu -a stocks         # Only European stocks
+investdaytip -r asia -a etfs         # Only Asian ETFs
 investdaytip -t AAPL MSFT VOO        # Custom ticker list
 investdaytip --workers 20            # More parallelism
 investdaytip --help
@@ -60,7 +62,7 @@ investdaytip --help
 | `-n, --top N` | Number of recommendations | `5` |
 | `-t, --tickers ...` | Custom ticker list (overrides universe) | curated universe |
 | `-a, --asset-class {all,stocks,etfs}` | Asset class filter | `all` |
-| `-r, --region {all,us,eu}` | Region filter | `all` |
+| `-r, --region {all,us,eu,asia}` | Region filter | `all` |
 | `--workers N` | Parallel fetch threads | `10` |
 
 ### Programmatic API
@@ -127,6 +129,8 @@ When no `-t` is given, InvestDayTip uses curated universes:
 - **US ETFs** — ~40 broad-market, factor, sector and bond ETFs (`etf_universe.py`)
 - **EU stocks** — ~60 large-caps from DAX, CAC, FTSE 100, IBEX, AEX, SMI, FTSE MIB, Nordics (`eu_universe.py`)
 - **EU UCITS ETFs** — ~25 broad, sector and bond UCITS ETFs (`eu_etf_universe.py`)
+- **Asia stocks** — ~70 large-caps from Japan, Hong Kong, Singapore, India, South Korea, Taiwan, and Australia (`asia_universe.py`)
+- **Asia ETFs** — ~30 broad-market, country-specific, and sector ETFs with significant Asian exposure (`asia_etf_universe.py`)
 
 Tickers use Yahoo Finance suffixes: `.DE` Xetra · `.PA` Paris · `.AS` Amsterdam · `.L` London · `.MC` Madrid · `.MI` Milan · `.SW` Swiss.
 
@@ -150,7 +154,9 @@ src/investdaytip/
 ├── universe.py            # US stock universe
 ├── etf_universe.py        # US ETF universe
 ├── eu_universe.py         # EU stock universe
-└── eu_etf_universe.py     # EU UCITS ETF universe
+├── eu_etf_universe.py     # EU UCITS ETF universe
+├── asia_universe.py       # Asia stock universe
+└── asia_etf_universe.py   # Asia ETF universe
 tests/
 ├── test_scoring.py        # Stock scoring tests
 └── test_etf_scoring.py    # ETF scoring tests

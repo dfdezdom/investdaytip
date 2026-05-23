@@ -5,6 +5,8 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterable, Literal
 
+from investdaytip.asia_etf_universe import ASIA_ETF_UNIVERSE
+from investdaytip.asia_universe import ASIA_UNIVERSE
 from investdaytip.data_source import fetch_asset
 from investdaytip.etf_universe import DEFAULT_ETF_UNIVERSE
 from investdaytip.eu_etf_universe import DEFAULT_EU_ETF_UNIVERSE
@@ -14,7 +16,7 @@ from investdaytip.universe import DEFAULT_UNIVERSE
 
 
 AssetClass = Literal["all", "stocks", "etfs"]
-Region = Literal["all", "us", "eu"]
+Region = Literal["all", "us", "eu", "asia"]
 
 
 def _build_universe(
@@ -31,11 +33,15 @@ def _build_universe(
             pools.append(list(DEFAULT_UNIVERSE))
         if region in ("eu", "all"):
             pools.append(list(DEFAULT_EU_UNIVERSE))
+        if region in ("asia", "all"):
+            pools.append(list(ASIA_UNIVERSE))
     if asset_class in ("etfs", "all"):
         if region in ("us", "all"):
             pools.append(list(DEFAULT_ETF_UNIVERSE))
         if region in ("eu", "all"):
             pools.append(list(DEFAULT_EU_ETF_UNIVERSE))
+        if region in ("asia", "all"):
+            pools.append(list(ASIA_ETF_UNIVERSE))
 
     return [t for pool in pools for t in pool]
 
@@ -60,7 +66,7 @@ def recommend(
             reports figures in the asset's native currency, so this acts as
             an approximate filter for non-USD listings.
         asset_class: "all", "stocks", or "etfs".
-        region: "all", "us", or "eu".
+        region: "all", "us", "eu", or "asia".
         progress_cb: Optional callable ``(done, total, ticker)``.
     """
     universe = _build_universe(tickers, asset_class, region)
