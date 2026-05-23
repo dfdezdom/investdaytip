@@ -54,9 +54,9 @@ def _fmt_pct(value: Any) -> str:
     return f"{float(value) * 100:.2f}%"
 
 
-def _google_finance_url(ticker: str) -> str:
+def _google_finance_url(ticker: str, exchange_hint: str | None = None) -> str:
   base, _ = _split_ticker(ticker)
-  google_exchange, _ = _exchange_mapping(ticker)
+  google_exchange, _ = _exchange_mapping(ticker, exchange_hint=exchange_hint)
   if not google_exchange:
     query = quote_plus(ticker)
     return f"https://www.google.com/finance?hl=en&q={query}"
@@ -73,8 +73,32 @@ def _split_ticker(ticker: str) -> tuple[str, str]:
   return t, ""
 
 
-def _exchange_mapping(ticker: str) -> tuple[str | None, str | None]:
+def _normalize_exchange_hint(exchange_hint: str | None) -> tuple[str | None, str | None]:
+  if not exchange_hint:
+    return None, None
+  hint = exchange_hint.strip().upper()
+  # (Google Finance exchange, TradingView exchange)
+  mapping = {
+    "NMS": ("NASDAQ", "NASDAQ"),
+    "NGM": ("NASDAQ", "NASDAQ"),
+    "NCM": ("NASDAQ", "NASDAQ"),
+    "NYQ": ("NYSE", "NYSE"),
+    "ASE": ("NYSEARCA", "AMEX"),
+    "PCX": ("NYSEARCA", "AMEX"),
+    "BTS": ("NYSE", "NYSE"),
+    "TOR": ("TSE", "TSX"),
+    "TSX": ("TSE", "TSX"),
+  }
+  return mapping.get(hint, (None, None))
+
+
+def _exchange_mapping(ticker: str, exchange_hint: str | None = None) -> tuple[str | None, str | None]:
   base, suffix = _split_ticker(ticker)
+
+  google_from_hint, tv_from_hint = _normalize_exchange_hint(exchange_hint)
+  if google_from_hint and tv_from_hint:
+    return google_from_hint, tv_from_hint
+
   # (Google Finance exchange, TradingView exchange)
   us_overrides = {
     # Unsuffixed US tickers are ambiguous; these overrides fix known NYSE symbols.
@@ -111,9 +135,9 @@ def _exchange_mapping(ticker: str) -> tuple[str | None, str | None]:
   return mapping.get(suffix, (None, None))
 
 
-def _tradingview_url(ticker: str) -> str:
+def _tradingview_url(ticker: str, exchange_hint: str | None = None) -> str:
   base, _ = _split_ticker(ticker)
-  _, tv_exchange = _exchange_mapping(ticker)
+  _, tv_exchange = _exchange_mapping(ticker, exchange_hint=exchange_hint)
   if not tv_exchange:
     return f"https://www.tradingview.com/symbols/{quote(ticker, safe='')}"
   tv_symbol = f"{tv_exchange}:{base}"
@@ -124,10 +148,10 @@ def _yahoo_finance_url(ticker: str) -> str:
   return f"https://finance.yahoo.com/quote/{quote_plus(ticker)}"
 
 
-def _build_links(ticker: str) -> dict[str, str]:
+def _build_links(ticker: str, exchange_hint: str | None = None) -> dict[str, str]:
   return {
-    "google": _google_finance_url(ticker),
-    "tradingview": _tradingview_url(ticker),
+    "google": _google_finance_url(ticker, exchange_hint=exchange_hint),
+    "tradingview": _tradingview_url(ticker, exchange_hint=exchange_hint),
     "yahoo": _yahoo_finance_url(ticker),
   }
 
@@ -135,12 +159,13 @@ def _build_links(ticker: str) -> dict[str, str]:
 def _as_row(index: int, s: ScoredAsset) -> dict[str, Any]:
   d = s.data
   pe_value = getattr(d, "trailing_pe", None)
+  exchange_hint = getattr(d, "exchange", None)
   return {
     "rank": index,
     "asset_type": s.asset_type.lower(),
     "ticker": d.ticker,
-    "ticker_url": _google_finance_url(d.ticker),
-    "links": _build_links(d.ticker),
+    "ticker_url": _google_finance_url(d.ticker, exchange_hint=exchange_hint),
+    "links": _build_links(d.ticker, exchange_hint=exchange_hint),
     "name": d.name or "-",
     "sector": d.sector or "-",
     "region": infer_region_from_ticker(d.ticker),
@@ -225,30 +250,84 @@ def export_recommendations_html(
   <style>
     :root {{
       --bg: #f3f5ef;
+      --bg-spot: #e9f4dc;
       --panel: #ffffff;
       --line: #dde5cf;
       --text: #1f2a1f;
       --muted: #58664d;
       --accent: #2f7d4a;
       --accent-soft: #d8f0df;
+      --chip-line: #b7dcc4;
+      --chip-text: #16482a;
+      --input-bg: #fdfefb;
+      --input-line: #c9d4b5;
+      --thead-bg: #e9f2df;
+      --thead-text: #2a402d;
+      --tbody-line: #edf2e6;
+      --shadow: 0 8px 20px rgba(35, 45, 22, 0.08);
+      --tv-icon: #1b1f2a;
+      --link: #1f6037;
+      --link-hover: #2f7d4a;
       --neg: #a84035;
       --pos: #1e7a35;
+    }}
+    :root[data-theme="dark"] {{
+      --bg: #101714;
+      --bg-spot: #1a2a22;
+      --panel: #17221d;
+      --line: #2a3a31;
+      --text: #dde7df;
+      --muted: #9bb0a3;
+      --accent: #77c18f;
+      --accent-soft: #24382e;
+      --chip-line: #355444;
+      --chip-text: #cde3d4;
+      --input-bg: #13201a;
+      --input-line: #3a5144;
+      --thead-bg: #203329;
+      --thead-text: #d5e7da;
+      --tbody-line: #24352d;
+      --shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+      --tv-icon: #2d3f5c;
+      --link: #9fe3b1;
+      --link-hover: #c9f2d4;
+      --neg: #ff9288;
+      --pos: #8fe4a3;
     }}
     * {{ box-sizing: border-box; }}
     body {{
       margin: 0;
       font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color: var(--text);
-      background: radial-gradient(circle at top right, #e9f4dc 0, #f3f5ef 40%), var(--bg);
+      background: radial-gradient(circle at top right, var(--bg-spot) 0, var(--bg) 40%), var(--bg);
     }}
     .wrap {{ width: 100%; max-width: none; margin: 0; padding: 20px 20px 36px; }}
+    .topbar {{ display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }}
     h1 {{ margin: 0 0 8px; font-size: 1.6rem; }}
+    .theme-toggle {{
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      border-radius: 999px;
+      font-size: 0.84rem;
+      padding: 6px 10px;
+      cursor: pointer;
+      white-space: nowrap;
+    }}
+    .theme-toggle:hover {{ border-color: var(--accent); }}
+    a {{ color: var(--link); }}
+    a:hover {{ color: var(--link-hover); }}
+    a:focus-visible {{
+      outline: 2px solid var(--link-hover);
+      outline-offset: 2px;
+      border-radius: 2px;
+    }}
     .meta {{ color: var(--muted); font-size: 0.92rem; margin-bottom: 16px; }}
     .chips {{ display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }}
     .chip {{
       background: var(--accent-soft);
-      border: 1px solid #b7dcc4;
-      color: #16482a;
+      border: 1px solid var(--chip-line);
+      color: var(--chip-text);
       border-radius: 999px;
       padding: 4px 10px;
       font-size: 0.84rem;
@@ -262,15 +341,15 @@ def export_recommendations_html(
       border-radius: 14px;
       padding: 14px;
       margin-bottom: 16px;
-      box-shadow: 0 8px 20px rgba(35, 45, 22, 0.08);
+      box-shadow: var(--shadow);
     }}
     label {{ display: grid; gap: 6px; font-size: 0.86rem; color: var(--muted); }}
     input, select {{
       width: 100%;
       padding: 9px 10px;
-      border: 1px solid #c9d4b5;
+      border: 1px solid var(--input-line);
       border-radius: 10px;
-      background: #fdfefb;
+      background: var(--input-bg);
       color: var(--text);
       font-size: 0.95rem;
     }}
@@ -281,14 +360,14 @@ def export_recommendations_html(
       border: 1px solid var(--line);
       border-radius: 14px;
       overflow: hidden;
-      box-shadow: 0 8px 20px rgba(35, 45, 22, 0.08);
+      box-shadow: var(--shadow);
     }}
     thead th {{
       text-align: left;
       font-size: 0.82rem;
       letter-spacing: 0.02em;
-      color: #2a402d;
-      background: #e9f2df;
+      color: var(--thead-text);
+      background: var(--thead-bg);
       border-bottom: 1px solid var(--line);
       padding: 10px;
       position: sticky;
@@ -296,9 +375,9 @@ def export_recommendations_html(
       z-index: 1;
     }}
     th.sortable {{ cursor: pointer; user-select: none; }}
-    th.sortable.active {{ color: #1f6037; }}
+    th.sortable.active {{ color: var(--accent); }}
     .sort-indicator {{ margin-left: 4px; color: #6d7f68; }}
-    tbody td {{ border-top: 1px solid #edf2e6; padding: 10px; font-size: 0.92rem; vertical-align: top; }}
+    tbody td {{ border-top: 1px solid var(--tbody-line); padding: 10px; font-size: 0.92rem; vertical-align: top; }}
     .num {{ text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }}
     .type-col {{ width: 64px; min-width: 58px; white-space: nowrap; }}
     .region-col {{ width: 62px; min-width: 56px; white-space: nowrap; }}
@@ -319,7 +398,7 @@ def export_recommendations_html(
       color: #fff;
       line-height: 1;
     }}
-    .icon-tv {{ background: #1b1f2a; }}
+    .icon-tv {{ background: var(--tv-icon); }}
     .icon-yahoo {{ background: #5f01d1; }}
     .muted {{ color: var(--muted); }}
     .pos {{ color: var(--pos); font-weight: 600; }}
@@ -329,13 +408,17 @@ def export_recommendations_html(
       .desktop-only {{ display: none; }}
       body {{ font-size: 14px; }}
       .wrap {{ padding: 14px 12px 24px; }}
+      .topbar {{ align-items: center; }}
       tbody td, thead th {{ padding: 8px; }}
     }}
   </style>
 </head>
 <body>
   <div class=\"wrap\">
-    <h1>InvestDayTip Report</h1>
+    <div class=\"topbar\">
+      <h1>InvestDayTip Report</h1>
+      <button id=\"themeToggle\" class=\"theme-toggle\" type=\"button\" aria-label=\"Toggle dark mode\">Dark mode</button>
+    </div>
     <div class=\"meta\" id=\"generatedAt\"></div>
     <div class=\"chips\" id=\"runParams\"></div>
 
@@ -404,6 +487,25 @@ def export_recommendations_html(
     const controls = controlIds.map($).filter(Boolean);
     const tableHeaders = Array.from(document.querySelectorAll("th.sortable"));
     const sortState = {{ key: "rank", dir: "asc", type: "number" }};
+    const THEME_KEY = "investdaytip-theme";
+
+    function preferredTheme() {{
+      const fromStorage = localStorage.getItem(THEME_KEY);
+      if (fromStorage === "light" || fromStorage === "dark") return fromStorage;
+      if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark";
+      return "light";
+    }}
+
+    function applyTheme(theme) {{
+      const nextTheme = theme === "dark" ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", nextTheme);
+      localStorage.setItem(THEME_KEY, nextTheme);
+      const btn = $("themeToggle");
+      if (btn) {{
+        btn.textContent = nextTheme === "dark" ? "Light mode" : "Dark mode";
+        btn.setAttribute("aria-pressed", nextTheme === "dark" ? "true" : "false");
+      }}
+    }}
 
     function pctClass(v) {{
       if (v == null || Number.isNaN(v)) return "muted";
@@ -529,6 +631,11 @@ def export_recommendations_html(
     }}
 
     renderParams();
+    applyTheme(preferredTheme());
+    $("themeToggle")?.addEventListener("click", () => {{
+      const current = document.documentElement.getAttribute("data-theme") || "light";
+      applyTheme(current === "dark" ? "light" : "dark");
+    }});
     controls.forEach(c => {{
       c.addEventListener("input", rerender);
       c.addEventListener("change", rerender);

@@ -74,8 +74,18 @@ def test_google_finance_url_uses_exact_exchange_when_mapped():
     assert _google_finance_url("600519.SS") == "https://www.google.com/finance/quote/600519:SHA?hl=en"
 
 
+def test_google_finance_url_uses_exchange_hint_for_unsuffixed_us_tickers():
+    assert _google_finance_url("TSM", exchange_hint="NYQ") == "https://www.google.com/finance/quote/TSM:NYSE?hl=en"
+    assert _google_finance_url("TXT", exchange_hint="NYQ") == "https://www.google.com/finance/quote/TXT:NYSE?hl=en"
+
+
 def test_tradingview_url_uses_exchange_override_when_mapped():
     assert _tradingview_url("HWM") == "https://www.tradingview.com/symbols/NYSE:HWM"
+
+
+def test_tradingview_url_uses_exchange_hint_for_unsuffixed_us_tickers():
+    assert _tradingview_url("TSM", exchange_hint="NYQ") == "https://www.tradingview.com/symbols/NYSE:TSM"
+    assert _tradingview_url("TXT", exchange_hint="NYQ") == "https://www.tradingview.com/symbols/NYSE:TXT"
 
 
 def test_google_finance_url_falls_back_to_search_when_unmapped():

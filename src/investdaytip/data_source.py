@@ -38,6 +38,7 @@ class StockData:
     name: Optional[str] = None
     sector: Optional[str] = None
     currency: Optional[str] = None
+    exchange: Optional[str] = None
     # Valuation
     trailing_pe: Optional[float] = None
     forward_pe: Optional[float] = None
@@ -75,6 +76,7 @@ class EtfData:
     category: Optional[str] = None
     fund_family: Optional[str] = None
     currency: Optional[str] = None
+    exchange: Optional[str] = None
     total_assets: Optional[float] = None  # AUM in USD
     expense_ratio: Optional[float] = None
     three_year_return: Optional[float] = None
@@ -171,6 +173,7 @@ def _fetch_stock(ticker: str, t: yf.Ticker, info: dict) -> StockData:
     data.name = info.get("shortName") or info.get("longName")
     data.sector = info.get("sector")
     data.currency = info.get("currency")
+    data.exchange = info.get("exchange")
     data.trailing_pe = _safe_get(info, "trailingPE")
     data.forward_pe = _safe_get(info, "forwardPE")
     data.price_to_book = _safe_get(info, "priceToBook")
@@ -208,6 +211,7 @@ def _fetch_etf(ticker: str, t: yf.Ticker, info: dict) -> EtfData:
     data.category = info.get("category")
     data.fund_family = info.get("fundFamily")
     data.currency = info.get("currency")
+    data.exchange = info.get("exchange")
     data.total_assets = _safe_get(info, "totalAssets")
     data.expense_ratio = (
         _safe_get(info, "annualReportExpenseRatio")
