@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime
 
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.table import Table
 
+from investdaytip.html_export import export_recommendations_html
 from investdaytip.recommender import recommend
 from investdaytip.scoring import ScoredAsset
 
@@ -52,6 +54,11 @@ def _fmt_pct(value) -> str:
     color = "green" if pct >= 0 else "red"
     sign = "+" if pct >= 0 else ""
     return f"[{color}]{sign}{pct:.2f}%[/{color}]"
+
+
+def _default_export_html_filename(now: datetime | None = None) -> str:
+    ts = (now or datetime.now()).strftime("%Y%m%d-%H%M")
+    return f"investDayTip-{ts}.html"
 
 
 def _render(results: list[ScoredAsset], console: Console) -> None:
@@ -115,6 +122,16 @@ def main(argv: list[str] | None = None) -> int:
                         help="Which region to analyze when no -t is given (default: all).")
     parser.add_argument("--workers", type=int, default=10,
                         help="Parallel fetch workers (default: 10).")
+    parser.add_argument(
+        "--export-html",
+        nargs="?",
+        const="",
+        default=None,
+        help=(
+            "Export recommendations to a self-contained HTML file with client-side filters. "
+            "If PATH is omitted, defaults to investDayTip-aaaammdd-hhmm.html."
+        ),
+    )
     args = parser.parse_args(argv)
 
     console = Console()
@@ -152,6 +169,23 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     _render(results, console)
+
+    if args.export_html is not None:
+        try:
+            destination = args.export_html or _default_export_html_filename()
+            out_path = export_recommendations_html(
+                results,
+                destination,
+                top_n=args.top,
+                asset_class=args.asset_class,
+                region=args.region,
+                tickers=args.tickers,
+            )
+            console.print(f"[green]HTML report exported:[/green] {out_path}")
+        except Exception as exc:
+            console.print(f"[red]Failed to export HTML report: {exc}[/red]")
+            return 1
+
     return 0
 
 

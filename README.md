@@ -14,6 +14,7 @@
 - 🌍 **US, European & Asian markets** — S&P 500, DAX, CAC 40, FTSE 100, Nikkei 225, Hang Seng, NSE, and more
 - ⚡ **Concurrent fetching** — analyzes ~100 tickers in seconds
 - 📊 **Rich CLI output** — price, 1M/1Y change, score breakdown and rationale
+- 🧾 **Self-contained HTML export** — interactive report with filters, sortable columns, and full-width layout
 - 🧪 **Pure scoring functions** — testable without network
 
 ---
@@ -51,6 +52,8 @@ investdaytip -r asia                 # Only Asia
 investdaytip -r eu -a stocks         # Only European stocks
 investdaytip -r asia -a etfs         # Only Asian ETFs
 investdaytip -t AAPL MSFT VOO        # Custom ticker list
+investdaytip --export-html report.html # Export report with interactive filters
+investdaytip --export-html             # Uses investDayTip-aaaammdd-hhmm.html
 investdaytip --workers 20            # More parallelism
 investdaytip --help
 ```
@@ -63,7 +66,32 @@ investdaytip --help
 | `-t, --tickers ...` | Custom ticker list (overrides universe) | curated universe |
 | `-a, --asset-class {all,stocks,etfs}` | Asset class filter | `all` |
 | `-r, --region {all,us,eu,asia}` | Region filter | `all` |
+| `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
 | `--workers N` | Parallel fetch threads | `10` |
+
+### HTML export
+
+Generate an interactive report that works offline (single file with inline CSS/JS):
+
+```bash
+investdaytip -n 25 -a all -r all --export-html investdaytip-report.html
+```
+
+The generated report includes filters for:
+
+- Text search (ticker/name/sector)
+- Asset class (`stock` / `etf`)
+- Region (`us` / `eu` / `asia`)
+- Minimum score
+- Minimum 1M return (%)
+- Minimum 1Y return (%)
+
+It also includes:
+
+- Click-to-sort columns (ascending/descending)
+- Full-width responsive layout (uses available browser width)
+- Pre-rendered rows + client-side interactivity (works even if JS is restricted)
+- Direct platform links in table columns: `Ticker` (Google Finance), `T` (TradingView), `Y` (Yahoo Finance)
 
 ### Programmatic API
 
@@ -92,11 +120,13 @@ Each recommendation includes:
 |---|---|
 | **Type** | `STOCK` or `ETF` |
 | **Ticker / Name / Sector** | Identification |
+| **Ticker link** | Opens Google Finance in a new tab |
+| **T / Y** | Opens TradingView / Yahoo Finance in a new tab |
 | **Price** | Current price in native currency |
 | **1M Δ** | % change vs ~22 trading days ago |
 | **1Y Δ** | % change vs ~252 trading days ago |
 | **Score** | Composite 0-100 weighted score |
-| **Breakdown** | Four sub-scores (see below) |
+| **Breakdown** | Four sub-scores (shown in a compact single line) |
 | **Why** | Top 3 rationale notes |
 
 ---
@@ -155,6 +185,7 @@ All market data is fetched live from **Yahoo Finance** via the [`yfinance`](http
 src/investdaytip/
 ├── __init__.py            # Public API: get_recommendations
 ├── main.py                # CLI entry point + rich table rendering
+├── html_export.py         # Self-contained HTML report exporter
 ├── recommender.py         # Concurrent orchestration
 ├── data_source.py         # yfinance wrapper + dataclasses (StockData / EtfData)
 ├── scoring.py             # Pure scoring functions (score_stock, score_etf)
@@ -165,6 +196,8 @@ src/investdaytip/
 ├── asia_universe.py       # Asia stock universe
 └── asia_etf_universe.py   # Asia ETF universe
 tests/
+├── test_main.py           # CLI helper tests
+├── test_html_export.py    # HTML export tests
 ├── test_scoring.py        # Stock scoring tests
 └── test_etf_scoring.py    # ETF scoring tests
 ```
