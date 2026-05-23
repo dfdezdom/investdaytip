@@ -1,6 +1,6 @@
 # InvestDayTip
 
-> A multi-factor analysis tool that suggests long-term **stock & ETF** buy recommendations from US and European markets, computed live from public market data.
+> A multi-factor analysis tool that suggests long-term **stock & ETF** buy recommendations from US, European, and Asian markets, computed live from public market data.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -11,7 +11,7 @@
 
 - 📈 **Multi-factor scoring** — composite 0-100 score per asset
 - 🏦 **Stocks & ETFs** — auto-detected and scored with dedicated models
-- 🌍 **US & European markets** — DAX, CAC 40, FTSE 100, IBEX 35, AEX, SMI, FTSE MIB + S&P 500
+- 🌍 **US, European & Asian markets** — S&P 500, DAX, CAC 40, FTSE 100, Nikkei 225, Hang Seng, NSE, and more
 - ⚡ **Concurrent fetching** — analyzes ~100 tickers in seconds
 - 📊 **Rich CLI output** — price, 1M/1Y change, score breakdown and rationale
 - 🧪 **Pure scoring functions** — testable without network
@@ -70,12 +70,16 @@ investdaytip --help
 ```python
 from investdaytip import get_recommendations
 
-picks = get_recommendations(top_n=5, region="eu", asset_class="stocks")
+# Get top 5 Asian stocks
+picks = get_recommendations(top_n=5, region="asia", asset_class="stocks")
 for s in picks:
     print(f"{s.data.ticker} ({s.asset_type}) — score={s.total:.1f}")
     print(f"  Price: {s.data.current_price} {s.data.currency}")
     print(f"  1M: {s.data.return_1m:.2%}  1Y: {s.data.return_12m:.2%}")
     print(f"  Why: {'; '.join(s.rationale[:3])}")
+
+# Or mix regions and asset classes
+picks = get_recommendations(top_n=10, region="all")  # US + EU + Asia stocks & ETFs
 ```
 
 ---
@@ -132,7 +136,10 @@ When no `-t` is given, InvestDayTip uses curated universes:
 - **Asia stocks** — ~70 large-caps from Japan, Hong Kong, Singapore, India, South Korea, Taiwan, and Australia (`asia_universe.py`)
 - **Asia ETFs** — ~30 broad-market, country-specific, and sector ETFs with significant Asian exposure (`asia_etf_universe.py`)
 
-Tickers use Yahoo Finance suffixes: `.DE` Xetra · `.PA` Paris · `.AS` Amsterdam · `.L` London · `.MC` Madrid · `.MI` Milan · `.SW` Swiss.
+Tickers use Yahoo Finance suffixes: 
+- **US:** no suffix (AAPL, MSFT)
+- **EU:** `.DE` Xetra · `.PA` Paris · `.AS` Amsterdam · `.L` London · `.MC` Madrid · `.MI` Milan · `.SW` Swiss
+- **Asia:** `.T` Tokyo · `.HK` Hong Kong · `.SI` Singapore · `.NS` NSE India · `.KS` Korea · `.TW` Taiwan · `.AX` Australia
 
 ---
 
