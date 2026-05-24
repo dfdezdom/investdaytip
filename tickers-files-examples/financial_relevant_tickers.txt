@@ -1,0 +1,42 @@
+# One ticker per line. Compatible with --tickers-file.
+# US banks & payments
+JPM
+BAC
+C
+WFC
+GS
+MS
+USB
+PNC
+BK
+TFC
+STT
+SCHW
+BLK
+AXP
+V
+MA
+COF
+AIG
+PRU
+MET
+CB
+
+# Global banks & insurers (no suffix)
+HSBC
+BARC
+DB
+UBS
+BNP
+ING
+MUFG
+SMFG
+RY
+TD
+BNS
+CBA
+NAB
+ANZ
+SANT
+ZURV
+

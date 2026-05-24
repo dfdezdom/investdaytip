@@ -1,0 +1,13 @@
+# One ticker per line. Compatible with --tickers-file.
+VRTX
+CRSP
+NTLA
+BGNE
+SRPT
+EDIT
+EXAS
+MRNA
+BNTX
+BEAM
+SGEN
+ALNY

@@ -1,0 +1,27 @@
+# One ticker per line. Compatible with --tickers-file.
+# Spanish tickers (no suffix).
+SAN
+BBVA
+IBE
+ITX
+TEF
+REP
+ACS
+FER
+CABK
+SAB
+ENG
+ELE
+AENA
+AMS
+MEL
+CLNX
+SGRE
+SLR
+GRF
+MAP
+BKT
+BME
+IAG
+REE
+NTGY

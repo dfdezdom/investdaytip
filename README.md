@@ -55,7 +55,8 @@ investdaytip -t AAPL MSFT VOO        # Custom ticker list
 investdaytip --tickers-file tickers.txt # Custom ticker file (lines, spaces, commas)
 investdaytip --tickers-file tickers-files-examples/semiconductors_relevant_tickers.txt
 investdaytip --export-html report.html # Export report with interactive filters
-investdaytip --export-html             # Uses investDayTip-aaaammdd-hhmm.html
+investdaytip --export-html             # Uses investDayTip-aaaammdd-hhmm.html or investDayTip-<tag>-aaaammdd-hhmm.html when --tickers-file is set
+./preview.sh                         # Serve generated HTML files on localhost:8000 for quick browser preview
 investdaytip --workers 20            # More parallelism
 investdaytip --help
 ```
@@ -217,11 +218,29 @@ The repository includes ready-to-use ticker sets in `tickers-files-examples/` fo
 - `quantum_computing_relevant_tickers.txt`
 - `energy_relevant_tickers.txt`
 - `space_relevant_tickers.txt`
+- `technology_relevant_tickers.txt`
+- `spanish_relevant_tickers.txt`
+- `pharma_relevant_tickers.txt`
+- `biotech_relevant_tickers.txt`
+- `health_relevant_tickers.txt`
+- `financial_relevant_tickers.txt`
 
 Example:
 
 ```bash
 investdaytip -n 15 --tickers-file tickers-files-examples/artificial_intelligence_relevant_tickers.txt --export-html
+```
+
+After export, preview the generated file in a browser by running:
+
+```bash
+./preview.sh
+```
+
+Then open the generated report from:
+
+```text
+http://localhost:8000/<generated-file-name>.html
 ```
 
 ---
@@ -235,6 +254,7 @@ All market data is fetched live from **Yahoo Finance** via the [`yfinance`](http
 ## Project Structure
 
 ```
+preview.sh                # Local static server for generated HTML reports
 src/investdaytip/
 ├── __init__.py            # Public API: get_recommendations
 ├── main.py                # CLI entry point + rich table rendering
@@ -258,7 +278,13 @@ tickers-files-examples/
 ├── artificial_intelligence_relevant_tickers.txt
 ├── quantum_computing_relevant_tickers.txt
 ├── energy_relevant_tickers.txt
-└── space_relevant_tickers.txt
+├── space_relevant_tickers.txt
+├── technology_relevant_tickers.txt
+├── spanish_relevant_tickers.txt
+├── pharma_relevant_tickers.txt
+├── biotech_relevant_tickers.txt
+├── health_relevant_tickers.txt
+└── financial_relevant_tickers.txt
 ```
 
 ---

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -66,8 +67,25 @@ def _fmt_pe(value) -> str:
         return "—"
 
 
-def _default_export_html_filename(now: datetime | None = None) -> str:
+def _export_filename_tag_from_tickers_file(tickers_file: str) -> str | None:
+    stem = Path(tickers_file).stem.lower()
+    candidates = [tok for tok in re.split(r"[^a-z0-9]+", stem) if tok]
+    stopwords = {
+        "relevant", "relevante", "relevantes", "relevant", "tickers", "ticker",
+        "file", "files", "examples", "relevant_tickers", "relevant-tickers",
+    }
+    keywords = [tok for tok in candidates if tok not in stopwords]
+    if keywords:
+        return keywords[0]
+    return stem or None
+
+
+def _default_export_html_filename(now: datetime | None = None, tickers_file: str | None = None) -> str:
     ts = (now or datetime.now()).strftime("%Y%m%d-%H%M")
+    if tickers_file:
+        tag = _export_filename_tag_from_tickers_file(tickers_file)
+        if tag:
+            return f"investDayTip-{tag}-{ts}.html"
     return f"investDayTip-{ts}.html"
 
 
@@ -233,7 +251,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.export_html is not None:
         try:
-            destination = args.export_html or _default_export_html_filename()
+            destination = args.export_html or _default_export_html_filename(
+                tickers_file=args.tickers_file,
+            )
             out_path = export_recommendations_html(
                 results,
                 destination,
