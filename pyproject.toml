@@ -37,8 +37,8 @@ dev = [
 investdaytip = "investdaytip.main:main"
 
 [project.urls]
-Homepage = "https://github.com/your-username/investdaytip"
-Issues = "https://github.com/your-username/investdaytip/issues"
+Homepage = "https://github.com/dfdezdom/investdaytip"
+Issues = "https://github.com/dfdezdom/investdaytip/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/investdaytip"]
