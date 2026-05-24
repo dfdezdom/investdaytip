@@ -1,0 +1,18 @@
+# One ticker per line. Compatible with --tickers-file.
+PFE
+MRK
+JNJ
+BMY
+LLY
+ABBV
+NVS
+AZN
+SNY
+GILD
+BIIB
+REGN
+AMGN
+GSK
+TAK
+RHHBY
+ROG

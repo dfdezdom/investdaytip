@@ -1,0 +1,18 @@
+# One ticker per line. Compatible with --tickers-file.
+UNH
+HUM
+CI
+CVS
+HCA
+AMN
+ZBH
+BSX
+SYK
+MDT
+EW
+ABT
+BDX
+LH
+DGX
+TDOC
+RMD
