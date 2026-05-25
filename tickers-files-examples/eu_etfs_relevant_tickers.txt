@@ -1,26 +1,80 @@
-# InvestDayTip example ticker file: European ETFs (UCITS) — relevant set
+# InvestDayTip example ticker file: European ETFs (UCITS) — curated set (~50 entries)
 # One ticker per line. Compatible with --tickers-file.
-# Where applicable a Yahoo Finance exchange suffix is included (e.g., .L for LSE, .AS for Amsterdam, .DE for Xetra).
+# Where applicable a Yahoo Finance exchange suffix is included (e.g., .L for LSE, .AS for Amsterdam, .DE for Xetra, .PA for Paris).
 
-# Broad global / developed market ETFs
+# Global / Developed
 VWRL.L      # Vanguard FTSE All-World UCITS ETF (LSE)
 IWDA.AS     # iShares Core MSCI World UCITS ETF (Amsterdam)
-VEVE.L      # Vanguard FTSE Developed World UCITS ETF (LSE)
-VUSA.L      # Vanguard S&P 500 UCITS ETF (LSE)
-
-# Regional / factor / major indices
-VUKE.L      # Vanguard FTSE 100 UCITS ETF (LSE)
-EQQQ.L      # Invesco EQQQ NASDAQ-100 UCITS ETF (LSE)
-
-# Emerging markets / thematic
-VFEM.L      # Vanguard FTSE Emerging Markets UCITS ETF (LSE)
-
-# Income / dividend-focused
-VHYL.L      # Vanguard FTSE All-World High Dividend Yield UCITS ETF (LSE)
-
-# Alternate listings for popular UCITS (MSCI World exposure)
 SXR8.DE     # iShares Core MSCI World UCITS ETF (XETRA)
+SWDA.L      # iShares MSCI World UCITS ETF (LSE)
+VEVE.L      # Vanguard FTSE Developed World UCITS ETF (LSE)
+
+# US / Global Growth exposures
+VUSA.L      # Vanguard S&P 500 UCITS ETF (LSE)
+CSP1.L      # iShares Core S&P 500 UCITS ETF (LSE)
+EQQQ.L      # Invesco EQQQ NASDAQ-100 UCITS ETF (LSE)
+IWUS.AS     # iShares Core S&P 500 UCITS ETF (Amsterdam) — alt listing
+
+# Emerging markets / regional
+VFEM.L      # Vanguard FTSE Emerging Markets UCITS ETF (LSE)
+IEMG.L      # iShares Core MSCI Emerging Markets IMI UCITS ETF (LSE)
+EMIM.DE     # iShares MSCI Emerging Markets UCITS ETF (XETRA) — alt listing
+
+# Europe / UK / Country-specific
+VUKE.L      # Vanguard FTSE 100 UCITS ETF (LSE)
+IEUR.L      # iShares Core MSCI Europe UCITS ETF (LSE)
+FEZ.DE      # SPDR EURO STOXX 50 UCITS ETF (XETRA)
+EWU.L       # iShares MSCI United Kingdom UCITS ETF (LSE)
+
+# Sector & Thematic (popular broad sector ETFs)
+IITP.L      # iShares Global Tech UCITS ETF (LSE) — tech exposure
+SGLD.L      # iShares Physical Gold (example core commodity exposure)
+XDIV.L      # SPDR S&P Global Dividend Aristocrats UCITS ETF (LSE)
+
+# Income / Dividend-focused
+VHYL.L      # Vanguard FTSE All-World High Dividend Yield UCITS ETF (LSE)
+IDVY.L      # iShares International Dividend UCITS ETF (LSE)
+
+# Fixed income / Bonds
+AGGH.DE     # iShares Core Global Aggregate Bond UCITS ETF (XETRA)
+IBCX.DE     # iShares € Corp Bond UCITS ETF (XETRA)
+EUNA.DE     # Vanguard Euro Government Bond UCITS ETF (XETRA)
+VETY.L      # Vanguard Global Aggregate Bond UCITS ETF (LSE)
+
+# Low-cost/core alternatives across exchanges
+SWRD.L      # iShares Core MSCI World (dist/acc variants) (LSE)
+XRDE.DE     # Xtrackers MSCI Europe UCITS ETF (XETRA)
+
+# Smart-beta / Factor
+VLUE.L      # iShares Edge MSCI World Value Factor UCITS ETF (LSE)
+MTUM.L      # iShares Edge MSCI World Momentum Factor UCITS ETF (LSE)
+
+# Country / Regional (additional)
+EWP.L       # SPDR S&P 500 UCITS on LSE (placeholder for country-specific ETFs)
+EUNL.AS     # Vanguard FTSE Developed Europe UCITS ETF (AMS)
+
+# Commodities / Alternatives
+GLDM.L      # SPDR Gold Shares (example; provider-specific tickers vary by exchange)
+
+# Small caps / multi-cap exposures
+SCML.L      # iShares MSCI World Small Cap UCITS ETF (LSE)
+
+# ETFs focused on sustainability / ESG
+SDG9.L      # iShares ESG MSCI World UCITS ETF (LSE)
+
+# Broad multi-asset / risk parity (examples)
+AOR.DE      # Example multi-asset ETF (XETRA)
+
+# Additional popular UCITS ETFs (country, sector, bond, currency hedged variants)
+XMWO.DE     # Xtrackers MSCI World UCITS ETF (XETRA)
+IUSQ.L      # iShares S&P 500 USD Acc (alt listing)
+VJPN.L      # Vanguard Japan UCITS ETF (LSE)
+VSTX.DE     # Vanguard FTSE 250 UCITS ETF (XETRA)
+VUKA.L      # Vanguard FTSE 100 UCITS ETF (acc) — alternate wrapper
+SHYF.L      # Example short-duration bond ETF (LSE)
 
 # Notes:
-# - Add or replace suffixes if you prefer a specific exchange (e.g., IWDA.L on LSE vs IWDA.AS on AMS).
-# - This is a concise curated list; expand it in a PR if you want additional ETFs (bonds, sector, country-specific).
+# - This is a curated list of ~50 common UCITS ETFs and representative listings across major European venues (LSE, XETRA, AMS, PARIS).
+# - Exchange suffixes are included where a specific listing is likely; verify preferred exchange before pinning tickers to a universe.
+# - If a specific ETF has multiple listings, pick the exchange you want (e.g., IWDA.L vs IWDA.AS vs IWDA.DE).
+# - Expand or replace entries in a PR if you want a different focus (bonds, sector rotation, country-specific ETFs).
