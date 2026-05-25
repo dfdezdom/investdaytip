@@ -20,20 +20,32 @@ pip install -e .
 pip install -e "[dev]"
 ```
 
+Developer run (no install):
+
+```bash
+# Run CLI module directly for quick debugging or IDE runs
+python -m investdaytip.main --help
+# Or run installed entrypoint after editable install
+investdaytip --help
+```
+
 Run the full test suite:
 
 ```bash
 pytest -q
 ```
 
-Run a single test function or file:
+Run a single test function or file (examples):
 
 ```bash
-# single test function
+# single test function (module::function)
 pytest tests/test_scoring.py::test_score_stock -q
 # single test file
 pytest tests/test_scoring.py -q
+# quick selection by keyword expression
+pytest -q -k "test_score_stock or strong_stock"  # run tests matching expression
 ```
+
 
 Preview generated HTML files locally:
 

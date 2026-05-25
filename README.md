@@ -12,7 +12,7 @@
 - 📈 **Multi-factor scoring** — composite 0-100 score per asset
 - 🏦 **Stocks & ETFs** — auto-detected and scored with dedicated models
 - 🌍 **US, European & Asian markets** — S&P 500, DAX, CAC 40, FTSE 100, Nikkei 225, Hang Seng, NSE, and more
-- ⚡ **Concurrent fetching** — analyzes ~100 tickers in seconds
+- ⚡ **Concurrent fetching** — analyzes ~300 tickers in seconds
 - 📊 **Rich CLI output** — price, 1M/1Y change, score breakdown and rationale
 - 🧾 **Self-contained HTML export** — interactive report with filters, sortable columns, and full-width layout
 - 🧪 **Pure scoring functions** — testable without network
@@ -197,12 +197,12 @@ Each metric is normalized to **0-100** via piecewise-linear functions over empir
 
 When no `-t` is given, InvestDayTip uses curated universes:
 
-- **US stocks** — ~50 large-caps across all S&P sectors (`src/investdaytip/universe.py`)
-- **US ETFs** — ~40 broad-market, factor, sector and bond ETFs (`etf_universe.py`)
-- **EU stocks** — ~60 large-caps from DAX, CAC, FTSE 100, IBEX, AEX, SMI, FTSE MIB, Nordics (`eu_universe.py`)
-- **EU UCITS ETFs** — ~25 broad, sector and bond UCITS ETFs (`eu_etf_universe.py`)
-- **Asia stocks** — ~70 large-caps from Japan, Hong Kong, Singapore, India, South Korea, Taiwan, and Australia (`asia_universe.py`)
-- **Asia ETFs** — ~30 broad-market, country-specific, and sector ETFs with significant Asian exposure (`asia_etf_universe.py`)
+- **US stocks** — 58 large-caps across all S&P sectors (`src/investdaytip/universe.py`)
+- **US ETFs** — 41 broad-market, factor, sector and bond ETFs (`etf_universe.py`)
+- **EU stocks** — 65 large-caps from DAX, CAC, FTSE 100, IBEX, AEX, SMI, FTSE MIB, Nordics (`eu_universe.py`)
+- **EU UCITS ETFs** — 38 broad, sector and bond UCITS ETFs (`eu_etf_universe.py`)
+- **Asia stocks** — 76 large-caps from Japan, Hong Kong, Singapore, India, South Korea, Taiwan, and Australia (`asia_universe.py`)
+- **Asia ETFs** — 24 broad-market, country-specific, and sector ETFs with significant Asian exposure (`asia_etf_universe.py`)
 
 Tickers use Yahoo Finance suffixes: 
 - **US:** no suffix (AAPL, MSFT)
@@ -213,17 +213,18 @@ Tickers use Yahoo Finance suffixes:
 
 The repository includes ready-to-use ticker sets in `tickers-files-examples/` for thematic analyses:
 
-- `semiconductors_relevant_tickers.txt`
 - `artificial_intelligence_relevant_tickers.txt`
-- `quantum_computing_relevant_tickers.txt`
-- `energy_relevant_tickers.txt`
-- `space_relevant_tickers.txt`
-- `technology_relevant_tickers.txt`
-- `spanish_relevant_tickers.txt`
-- `pharma_relevant_tickers.txt`
 - `biotech_relevant_tickers.txt`
-- `health_relevant_tickers.txt`
+- `energy_relevant_tickers.txt`
+- `eu_etfs_relevant_tickers.txt`
 - `financial_relevant_tickers.txt`
+- `health_relevant_tickers.txt`
+- `pharma_relevant_tickers.txt`
+- `quantum_computing_relevant_tickers.txt`
+- `semiconductors_relevant_tickers.txt`
+- `space_relevant_tickers.txt`
+- `spanish_relevant_tickers.txt`
+- `technology_relevant_tickers.txt`
 
 Example:
 
