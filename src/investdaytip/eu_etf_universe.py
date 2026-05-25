@@ -33,4 +33,12 @@ DEFAULT_EU_ETF_UNIVERSE: list[str] = [
     "AGGH.AS", "EUNA.DE", "VAGP.L",
     # Thematic core
     "WTEC.MI",   # iShares MSCI World IT
+    # Sector ETFs (Europe-listed UCITS)
+    # Semiconductors
+    "SMH.L",     # VanEck Semiconductor UCITS ETF (London)
+    # Quantum computing
+    "QNTM.L",    # VanEck Quantum Computing UCITS ETF (London)
+    "QANT.L",    # iShares Quantum Computing UCITS ETF (London)
+    # Space / Aerospace
+    "JEDI.L",    # VanEck Space Innovators UCITS ETF (London)
 ]
