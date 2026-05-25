@@ -56,9 +56,10 @@ investdaytip --tickers-file tickers.txt # Custom ticker file (lines, spaces, com
 investdaytip --tickers-file tickers-files-examples/semiconductors_relevant_tickers.txt
 investdaytip --export-html report.html # Export report with interactive filters
 investdaytip --export-html             # Uses investDayTip-aaaammdd-hhmm.html or investDayTip-<tag>-aaaammdd-hhmm.html when --tickers-file is set
-./preview.sh                         # Serve generated HTML files on localhost:8000 for quick browser preview
 investdaytip --workers 20            # More parallelism
 investdaytip --help
+
+./preview.sh                         # Serve generated HTML files on localhost:8000 for quick browser preview
 ```
 
 #### Options
