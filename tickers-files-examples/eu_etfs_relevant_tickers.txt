@@ -1,0 +1,26 @@
+# InvestDayTip example ticker file: European ETFs (UCITS) — relevant set
+# One ticker per line. Compatible with --tickers-file.
+# Where applicable a Yahoo Finance exchange suffix is included (e.g., .L for LSE, .AS for Amsterdam, .DE for Xetra).
+
+# Broad global / developed market ETFs
+VWRL.L      # Vanguard FTSE All-World UCITS ETF (LSE)
+IWDA.AS     # iShares Core MSCI World UCITS ETF (Amsterdam)
+VEVE.L      # Vanguard FTSE Developed World UCITS ETF (LSE)
+VUSA.L      # Vanguard S&P 500 UCITS ETF (LSE)
+
+# Regional / factor / major indices
+VUKE.L      # Vanguard FTSE 100 UCITS ETF (LSE)
+EQQQ.L      # Invesco EQQQ NASDAQ-100 UCITS ETF (LSE)
+
+# Emerging markets / thematic
+VFEM.L      # Vanguard FTSE Emerging Markets UCITS ETF (LSE)
+
+# Income / dividend-focused
+VHYL.L      # Vanguard FTSE All-World High Dividend Yield UCITS ETF (LSE)
+
+# Alternate listings for popular UCITS (MSCI World exposure)
+SXR8.DE     # iShares Core MSCI World UCITS ETF (XETRA)
+
+# Notes:
+# - Add or replace suffixes if you prefer a specific exchange (e.g., IWDA.L on LSE vs IWDA.AS on AMS).
+# - This is a concise curated list; expand it in a PR if you want additional ETFs (bonds, sector, country-specific).
