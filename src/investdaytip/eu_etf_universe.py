@@ -41,4 +41,8 @@ DEFAULT_EU_ETF_UNIVERSE: list[str] = [
     "QANT.L",    # iShares Quantum Computing UCITS ETF (London)
     # Space / Aerospace
     "JEDI.L",    # VanEck Space Innovators UCITS ETF (London)
+    # Energy sector (Europe-listed UCITS)
+    "IUES.L",    # iShares S&P 500 Energy Sector UCITS ETF (London)
+    "XSEN.L",    # Xtrackers MSCI USA Energy UCITS ETF 1D (London)
+    "XLES.L",    # Invesco Energy S&P US Select Sector UCITS ETF (London)
 ]
