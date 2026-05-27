@@ -12,7 +12,7 @@
 - 📈 **Multi-factor scoring** — composite 0-100 score per asset
 - 🏦 **Stocks & ETFs** — auto-detected and scored with dedicated models
 - 🌍 **US, European & Asian markets** — S&P 500, DAX, CAC 40, FTSE 100, Nikkei 225, Hang Seng, NSE, and more
-- 💱 **Currency filter** — narrow by native currency (`USD`, `EUR`, `JPY`, …); auto-restricts to matching region to reduce API calls
+- 💱 **Currency filter** — narrow by native currency (`USD`, `EUR`, `JPY`, …)
 - ⚡ **Concurrent fetching** — analyzes ~300 tickers in seconds
 - 📊 **Rich CLI output** — price, 1M/1Y change, score breakdown and rationale
 - 🧾 **Self-contained HTML export** — interactive report with filters, sortable columns, and full-width layout
@@ -52,9 +52,9 @@ investdaytip -r eu                   # Only Europe
 investdaytip -r asia                 # Only Asia
 investdaytip -r eu -a stocks         # Only European stocks
 investdaytip -r asia -a etfs         # Only Asian ETFs
-investdaytip -c USD                   # Only USD-denominated assets (auto-restricts to US region)
-investdaytip -c EUR                   # Only EUR-denominated assets (auto-restricts to EU region)
-investdaytip -c JPY                   # Only JPY-denominated assets (auto-restricts to Asia region)
+investdaytip -c USD                   # Only USD-denominated assets
+investdaytip -c EUR                   # Only EUR-denominated assets
+investdaytip -c JPY                   # Only JPY-denominated assets
 investdaytip -r eu -c USD             # EU region + currency post-filter (respects explicit -r)
 investdaytip -t AAPL MSFT VOO        # Custom ticker list
 investdaytip --tickers-file tickers.txt # Custom ticker file (lines, spaces, commas)
