@@ -26,4 +26,3 @@ LMT
 
 # Quantum communications / related advanced networking exposure
 CIEN
-FSLR
