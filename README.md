@@ -15,7 +15,7 @@
 - 💱 **Currency filter** — narrow by native currency (`USD`, `EUR`, `JPY`, …)
 - ⚡ **Concurrent fetching** — analyzes ~300 tickers in seconds
 - 📊 **Rich CLI output** — price, 1M/1Y change, score breakdown and rationale
-- 🧾 **Self-contained HTML export** — interactive report with filters, sortable columns, and full-width layout
+- 🧾 **Self-contained HTML export** — interactive report with filters and sortable columns
 - 🧪 **Pure scoring functions** — testable without network
 
 ---
