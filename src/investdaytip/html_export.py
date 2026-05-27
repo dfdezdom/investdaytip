@@ -222,6 +222,7 @@ def export_recommendations_html(
     top_n: int,
     asset_class: str,
     region: str,
+    currency: str = "all",
     tickers: list[str] | None,
   tickers_file: str | None = None,
 ) -> str:
@@ -232,6 +233,7 @@ def export_recommendations_html(
         "top_n": top_n,
         "asset_class": asset_class,
         "region": region,
+        "currency": currency,
         "tickers": tickers or [],
         "tickers_file": tickers_file,
         "row_count": len(rows),
@@ -517,6 +519,7 @@ def export_recommendations_html(
         `top=${{metadata.top_n}}`,
         `asset_class=${{metadata.asset_class}}`,
         `region=${{metadata.region}}`,
+        `currency=${{metadata.currency}}`,
         metadata.tickers.length ? `tickers=${{metadata.tickers.join(",")}}` : "tickers=curated",
       ];
       if (metadata.tickers_file) chips.push(`tickers_file=${{metadata.tickers_file}}`);

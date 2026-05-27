@@ -12,6 +12,7 @@
 - 📈 **Multi-factor scoring** — composite 0-100 score per asset
 - 🏦 **Stocks & ETFs** — auto-detected and scored with dedicated models
 - 🌍 **US, European & Asian markets** — S&P 500, DAX, CAC 40, FTSE 100, Nikkei 225, Hang Seng, NSE, and more
+- 💱 **Currency filter** — narrow by native currency (`USD`, `EUR`, `JPY`, …); auto-restricts to matching region to reduce API calls
 - ⚡ **Concurrent fetching** — analyzes ~300 tickers in seconds
 - 📊 **Rich CLI output** — price, 1M/1Y change, score breakdown and rationale
 - 🧾 **Self-contained HTML export** — interactive report with filters, sortable columns, and full-width layout
@@ -51,6 +52,10 @@ investdaytip -r eu                   # Only Europe
 investdaytip -r asia                 # Only Asia
 investdaytip -r eu -a stocks         # Only European stocks
 investdaytip -r asia -a etfs         # Only Asian ETFs
+investdaytip -c USD                   # Only USD-denominated assets (auto-restricts to US region)
+investdaytip -c EUR                   # Only EUR-denominated assets (auto-restricts to EU region)
+investdaytip -c JPY                   # Only JPY-denominated assets (auto-restricts to Asia region)
+investdaytip -r eu -c USD             # EU region + currency post-filter (respects explicit -r)
 investdaytip -t AAPL MSFT VOO        # Custom ticker list
 investdaytip --tickers-file tickers.txt # Custom ticker file (lines, spaces, commas)
 investdaytip --tickers-file tickers-files-examples/semiconductors_relevant_tickers.txt
@@ -70,6 +75,7 @@ investdaytip --help
 | `-t, --tickers ...` | Custom ticker list (overrides universe) | curated universe |
 | `--tickers-file PATH` | Text file with custom tickers (merged with `--tickers` if both are used) | disabled |
 | `-a, --asset-class {all,stocks,etfs}` | Asset class filter | `all` |
+| `-c, --currency {all,USD,EUR,GBP,…}` | Currency filter; narrows universe to matching region when no `-r` is given | `all` |
 | `-r, --region {all,us,eu,asia}` | Region filter | `all` |
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
 | `--workers N` | Parallel fetch threads | `10` |
@@ -294,6 +300,7 @@ tickers-files-examples/
 ## Limitations & Caveats
 
 - **No currency normalization** — prices, market caps and AUM stay in native currency
+- **Currency filter** (`-c`) compares against yfinance's reported currency field; tickers with a missing/unknown currency pass only when `-c all`
 - **`min_market_cap` filter** is applied against raw native-currency figures
 - Some European tickers change Yahoo symbols over time; if a ticker is delisted in Yahoo it's silently skipped
 - ETF expense ratios are sometimes missing in `yfinance` — the scorer falls back to a slightly optimistic default (60) in that case

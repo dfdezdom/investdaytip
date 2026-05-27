@@ -22,10 +22,12 @@ def get_recommendations(
     top_n: int = 5,
     asset_class: str = "all",
     region: str = "all",
+    currency: str = "all",
 ) -> list[ScoredAsset]:
     """Programmatic API: return the top ``top_n`` long-term buy recommendations."""
     return recommend(  # type: ignore[arg-type]
-        tickers=tickers, top_n=top_n, asset_class=asset_class, region=region,
+        tickers=tickers, top_n=top_n, asset_class=asset_class,
+        region=region, currency=currency,
     )
 
 
@@ -44,8 +46,8 @@ def _breakdown_legend(results: list[ScoredAsset]) -> str:
 def _fmt_price(price, currency) -> str:
     if price is None:
         return "—"
-    symbol = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "p", "CHF": "CHF ", "DKK": "kr ",
-              "SEK": "kr ", "NOK": "kr "}.get(currency or "", "")
+    symbol = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "p", "CHF": "CHF ", "JPY": "¥",
+              "DKK": "kr ", "SEK": "kr ", "NOK": "kr "}.get(currency or "", "")
     return f"{symbol}{price:,.2f}" if symbol else f"{price:,.2f} {currency or ''}".strip()
 
 
@@ -189,6 +191,13 @@ def main(argv: list[str] | None = None) -> int:
                         help="Which asset class to analyze when no -t is given (default: all).")
     parser.add_argument("-r", "--region", choices=["all", "us", "eu", "asia"], default="all",
                         help="Which region to analyze when no -t is given (default: all).")
+    parser.add_argument(
+        "-c", "--currency",
+        choices=["all", "USD", "EUR", "GBP", "CHF", "JPY", "HKD", "INR",
+                 "KRW", "TWD", "SGD", "AUD", "DKK", "SEK", "NOK", "GBp"],
+        default="all",
+        help="Filter by currency (default: all).",
+    )
     parser.add_argument("--workers", type=int, default=10,
                         help="Parallel fetch workers (default: 10).")
     parser.add_argument(
@@ -216,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
     console = Console()
     console.print(
         f"[bold cyan]InvestDayTip[/bold cyan] — analyzing markets "
-        f"([italic]{args.asset_class} · {args.region}[/italic])...\n"
+        f"([italic]{args.asset_class} · {args.region} · {args.currency}[/italic])...\n"
     )
 
     results: list[ScoredAsset] = []
@@ -241,6 +250,7 @@ def main(argv: list[str] | None = None) -> int:
                 max_workers=args.workers,
                 asset_class=args.asset_class,
                 region=args.region,
+                currency=args.currency,
                 progress_cb=cb,
             )
         except Exception as exc:
@@ -260,6 +270,7 @@ def main(argv: list[str] | None = None) -> int:
                 top_n=args.top,
                 asset_class=args.asset_class,
                 region=args.region,
+                currency=args.currency,
                 tickers=effective_tickers,
                 tickers_file=args.tickers_file,
             )

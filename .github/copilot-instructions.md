@@ -72,6 +72,7 @@ Data flow: CLI → recommender → data_source (yfinance) → scoring → html_e
 
 - scoring.py must remain pure and side-effect free. Put any network or I/O code in data_source.py.
 - New ticker universes must be a new module named *_universe.py and integrated via recommender._build_universe.
+- recommend() and _build_universe() accept a currency parameter. When currency != "all" and region == "all", the region is derived from the currency (USD→us, EUR→eu, JPY→asia) to reduce API calls.
 - Tests must not perform live network calls — construct or mock StockData/EtfData directly.
 - HTML exports are self-contained; filenames follow the `investDayTip[-<tag>]-yyyymmdd-hhmm.html` pattern used by the CLI.
 - Ticker suffixes follow Yahoo Finance conventions; exchange mapping is used for Google Finance/TradingView links.

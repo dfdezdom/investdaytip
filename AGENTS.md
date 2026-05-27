@@ -21,7 +21,7 @@ No linter checked in. Follow PEP 8 + type hints.
 - `from __future__ import annotations` in every module
 - `Optional[float]` not `float | None` — project style
 - `AssetData = Union[StockData, EtfData]` alias (`data_source.py:109`)
-- `Literal["all", "stocks", "etfs"]` / `Literal["all", "us", "eu", "asia"]` for constrained params
+- `Literal["all", "stocks", "etfs"]` / `Literal["all", "us", "eu", "asia"]` / `Literal["all", "USD", "EUR", …]` for constrained params
 - `Iterable[str]` for function params, `list[str]` for returns
 - Single-quoted strings; dataclass mutable defaults use `field(default_factory=...)`
 - `_safe_get()` helper to extract/convert `Optional[float]` from yfinance info dicts
@@ -32,6 +32,7 @@ No linter checked in. Follow PEP 8 + type hints.
 - All network calls belong in `data_source.py` (yfinance wrapper)
 - `fetch_asset()` is the primary entry point; `fetch_stock()` is a backwards-compatible alias
 - New ticker universe → `*_universe.py` module wired in `recommender._build_universe()`
+- `_build_universe()` now also accepts a `currency` param; when currency != "all" and region == "all", it derives the region from the currency (USD→us, EUR→eu, JPY→asia) to avoid unnecessary API calls
 - Universe export names are inconsistent: `DEFAULT_UNIVERSE`, `DEFAULT_EU_UNIVERSE`, `DEFAULT_ETF_UNIVERSE`, `DEFAULT_EU_ETF_UNIVERSE` vs `ASIA_UNIVERSE`, `ASIA_ETF_UNIVERSE` (no `DEFAULT_` prefix). Check each module before importing.
 - `ScoredAsset` is the unified output; `ScoredStock` is a backwards-compatible alias (`scoring.py:55`)
 - `score_asset()` dispatches to `score_stock()` / `score_etf()` based on type
