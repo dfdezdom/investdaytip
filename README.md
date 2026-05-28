@@ -66,7 +66,7 @@ investdaytip --export-html             # Uses investDayTip-aaaammdd-hhmm.html
 investdaytip --workers 20            # More parallelism
 investdaytip --help
 
-./preview.sh                         # Serve generated HTML files on localhost:8000 for quick browser preview
+./preview.sh                         # Serve generated HTML files on localhost:8000
 ```
 
 #### Options
