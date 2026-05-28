@@ -52,10 +52,10 @@ investdaytip -r eu                   # Only Europe
 investdaytip -r asia                 # Only Asia
 investdaytip -r eu -a stocks         # Only European stocks
 investdaytip -r asia -a etfs         # Only Asian ETFs
-investdaytip -c USD                   # Only USD-denominated assets
-investdaytip -c EUR                   # Only EUR-denominated assets
-investdaytip -c JPY                   # Only JPY-denominated assets
-investdaytip -r eu -c USD             # EU region + currency post-filter (respects explicit -r)
+investdaytip -c USD                  # Only USD-denominated assets
+investdaytip -c EUR                  # Only EUR-denominated assets
+investdaytip -c JPY                  # Only JPY-denominated assets
+investdaytip -r eu -c USD            # EU region + currency post-filter (respects explicit -r)
 investdaytip -t AAPL MSFT VOO        # Custom ticker list
 investdaytip --tickers-file tickers.txt # Custom ticker file (lines, spaces, commas)
 investdaytip --tickers-file tickers-files-examples/semiconductors_relevant_tickers.txt
