@@ -57,12 +57,15 @@ investdaytip -c EUR                  # Only EUR-denominated assets
 investdaytip -c JPY                  # Only JPY-denominated assets
 investdaytip -r eu -c USD            # EU region + currency post-filter (respects explicit -r)
 investdaytip -t AAPL MSFT VOO        # Custom ticker list
+
 investdaytip --tickers-file tickers.txt # Custom ticker file (lines, spaces, commas)
 investdaytip --tickers-file tickers-files-examples/semiconductors_relevant_tickers.txt
+
 investdaytip --export-html report.html # Export report with interactive filters
 investdaytip --export-html             # Uses investDayTip-aaaammdd-hhmm.html
                                        # or investDayTip-<tag>-aaaammdd-hhmm.html
                                        # when --tickers-file is set
+
 investdaytip --workers 20            # More parallelism
 investdaytip --help
 
