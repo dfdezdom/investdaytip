@@ -38,3 +38,6 @@ Thumbs.db
 
 # Build system debris (project uses hatchling, not Poetry)
 poetry.lock
+
+# Personal portfolio ticker file
+/recommendations/

@@ -18,7 +18,7 @@ No linter checked in. Follow PEP 8 + type hints.
 ## What an Agent Likely Misses
 
 ### Conventions
-- `from __future__ import annotations` in every module
+- `from __future__ import annotations` in all annotated modules (not in universe files or `__init__.py`)
 - `Optional[float]` not `float | None` — project style
 - `AssetData = Union[StockData, EtfData]` alias (`data_source.py:109`)
 - `Literal["all", "stocks", "etfs"]` / `Literal["all", "us", "eu", "asia"]` / `Literal["all", "USD", "EUR", …]` for constrained params
@@ -48,11 +48,11 @@ No linter checked in. Follow PEP 8 + type hints.
 ### CLI & Export
 - CLI entry: `investdaytip` (installed) or `python -m investdaytip.main`
 - Programmatic API: `from investdaytip import get_recommendations`
-- HTML filename pattern: `investDayTip[-<tag>]-yyyymmdd-hhmm.html` — tag auto-derived from tickers-file stem (`_export_filename_tag_from_tickers_file()`)
+- HTML filename pattern: `investDayTip[-<tag>]-yyyymmdd-hhmm.html` — tag auto-derived from tickers-file stem (`main.py:_export_filename_tag_from_tickers_file()`)
 - Ticker suffixes dictate exchange/region mapping (`html_export._exchange_mapping()`)
 - URL building accepts `exchange_hint` param (yfinance exchange codes like `NMS`, `NYQ`) for correct Google Finance / TradingView links (`html_export._normalize_exchange_hint()`)
 - Ticker files: supports lines, spaces, commas, and `#` comments
-- HTML entrypoint: `html_export.export_recommendations_html(results, destination, ...)` — also accepts metadata kwargs (`top_n`, `asset_class`, `region`, `tickers`, `tickers_file`)
+- HTML entrypoint: `html_export.export_recommendations_html(results, destination, *, top_n, asset_class, region, currency, tickers, tickers_file)` — `currency` is optional (default `"all"`); `tickers_file` is keyword-only
 
 ### Testing
 - Pure unit tests — never make live network calls; construct `StockData`/`EtfData` directly
@@ -67,8 +67,8 @@ No linter checked in. Follow PEP 8 + type hints.
 
 | Purpose | Path |
 |---------|------|
-| CLI entry point | `src/investdaytip/main.py` |
-| Programmatic API | `src/investdaytip/__init__.py` |
+| CLI entry point + public API impl | `src/investdaytip/main.py` |
+| Public API re-export | `src/investdaytip/__init__.py` |
 | Orchestration + universe builder | `src/investdaytip/recommender.py` |
 | Data fetching + dataclasses | `src/investdaytip/data_source.py` |
 | Stock & ETF scoring | `src/investdaytip/scoring.py` |
