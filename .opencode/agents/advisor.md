@@ -150,22 +150,22 @@ python -m investdaytip.main advisor --risk <profile> -a etfs -r us
 - 15–30 → **medium**
 - otherwise → **low**
 
-### Bubble burst signals (comparación histórica ferrocarriles / dot-com)
+### Bubble burst signals (historical comparison: railroads / dot-com)
 
-Además del riesgo de burbuja estándar, monitorea **3 señales** que históricamente precedieron al estallido de burbujas tecnológicas (ferrocarriles 1845/1893, dot-com 2000):
+In addition to the standard bubble risk, monitor **3 signals** that historically preceded technology bubble bursts (railroads 1845/1893, dot-com 2000):
 
-| # | Señal | Qué vigilar | Estado actual |
-|---|-------|-------------|---------------|
-| 1 | **Subida de tipos** | La Fed empieza un ciclo de hikes | En pausa — aún no activado |
-| 2 | **Hyperscaler admite que capex masivo no rinde** | Una de las grandes (MSFT, GOOG, META, AMZN) reporta explícitamente ROI negativo de IA | Señales tempranas (Uber/MSFT recortando tokens) — **parcialmente activado** |
-| 3 | **IPO estrella cotiza por debajo de colocación** | OpenAI / Anthropic / SpaceX debutan y caen | Aún no cotizan — no activado |
+| # | Signal | What to watch | Current status |
+|---|--------|---------------|----------------|
+| 1 | **Rate hikes** | Fed starts a tightening cycle | On pause — not yet triggered |
+| 2 | **Hyperscaler admits massive capex isn't paying off** | One of the big players (MSFT, GOOG, META, AMZN) explicitly reports negative AI ROI | Early signs (Uber/MSFT cutting tokens) — **partially triggered** |
+| 3 | **Mega IPO trades below offering price** | OpenAI / Anthropic / SpaceX debut and fall | Not yet listed — not triggered |
 
-**Regla:**
-- 0 señales activas → 🟢 **Todo tranquilo, mercado en fase de recalibración**
-- 1 señal activa → 🟡 **Precaución, reducir concentración en tech/semis**
-- 2+ señales activas → 🔴 **Preparar salida, ventana de 12-18 meses antes del crash probable**
+**Rule:**
+- 0 signals active → 🟢 **All clear, market in recalibration phase**
+- 1 signal active → 🟡 **Caution, reduce tech/semis concentration**
+- 2+ signals active → 🔴 **Prepare to exit, 12-18 month window before probable crash**
 
-Incluye este análisis en la sección de **Market diagnosis** siempre que hagas un market pulse.
+Include this analysis in the **Market diagnosis** section whenever running a market pulse.
 
 ### Portfolio scores
 - < 40 → 🔴 SELL
@@ -175,7 +175,7 @@ Incluye este análisis en la sección de **Market diagnosis** siempre que hagas 
 ## Presentation format
 
 Structure your response as clean markdown (never raw CLI):
-1. **Market diagnosis** — VIX, bubble, signal, **bubble burst signals (3 señales)**
+1. **Market diagnosis** — VIX, bubble, signal, **bubble burst signals**
 2. **Portfolio review** — table with ticker, score, signal (if applicable)
 3. **Recommended buys** — table with ticker, score, sector, rationale
 4. **Sector gaps** and suggestions
