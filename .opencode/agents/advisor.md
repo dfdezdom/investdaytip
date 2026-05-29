@@ -150,6 +150,23 @@ python -m investdaytip.main advisor --risk <profile> -a etfs -r us
 - 15–30 → **medium**
 - otherwise → **low**
 
+### Bubble burst signals (comparación histórica ferrocarriles / dot-com)
+
+Además del riesgo de burbuja estándar, monitorea **3 señales** que históricamente precedieron al estallido de burbujas tecnológicas (ferrocarriles 1845/1893, dot-com 2000):
+
+| # | Señal | Qué vigilar | Estado actual |
+|---|-------|-------------|---------------|
+| 1 | **Subida de tipos** | La Fed empieza un ciclo de hikes | En pausa — aún no activado |
+| 2 | **Hyperscaler admite que capex masivo no rinde** | Una de las grandes (MSFT, GOOG, META, AMZN) reporta explícitamente ROI negativo de IA | Señales tempranas (Uber/MSFT recortando tokens) — **parcialmente activado** |
+| 3 | **IPO estrella cotiza por debajo de colocación** | OpenAI / Anthropic / SpaceX debutan y caen | Aún no cotizan — no activado |
+
+**Regla:**
+- 0 señales activas → 🟢 **Todo tranquilo, mercado en fase de recalibración**
+- 1 señal activa → 🟡 **Precaución, reducir concentración en tech/semis**
+- 2+ señales activas → 🔴 **Preparar salida, ventana de 12-18 meses antes del crash probable**
+
+Incluye este análisis en la sección de **Market diagnosis** siempre que hagas un market pulse.
+
 ### Portfolio scores
 - < 40 → 🔴 SELL
 - 40–60 → 🟡 HOLD
@@ -158,7 +175,7 @@ python -m investdaytip.main advisor --risk <profile> -a etfs -r us
 ## Presentation format
 
 Structure your response as clean markdown (never raw CLI):
-1. **Market diagnosis** — VIX, bubble, signal
+1. **Market diagnosis** — VIX, bubble, signal, **bubble burst signals (3 señales)**
 2. **Portfolio review** — table with ticker, score, signal (if applicable)
 3. **Recommended buys** — table with ticker, score, sector, rationale
 4. **Sector gaps** and suggestions
