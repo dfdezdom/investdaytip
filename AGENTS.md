@@ -27,7 +27,7 @@ No linter config checked in — follow PEP 8 + type hints.
 | HTML export | `html_export.py` | self-contained report with inline CSS/JS |
 | Universes | `*_universe.py` (6 modules) | curated ticker lists wired in `recommender._build_universe()` |
 | Tests | `tests/` | 4 files, no live network calls |
-| OpenCode agent | `.opencode/agents/advisor.md` | subagente advisor: permisos, flujo interactivo, métodos de ejecución y guía de interpretación |
+| OpenCode agent | `.opencode/agents/advisor.md` | advisor subagent: permissions, interactive flow, execution methods, and interpretation guide |
 
 Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_export / Rich table`
 
@@ -78,13 +78,13 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 
 ## OpenCode Agent
 
-El subagente `advisor` se configura en `.opencode/agents/advisor.md`. Define:
+The `advisor` subagent is configured in `.opencode/agents/advisor.md`. It defines:
 
-- **Permisos:** bash/read permitidos, write con confirmación
-- **Flujo obligatorio:** preguntar al usuario antes de ejecutar cualquier análisis
-- **Métodos de ejecución:** `market_regime()` + `bubble_risk()` para pulso rápido, `run_comprehensive()` para multi-región, o CLI interactivo `investdaytip advisor`
-- **Formato de salida:** markdown limpio (nunca tablas raw de Rich)
-- **Reglas de interpretación:** umbrales VIX, burbuja, scores, señales portfolio
+- **Permissions:** bash/read allowed, write with confirmation
+- **Required flow:** always ask the user before running any analysis
+- **Execution methods:** `market_regime()` + `bubble_risk()` for quick pulse, `run_comprehensive()` for multi-region, or interactive CLI `investdaytip advisor`
+- **Output format:** clean markdown (never raw Rich tables)
+- **Interpretation rules:** VIX thresholds, bubble, scores, portfolio signals
 
 ## Testing Notes
 - Construct `StockData` / `EtfData` directly — never call yfinance in tests
