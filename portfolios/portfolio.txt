@@ -11,6 +11,6 @@ GOOGL  # Alphabet (Class A)
 RIVN   # Rivian Automotive
 EOG    # EOG Resources
 TSM    # Taiwan Semiconductor Manufacturing (ADR)
-SNOW
-NOW
-TEAM
+SNOW   # Snowflake
+NOW    # ServiceNow
+TEAM   # Atlassian
