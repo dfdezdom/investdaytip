@@ -100,9 +100,45 @@ investdaytip advisor --risk moderate --portfolio portfolios/portfolio.txt  # Cus
 
 See `investdaytip advisor --help` for all options.
 
-> 🧠 **AI chat mode** — instead of memorizing flags, talk to an **AI investment advisor** that understands your portfolio, checks market fear, and suggests buys.
-> Just run `investdaytip advisor` or use the
-> [OpenCode agent](.opencode/agents/advisor.md) for a fully conversational experience.
+### OpenCode AI Agent (chat mode)
+
+Instead of memorizing flags, talk to an **AI investment advisor** that understands your portfolio, checks market fear, and suggests buys — powered by [OpenCode](https://opencode.ai).
+
+#### Setup
+
+```bash
+# Install opencode (macOS)
+brew install opencode/tap/opencode
+
+# Or via curl (Linux/macOS)
+curl -fsSL https://opencode.ai/install | sh
+```
+
+Then pin the agent to the project:
+
+```bash
+opencode use create
+# Select advisor from the agent list when prompted
+```
+
+#### Usage
+
+Once configured, invoke the advisor from the project root:
+
+```text
+@advisor  what's the market pulse?
+```
+
+The agent will greet you, present options, and **never run analysis without your confirmation**. Full conversational flow:
+
+```
+1. You: @advisor
+2. Agent: "What would you like? Market pulse / Portfolio review / Buy recs / Full analysis?"
+3. You: "Market pulse, moderate risk"
+4. Agent: Runs VIX/VXN check, bubble risk, bubble burst signals → presents results
+```
+
+See the [agent definition](.opencode/agents/advisor.md) for full details on capabilities and interpretation.
 
 #### Options
 
