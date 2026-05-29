@@ -1,0 +1,16 @@
+# InvestDayTip portfolio ticker file
+
+NVDA   # NVIDIA
+MSFT   # Microsoft
+MU     # Micron Technology
+ADBE   # Adobe
+LRCX   # Lam Research
+MRVL   # Marvell Technology
+FSLR   # First Solar
+GOOGL  # Alphabet (Class A)
+RIVN   # Rivian Automotive
+EOG    # EOG Resources
+TSM    # Taiwan Semiconductor Manufacturing (ADR)
+SNOW
+NOW
+TEAM
