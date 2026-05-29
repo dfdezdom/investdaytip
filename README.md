@@ -18,6 +18,7 @@
 - 🧾 **Self-contained HTML export** — interactive report with filters and sortable columns
 - 🧪 **Pure scoring functions** — testable without network
 - 🧠 **Interactive advisor** — market pulse, portfolio review, and tailored buy recommendations via the `advisor` subcommand
+- 🤖 **OpenCode agent** — subagent configuration ready for [OpenCode](https://opencode.ai) conversational interaction
 
 ---
 
@@ -98,6 +99,10 @@ investdaytip advisor --risk moderate --portfolio portfolios/portfolio.txt  # Cus
 ```
 
 See `investdaytip advisor --help` for all options.
+
+> 💡 This advisor is also available as an **OpenCode subagent** in
+> [`.opencode/agents/advisor.md`](.opencode/agents/advisor.md) —
+> conversational interaction without remembering CLI flags.
 
 #### Options
 
