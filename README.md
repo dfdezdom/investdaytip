@@ -71,6 +71,7 @@ investdaytip --workers 20            # More parallelism
 investdaytip --help
 
 ./preview.sh                         # Serve generated HTML files on localhost:8000
+```
 
 #### Options
 
