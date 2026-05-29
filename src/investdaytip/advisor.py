@@ -180,7 +180,7 @@ _CURRENCY_DEFAULTS: dict[str, str] = {
 
 def run_comprehensive(
     risk: str = "moderate",
-    portfolio_path: str = "recommendations/portfolio.txt",
+    portfolio_path: str = "portfolios/portfolio.txt",
     regions: Iterable[str] = ("us",),
     asset_classes: Iterable[str] = ("stocks",),
     top_n: int = 10,
@@ -259,7 +259,7 @@ def run_comprehensive(
                 # export HTML for this combination
                 timestamp = datetime.now().strftime("%Y%m%d-%H%M")
                 dest = (
-                    f"recommendations/advisor_{region}_{ac}_{timestamp}.html"
+                    f"portfolios/advisor_{region}_{ac}_{timestamp}.html"
                 )
                 out = export_recommendations_html(
                     filtered,
@@ -302,8 +302,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--portfolio",
-        default="recommendations/portfolio.txt",
-        help="Path to portfolio ticker file (default: recommendations/portfolio.txt)",
+        default="portfolios/portfolio.txt",
+        help="Path to portfolio ticker file (default: portfolios/portfolio.txt)",
     )
     parser.add_argument("-a", "--asset-class", choices=["all", "stocks", "etfs"], default=None)
     parser.add_argument("-r", "--region", choices=["all", "us", "eu", "asia"], default=None)
@@ -364,7 +364,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
         console.print(f"\n[yellow]Portfolio file not found: {args.portfolio}[/yellow]")
         console.print(
             "Add a ticker file (one per line, # for comments) to the "
-            "recommendations/ folder, or use --portfolio to point to an "
+            "portfolios/ folder, or use --portfolio to point to an "
             "existing portfolio file."
         )
     else:
@@ -522,7 +522,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
 
         if new_results:
             _render(new_results, console)
-            dest = f"recommendations/recommendations_advisor_{datetime.now():%Y%m%d-%H%M}.html"
+            dest = f"portfolios/recommendations_advisor_{datetime.now():%Y%m%d-%H%M}.html"
             try:
                 out = export_recommendations_html(
                     new_results, dest, top_n=10,

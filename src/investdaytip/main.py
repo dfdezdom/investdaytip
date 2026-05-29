@@ -184,8 +184,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     adv.add_argument(
         "--portfolio",
-        default="recommendations/portfolio.txt",
-        help="Path to portfolio ticker file (default: recommendations/portfolio.txt)",
+        default="portfolios/portfolio.txt",
+        help="Path to portfolio ticker file (default: portfolios/portfolio.txt)",
     )
     adv.add_argument("-a", "--asset-class", choices=["all", "stocks", "etfs"], default=None,
                      help="Asset class (all/stocks/etfs). If omitted, asked interactively.")

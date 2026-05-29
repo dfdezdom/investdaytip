@@ -94,7 +94,7 @@ Interactive market analysis, portfolio review, and buy recommendations:
 investdaytip advisor                          # Interactive mode (asks for risk, region, etc.)
 investdaytip advisor --risk moderate          # Non-interactive with risk preset
 investdaytip advisor --risk aggressive -r us -a stocks    # US stocks, aggressive, non-interactive
-investdaytip advisor --risk moderate --portfolio recommendations/portfolio.txt  # Custom portfolio
+investdaytip advisor --risk moderate --portfolio portfolios/portfolio.txt  # Custom portfolio
 ```
 
 See `investdaytip advisor --help` for all options.
@@ -104,7 +104,7 @@ See `investdaytip advisor --help` for all options.
 | Flag | Description | Default |
 |---|---|---|
 | `--risk {conservative,moderate,aggressive}` | Risk profile (if omitted, asked interactively) | interactive |
-| `--portfolio PATH` | Path to portfolio ticker file | `recommendations/portfolio.txt` |
+| `--portfolio PATH` | Path to portfolio ticker file | `portfolios/portfolio.txt` |
 | `-a, --asset-class {all,stocks,etfs}` | Asset class filter for buy recommendations | interactive |
 | `-r, --region {all,us,eu,asia}` | Region filter for buy recommendations | interactive |
 | `-c, --currency {all,USD,EUR,GBP,…}` | Currency filter | interactive |
@@ -306,7 +306,7 @@ src/investdaytip/
 ├── eu_etf_universe.py     # EU UCITS ETF universe
 ├── asia_universe.py       # Asia stock universe
 └── asia_etf_universe.py   # Asia ETF universe
-recommendations/           # Portfolio ticker files + advisor HTML reports
+portfolios/               # Portfolio ticker files + advisor HTML reports
 tests/
 ├── test_main.py           # CLI helper tests
 ├── test_html_export.py    # HTML export tests

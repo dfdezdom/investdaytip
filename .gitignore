@@ -40,4 +40,4 @@ Thumbs.db
 poetry.lock
 
 # Personal portfolio ticker file
-/recommendations/
+/portfolios/
