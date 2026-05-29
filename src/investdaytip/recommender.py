@@ -98,11 +98,7 @@ def recommend(
         progress_cb(0, total, "")
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures: dict = {}
-        for idx, t in enumerate(universe):
-            futures[pool.submit(fetch_asset, t)] = t
-            if (idx + 1) % max_workers == 0:
-                time.sleep(0.5)
+        futures = {pool.submit(fetch_asset, t): t for t in universe}
         for i, fut in enumerate(as_completed(futures), start=1):
             ticker = futures[fut]
             try:
@@ -112,6 +108,8 @@ def recommend(
                 pass
             if progress_cb:
                 progress_cb(i, total, ticker)
+            if i % (max_workers * 2) == 0:
+                time.sleep(0.5)
 
     filtered = [
         s for s in scored
