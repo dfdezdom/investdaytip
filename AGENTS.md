@@ -27,6 +27,7 @@ No linter config checked in — follow PEP 8 + type hints.
 | HTML export | `html_export.py` | self-contained report with inline CSS/JS |
 | Universes | `*_universe.py` (6 modules) | curated ticker lists wired in `recommender._build_universe()` |
 | Tests | `tests/` | 4 files, no live network calls |
+| OpenCode agent | `.opencode/agents/advisor.md` | subagente advisor: permisos, flujo interactivo, métodos de ejecución y guía de interpretación |
 
 Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_export / Rich table`
 
@@ -74,6 +75,16 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 ### Scoring Weights
 - **Stocks**: Quality 35%, Value 25%, Health 20%, Trend 20%
 - **ETFs**: Returns 40%, RiskAdj 25%, Size 15%, Cost/Yield 20%
+
+## OpenCode Agent
+
+El subagente `advisor` se configura en `.opencode/agents/advisor.md`. Define:
+
+- **Permisos:** bash/read permitidos, write con confirmación
+- **Flujo obligatorio:** preguntar al usuario antes de ejecutar cualquier análisis
+- **Métodos de ejecución:** `market_regime()` + `bubble_risk()` para pulso rápido, `run_comprehensive()` para multi-región, o CLI interactivo `investdaytip advisor`
+- **Formato de salida:** markdown limpio (nunca tablas raw de Rich)
+- **Reglas de interpretación:** umbrales VIX, burbuja, scores, señales portfolio
 
 ## Testing Notes
 - Construct `StockData` / `EtfData` directly — never call yfinance in tests
