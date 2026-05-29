@@ -175,6 +175,30 @@ def main(argv: list[str] | None = None) -> int:
         prog="investdaytip",
         description="Suggests long-term stock & ETF buy recommendations using multi-factor analysis.",
     )
+    sub = parser.add_subparsers(dest="command", required=False)
+    adv = sub.add_parser("advisor", help="Market analysis and portfolio advice. Run 'investdaytip advisor --help' for options.")
+    adv.add_argument(
+        "--risk",
+        choices=["conservative", "moderate", "aggressive"],
+        help="Risk profile (if omitted, asked interactively)",
+    )
+    adv.add_argument(
+        "--portfolio",
+        default="recommendations/portfolio.txt",
+        help="Path to portfolio ticker file (default: recommendations/portfolio.txt)",
+    )
+    adv.add_argument("-a", "--asset-class", choices=["all", "stocks", "etfs"], default=None,
+                     help="Asset class (all/stocks/etfs). If omitted, asked interactively.")
+    adv.add_argument("-r", "--region", choices=["all", "us", "eu", "asia"], default=None,
+                     help="Region (all/us/eu/asia). If omitted, asked interactively.")
+    adv.add_argument(
+        "-c", "--currency",
+        choices=["all", "USD", "EUR", "GBP", "CHF", "JPY", "HKD", "INR",
+                 "KRW", "TWD", "SGD", "AUD", "DKK", "SEK", "NOK", "GBp"],
+        default=None,
+        help="Currency filter. If omitted, asked interactively.",
+    )
+
     parser.add_argument("-n", "--top", type=int, default=5,
                         help="Number of recommendations to return (default: 5).")
     parser.add_argument("-t", "--tickers", nargs="+", default=None,
@@ -211,6 +235,11 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     args = parser.parse_args(argv)
+
+    if args.command == "advisor":
+        from investdaytip.advisor import advisor_main
+        remaining = argv[1:] if argv else sys.argv[2:]
+        return advisor_main(remaining)
 
     file_tickers: list[str] = []
     if args.tickers_file:

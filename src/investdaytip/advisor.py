@@ -1,0 +1,551 @@
+"""Market analysis and portfolio advisor.
+
+Fetches VIX/VXN via yfinance to determine market regime, bubble risk,
+and produces buy/hold/sell signals. Integrates with InvestDayTip's
+scoring engine for portfolio review and buy recommendations.
+"""
+
+from __future__ import annotations
+
+import argparse
+from datetime import datetime
+from pathlib import Path
+from typing import Iterable, Optional
+
+import yfinance as yf
+
+from yfinance.exceptions import YFRateLimitError
+
+from investdaytip.data_source import _suppress_stderr
+from investdaytip.html_export import export_recommendations_html
+from investdaytip.main import _load_tickers_from_file, _render
+from investdaytip.recommender import recommend
+
+# VIX thresholds
+VIX_BULLISH = 15
+VIX_NEUTRAL = 25
+VIX_BEARISH = 35
+
+
+# ---------------------------------------------------------------------------
+# Market data
+# ---------------------------------------------------------------------------
+
+def _fetch_index(ticker: str) -> Optional[float]:
+    """Fetch latest close of any index via yfinance."""
+    with _suppress_stderr():
+        t = yf.Ticker(ticker)
+        hist = t.history(period="5d", interval="1d")
+    if hist is not None and not hist.empty and "Close" in hist:
+        return float(hist["Close"].iloc[-1])
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Market regime
+# ---------------------------------------------------------------------------
+
+def market_regime() -> dict:
+    """Determine market regime from VIX (+ VXN).
+
+    Returns:
+        dict with keys: vix, vxn, regime, label, description, action
+    """
+    vix = _fetch_index("^VIX")
+    vxn = _fetch_index("^VXN")
+
+    if vix is None:
+        return {
+            "vix": None, "vxn": vxn,
+            "regime": "unknown",
+            "label": "No data",
+            "description": "Could not fetch VIX.",
+            "action": "hold",
+        }
+
+    if vix > VIX_BEARISH:
+        regime, label, action = "crash", "🔴 Crash / Panic", "sell"
+    elif vix > VIX_NEUTRAL:
+        regime, label, action = "bearish", "🟠 Elevated fear", "hold"
+    elif vix > VIX_BULLISH:
+        regime, label, action = "neutral", "🟡 Normal market", "buy"
+    else:
+        regime, label, action = "bullish", "🟢 Calm / Good entry", "buy"
+
+    descriptions = {
+        "crash": "VIX very high. Probable correction underway. Prioritize defense.",
+        "bearish": "Uncertainty. Reduce risk, increase defensives.",
+        "neutral": "Normal conditions. Selective value picking.",
+        "bullish": "Low VIX. Calm market, good time to buy.",
+    }
+
+    return {
+        "vix": vix,
+        "vxn": vxn,
+        "regime": regime,
+        "label": label,
+        "description": descriptions[regime],
+        "action": action,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Bubble risk
+# ---------------------------------------------------------------------------
+
+def bubble_risk() -> dict:
+    """Assess bubble risk via VIX historical percentile.
+
+    VIX persistently below its 2-year median suggests complacency.
+    """
+    with _suppress_stderr():
+        t = yf.Ticker("^VIX")
+        hist = t.history(period="2y", interval="1d")
+    if hist is None or hist.empty or "Close" not in hist:
+        return {"level": "unknown", "pct_rank": None, "note": "No historical VIX data."}
+
+    closes = hist["Close"].dropna().values
+    if len(closes) < 20:
+        return {"level": "unknown", "pct_rank": None, "note": "Insufficient data."}
+
+    current = closes[-1]
+    rank = (closes < current).sum() / len(closes) * 100  # percentile
+
+    if rank > 90:
+        level = "high"
+        note = "VIX in high percentile — extreme panic, possible bottom"
+    elif rank < 15:
+        level = "high"
+        note = "VIX in very low percentile — complacency, bubble risk"
+    elif rank < 30:
+        level = "medium"
+        note = "Low VIX — possible overconfidence"
+    else:
+        level = "low"
+        note = "VIX in normal range, no bubble signals"
+
+    return {"level": level, "pct_rank": round(rank, 1), "note": note}
+
+
+# ---------------------------------------------------------------------------
+# Portfolio review
+# ---------------------------------------------------------------------------
+
+def portfolio_review(cartera_path: str) -> dict:
+    """Score existing portfolio, flag weak positions."""
+    if not Path(cartera_path).exists():
+        return {"error": f"File not found: {cartera_path}"}
+
+    tickers = _load_tickers_from_file(cartera_path)
+    if not tickers:
+        return {"error": "No tickers found in file."}
+
+    results = recommend(tickers=tickers, top_n=len(tickers))
+
+    weak = [s for s in results if s.total < 40]
+    moderate = [s for s in results if 40 <= s.total < 60]
+    strong = [s for s in results if s.total >= 60]
+
+    sectors = set()
+    for s in results:
+        sec = (
+            getattr(s.data, "sector", None)
+            or getattr(s.data, "category", None)
+            or "Unknown"
+        )
+        sectors.add(sec)
+
+    return {
+        "results": results,
+        "weak_positions": weak,
+        "moderate_positions": moderate,
+        "strong_positions": strong,
+        "sectors": sorted(sectors),
+        "count": len(results),
+        "tickers": tickers,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Comprehensive analysis (multiple regions × asset classes)
+# ---------------------------------------------------------------------------
+
+_CURRENCY_DEFAULTS: dict[str, str] = {
+    "us": "USD",
+    "eu": "EUR",
+    "asia": "all",
+    "all": "all",
+}
+
+
+def run_comprehensive(
+    risk: str = "moderate",
+    portfolio_path: str = "recommendations/portfolio.txt",
+    regions: Iterable[str] = ("us",),
+    asset_classes: Iterable[str] = ("stocks",),
+    top_n: int = 10,
+    currencies: dict[str, str] | None = None,
+) -> dict:
+    """Run analysis across multiple region×asset_class combinations.
+
+    This is the **programmatic API** for the opencode advisor agent.
+    It performs market analysis once, portfolio review once, then
+    iterates over every requested combination of region and asset class
+    to produce buy recommendations.
+
+    All calls to yfinance are wrapped with ``_suppress_stderr()`` inside
+    ``recommend()`` — no stderr noise.
+
+    Args:
+        risk: Risk profile label (for display only).
+        portfolio_path: Path to portfolio ticker file.
+        regions: Iterable of region codes (``"us"``, ``"eu"``, ``"asia"``).
+        asset_classes: Iterable of asset classes (``"stocks"``, ``"etfs"``).
+        top_n: How many recommendations per combination.
+        currencies: Optional override dict mapping region → currency code.
+            Falls back to ``_CURRENCY_DEFAULTS``.
+
+    Returns:
+        dict with keys:
+            - ``market``: market_regime() output
+            - ``bubble``: bubble_risk() output
+            - ``portfolio``: portfolio_review() output
+            - ``recommendations``: dict ``"{region}:{asset_class}"`` → list of ScoredAsset
+            - ``errors``: list of error strings
+            - ``html_reports``: list of generated HTML file paths
+    """
+    result: dict = {
+        "market": market_regime(),
+        "bubble": bubble_risk(),
+        "portfolio": portfolio_review(portfolio_path),
+        "recommendations": {},
+        "errors": [],
+        "html_reports": [],
+    }
+
+    if "error" in result["portfolio"]:
+        return result
+
+    currency_map = (
+        dict(currencies)
+        if currencies is not None
+        else _CURRENCY_DEFAULTS.copy()
+    )
+
+    portfolio_path_obj = Path(portfolio_path)
+    portfolio_tickers: set[str] = set()
+    if portfolio_path_obj.exists():
+        portfolio_tickers = {
+            t.upper() for t in _load_tickers_from_file(str(portfolio_path_obj))
+        }
+
+    for region in regions:
+        ccy = currency_map.get(region, "all")
+        for ac in asset_classes:
+            key = f"{region}:{ac}"
+            try:
+                recs = recommend(
+                    asset_class=ac,
+                    region=region,
+                    top_n=top_n,
+                    currency=ccy,
+                )
+                filtered = [
+                    r for r in recs
+                    if r.data.ticker.upper() not in portfolio_tickers
+                ]
+                result["recommendations"][key] = filtered
+
+                # export HTML for this combination
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M")
+                dest = (
+                    f"recommendations/advisor_{region}_{ac}_{timestamp}.html"
+                )
+                out = export_recommendations_html(
+                    filtered,
+                    dest,
+                    top_n=top_n,
+                    asset_class=ac,
+                    region=region,
+                    currency=ccy,
+                    tickers=None,
+                )
+                result["html_reports"].append(out)
+            except YFRateLimitError:
+                result["errors"].append(
+                    f"Rate limit reached for {region}/{ac}. Skipping."
+                )
+            except Exception as exc:
+                result["errors"].append(
+                    f"Error for {region}/{ac}: {exc}"
+                )
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def _fmt_risk_profile(profile: str) -> str:
+    icons = {"conservative": "🛡️", "moderate": "⚖️", "aggressive": "🚀"}
+    return f"{icons.get(profile, '')} {profile.capitalize()}"
+
+
+def advisor_main(argv: list[str] | None = None) -> int:
+    """CLI entry for ``investdaytip advisor``."""
+    parser = argparse.ArgumentParser(prog="investdaytip advisor")
+    parser.add_argument(
+        "--risk",
+        choices=["conservative", "moderate", "aggressive"],
+        help="Risk profile (if omitted, asked interactively)",
+    )
+    parser.add_argument(
+        "--portfolio",
+        default="recommendations/portfolio.txt",
+        help="Path to portfolio ticker file (default: recommendations/portfolio.txt)",
+    )
+    parser.add_argument("-a", "--asset-class", choices=["all", "stocks", "etfs"], default=None)
+    parser.add_argument("-r", "--region", choices=["all", "us", "eu", "asia"], default=None)
+    parser.add_argument(
+        "-c", "--currency",
+        choices=["all", "USD", "EUR", "GBP", "CHF", "JPY", "HKD", "INR",
+                 "KRW", "TWD", "SGD", "AUD", "DKK", "SEK", "NOK", "GBp"],
+        default=None,
+    )
+    args = parser.parse_args(argv)
+
+    from rich.console import Console
+    from rich.table import Table
+    from rich.panel import Panel
+    from rich.prompt import Prompt
+
+    console = Console()
+
+    # ── Risk profile ───────────────────────────────────────
+    risk = args.risk
+    if not risk:
+        console.print(Panel("[bold cyan]📊 InvestDayTip Advisor[/bold cyan]\n"))
+        risk = Prompt.ask(
+            "What is your risk profile?",
+            choices=["conservative", "moderate", "aggressive"],
+            default="moderate",
+        )
+
+    console.print(f"\nRisk profile: [bold]{_fmt_risk_profile(risk)}[/bold]\n")
+
+    # ── Market analysis ────────────────────────────────────
+    with console.status("[bold green]Analyzing market..."):
+        regime = market_regime()
+        bubble = bubble_risk()
+
+    # VIX info
+    vix_str = f"{regime['vix']:.2f}" if regime["vix"] is not None else "N/A"
+    vxn_str = f"{regime['vxn']:.2f}" if regime["vxn"] is not None else "N/A"
+
+    market_table = Table(title="📈 Market Analysis", show_lines=True)
+    market_table.add_column("Indicator", style="bold cyan")
+    market_table.add_column("Value")
+    market_table.add_row("VIX (S&P 500)", vix_str)
+    market_table.add_row("VXN (Nasdaq 100)", vxn_str)
+    market_table.add_row("Regime", regime["label"])
+    market_table.add_row("Description", regime["description"])
+    market_table.add_row("Signal", f"[bold]{regime['action'].upper()}[/bold]")
+    market_table.add_row(
+        "Bubble risk",
+        f"{bubble['level'].upper()} — {bubble['note']}",
+    )
+    console.print(market_table)
+
+    # ── Portfolio review ───────────────────────────────────
+    portfolio_path = Path(args.portfolio)
+    missing: set[str] = set()
+    if not portfolio_path.exists():
+        console.print(f"\n[yellow]Portfolio file not found: {args.portfolio}[/yellow]")
+        console.print(
+            "Add a ticker file (one per line, # for comments) to the "
+            "recommendations/ folder, or use --portfolio to point to an "
+            "existing portfolio file."
+        )
+    else:
+        with console.status("[bold green]Analyzing portfolio..."):
+            try:
+                review = portfolio_review(str(portfolio_path))
+            except YFRateLimitError:
+                console.print(
+                    "\n[yellow]⏳ Rate limit reached while analyzing portfolio. "
+                    "Wait 1-2 minutes and try again.[/yellow]"
+                )
+                return 1
+
+        if "error" in review:
+            console.print(f"\n[red]{review['error']}[/red]")
+        else:
+            port_table = Table(title="📋 Current Portfolio", show_lines=True)
+            port_table.add_column("#", style="bold")
+            port_table.add_column("Ticker")
+            port_table.add_column("Score", justify="right")
+            port_table.add_column("Sector")
+            port_table.add_column("Signal")
+
+            for i, s in enumerate(review["results"], start=1):
+                sector = (
+                    getattr(s.data, "sector", None)
+                    or getattr(s.data, "category", None)
+                    or "-"
+                )
+                if s.total < 40:
+                    signal = "[red]🔴 SELL[/red]"
+                elif s.total < 60:
+                    signal = "[yellow]🟡 HOLD[/yellow]"
+                else:
+                    signal = "[green]🟢 OK[/green]"
+                port_table.add_row(str(i), s.data.ticker, f"{s.total:.1f}", sector, signal)
+
+            console.print(port_table)
+
+            # Sell recommendations
+            if review["weak_positions"]:
+                console.print("\n[bold red]⚠️  Weak positions (consider selling):[/bold red]")
+                for s in review["weak_positions"]:
+                    console.print(f"  • [red]{s.data.ticker}[/red] — Score {s.total:.1f}"
+                                  f" — {'; '.join(s.rationale[:2])}")
+
+            # Sector gaps
+            _all_sectors = {"Technology", "Financials", "Healthcare",
+                            "Energy", "Consumer", "Utilities", "Real Estate"}
+            missing = _all_sectors - set(review["sectors"])
+            if missing:
+                console.print(f"\n[bold yellow]📌 Missing sectors:[/bold yellow]")
+                for sec in sorted(missing):
+                    console.print(f"  • [yellow]{sec}[/yellow]")
+
+    # ── Buy recommendations (if regime allows) ────────────
+    if regime["action"] in ("buy", "neutral"):
+        console.print(f"\n[bold green]✅ Signal: {regime['action'].upper()}[/bold green]")
+
+        # Resolve asset class, region, currency (CLI flags or interactive)
+        if args.asset_class:
+            ac = args.asset_class
+        else:
+            _risk_defaults = {
+                "conservative": ("etfs", "eu"),
+                "moderate": ("all", "all"),
+                "aggressive": ("stocks", "all"),
+            }
+            d_ac, _ = _risk_defaults.get(risk, ("all", "all"))
+            ac = Prompt.ask(
+                "What asset types do you want to analyze?",
+                choices=["all", "stocks", "etfs"],
+                default=d_ac,
+            )
+
+        if args.region:
+            reg = args.region
+        else:
+            _, d_reg = _risk_defaults.get(risk, ("all", "all"))
+            reg = Prompt.ask(
+                "Which regions?",
+                choices=["all", "us", "eu", "asia"],
+                default=d_reg,
+            )
+
+        if args.currency:
+            ccy = args.currency
+        else:
+            _currency_choices = {
+                "us": ["USD", "all"],
+                "eu": ["EUR", "USD", "GBP", "all"],
+                "asia": ["USD", "JPY", "HKD", "all"],
+                "all": ["all"],
+            }
+            _currency_defaults = {"us": "USD", "eu": "EUR", "asia": "all", "all": "all"}
+            ccy = Prompt.ask(
+                "Currency filter?",
+                choices=_currency_choices.get(reg, ["all"]),
+                default=_currency_defaults.get(reg, "all"),
+            )
+
+        # Ask about missing sector focus (only in interactive mode)
+        target_sector: str | None = None
+        if missing and not args.asset_class:
+            sector_choices = sorted(missing) + ["All", "No"]
+            target_sector = Prompt.ask(
+                "Focus on a specific missing sector?",
+                choices=sector_choices,
+                default="No",
+            )
+
+        with console.status("[bold green]Generating buy recommendations..."):
+
+            portfolio_tickers: set[str] = set()
+            if portfolio_path.exists():
+                portfolio_tickers = {
+                    t.upper() for t in _load_tickers_from_file(str(portfolio_path))
+                }
+
+            try:
+                results = recommend(asset_class=ac, region=reg, top_n=10, currency=ccy)
+            except YFRateLimitError:
+                console.print(
+                    "\n[yellow]⏳ yfinance rate limit reached. "
+                    "Wait 1-2 minutes and run:[/yellow]"
+                )
+                console.print(
+                    f"  [bold]investdaytip -a {ac} -r {reg} -c {ccy} "
+                    "--top 10 --export-html[/bold]"
+                )
+                return 1
+
+            new_results = [
+                r for r in results
+                if r.data.ticker.upper() not in portfolio_tickers
+            ]
+
+            # Filter by target sector if requested
+            if target_sector and target_sector != "No":
+                if target_sector == "All":
+                    sector_results = [
+                        r for r in new_results
+                        if getattr(r.data, "sector", None) in missing
+                    ]
+                else:
+                    sector_results = [
+                        r for r in new_results
+                        if getattr(r.data, "sector", None) == target_sector
+                    ]
+                if sector_results:
+                    new_results = sector_results
+                else:
+                    label = "missing sectors" if target_sector == "All" else target_sector
+                    console.print(f"[yellow]No {label} picks found — showing all.[/yellow]")
+
+        if new_results:
+            _render(new_results, console)
+            dest = f"recommendations/recommendations_advisor_{datetime.now():%Y%m%d-%H%M}.html"
+            try:
+                out = export_recommendations_html(
+                    new_results, dest, top_n=10,
+                    asset_class=ac, region=reg,
+                    currency=ccy, tickers=None,
+                )
+                console.print(f"\n[green]📄 HTML report:[/green] {out}")
+            except Exception as exc:
+                console.print(f"\n[red]Error exporting HTML:[/red] {exc}")
+        else:
+            console.print("[yellow]No new recommendations found outside current portfolio.[/yellow]")
+            console.print(
+                "\n[dim italic]Disclaimer: This is not financial advice. "
+                "Do your own research.[/dim italic]"
+            )
+
+    else:
+        console.print(f"\n[bold red]⛔ Signal: {regime['action'].upper()}[/bold red]")
+        console.print(regime["description"])
+        console.print("Consider increasing defensive positions (bonds, value ETFs).")
+        console.print(
+            "\n[dim italic]Disclaimer: This is not financial advice. "
+            "Do your own research.[/dim italic]"
+        )
+
+    return 0

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterable, Literal
 
@@ -94,7 +95,11 @@ def recommend(
     scored: list[ScoredAsset] = []
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {pool.submit(fetch_asset, t): t for t in universe}
+        futures: dict = {}
+        for idx, t in enumerate(universe):
+            futures[pool.submit(fetch_asset, t)] = t
+            if (idx + 1) % max_workers == 0:
+                time.sleep(0.5)
         for i, fut in enumerate(as_completed(futures), start=1):
             ticker = futures[fut]
             try:

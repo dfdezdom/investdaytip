@@ -17,6 +17,7 @@
 - 📊 **Rich CLI output** — price, 1M/1Y change, score breakdown and rationale
 - 🧾 **Self-contained HTML export** — interactive report with filters and sortable columns
 - 🧪 **Pure scoring functions** — testable without network
+- 🧠 **Interactive advisor** — market pulse, portfolio review, and tailored buy recommendations via the `advisor` subcommand
 
 ---
 
@@ -70,6 +71,19 @@ investdaytip --workers 20            # More parallelism
 investdaytip --help
 
 ./preview.sh                         # Serve generated HTML files on localhost:8000
+
+### Advisor subcommand
+
+Interactive market analysis, portfolio review, and buy recommendations:
+
+```bash
+investdaytip advisor                          # Interactive mode (asks for risk, region, etc.)
+investdaytip advisor --risk moderate          # Non-interactive with risk preset
+investdaytip advisor --risk aggressive -r us -a stocks    # US stocks, aggressive, non-interactive
+investdaytip advisor --risk moderate --portfolio recommendations/portfolio.txt  # Custom portfolio
+```
+
+See `investdaytip advisor --help` for all options.
 ```
 
 #### Options
@@ -84,6 +98,16 @@ investdaytip --help
 | `-r, --region {all,us,eu,asia}` | Region filter | `all` |
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
 | `--workers N` | Parallel fetch threads | `10` |
+
+### Advisor options
+
+| Flag | Description | Default |
+|---|---|---|
+| `--risk {conservative,moderate,aggressive}` | Risk profile (if omitted, asked interactively) | interactive |
+| `--portfolio PATH` | Path to portfolio ticker file | `recommendations/portfolio.txt` |
+| `-a, --asset-class {all,stocks,etfs}` | Asset class filter for buy recommendations | interactive |
+| `-r, --region {all,us,eu,asia}` | Region filter for buy recommendations | interactive |
+| `-c, --currency {all,USD,EUR,GBP,…}` | Currency filter | interactive |
 
 ### HTML export
 
@@ -271,6 +295,7 @@ preview.sh                # Local static server for generated HTML reports
 src/investdaytip/
 ├── __init__.py            # Public API: get_recommendations
 ├── main.py                # CLI entry point + rich table rendering
+├── advisor.py             # Interactive advisor: market pulse, portfolio review, buy recs
 ├── html_export.py         # Self-contained HTML report exporter
 ├── recommender.py         # Concurrent orchestration
 ├── data_source.py         # yfinance wrapper + dataclasses (StockData / EtfData)
@@ -281,6 +306,7 @@ src/investdaytip/
 ├── eu_etf_universe.py     # EU UCITS ETF universe
 ├── asia_universe.py       # Asia stock universe
 └── asia_etf_universe.py   # Asia ETF universe
+recommendations/           # Portfolio ticker files + advisor HTML reports
 tests/
 ├── test_main.py           # CLI helper tests
 ├── test_html_export.py    # HTML export tests

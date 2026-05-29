@@ -11,12 +11,14 @@ from __future__ import annotations
 import logging
 import math
 import os
+import time
 from contextlib import contextmanager, redirect_stderr
 from dataclasses import dataclass, field
 from typing import Optional, Union
 
 import pandas as pd
 import yfinance as yf
+from yfinance.exceptions import YFRateLimitError
 
 
 # Silence yfinance's verbose logging (delisted symbols, HTTP errors)
@@ -255,15 +257,28 @@ def _fetch_etf(ticker: str, t: yf.Ticker, info: dict) -> EtfData:
 
 
 def fetch_asset(ticker: str) -> AssetData:
-    """Fetch data for a ticker, auto-dispatching stock vs ETF."""
-    try:
-        with _suppress_stderr():
-            t = yf.Ticker(ticker)
-            info = t.info or {}
-    except Exception as exc:
-        d = StockData(ticker=ticker)
-        d.errors.append(f"info fetch failed: {exc}")
-        return d
+    """Fetch data for a ticker, auto-dispatching stock vs ETF.
+
+    Retries up to 3 times with exponential backoff on rate-limit errors.
+    """
+    delays = [10, 30, 60]
+    for attempt in range(len(delays) + 1):
+        try:
+            with _suppress_stderr():
+                t = yf.Ticker(ticker)
+                info = t.info or {}
+        except YFRateLimitError:
+            if attempt < len(delays):
+                time.sleep(delays[attempt])
+                continue
+            d = StockData(ticker=ticker)
+            d.errors.append(f"rate limited after {len(delays)} retries")
+            return d
+        except Exception as exc:
+            d = StockData(ticker=ticker)
+            d.errors.append(f"info fetch failed: {exc}")
+            return d
+        break
 
     quote_type = (info.get("quoteType") or "").upper()
     with _suppress_stderr():
