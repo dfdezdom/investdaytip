@@ -41,3 +41,4 @@ poetry.lock
 
 # Personal portfolio ticker file
 /advisor_recommendations/
+/portfolios/
