@@ -72,20 +72,6 @@ investdaytip --help
 
 ./preview.sh                         # Serve generated HTML files on localhost:8000
 
-### Advisor subcommand
-
-Interactive market analysis, portfolio review, and buy recommendations:
-
-```bash
-investdaytip advisor                          # Interactive mode (asks for risk, region, etc.)
-investdaytip advisor --risk moderate          # Non-interactive with risk preset
-investdaytip advisor --risk aggressive -r us -a stocks    # US stocks, aggressive, non-interactive
-investdaytip advisor --risk moderate --portfolio recommendations/portfolio.txt  # Custom portfolio
-```
-
-See `investdaytip advisor --help` for all options.
-```
-
 #### Options
 
 | Flag | Description | Default |
@@ -99,7 +85,20 @@ See `investdaytip advisor --help` for all options.
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
 | `--workers N` | Parallel fetch threads | `10` |
 
-### Advisor options
+### Advisor subcommand
+
+Interactive market analysis, portfolio review, and buy recommendations:
+
+```bash
+investdaytip advisor                          # Interactive mode (asks for risk, region, etc.)
+investdaytip advisor --risk moderate          # Non-interactive with risk preset
+investdaytip advisor --risk aggressive -r us -a stocks    # US stocks, aggressive, non-interactive
+investdaytip advisor --risk moderate --portfolio recommendations/portfolio.txt  # Custom portfolio
+```
+
+See `investdaytip advisor --help` for all options.
+
+#### Options
 
 | Flag | Description | Default |
 |---|---|---|
