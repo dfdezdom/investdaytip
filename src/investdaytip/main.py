@@ -266,10 +266,11 @@ def main(argv: list[str] | None = None) -> int:
         TimeElapsedColumn(),
         console=console,
     ) as progress:
-        task_id = progress.add_task("Fetching market data", total=0)
+        task_id = progress.add_task("Fetching market data", total=None)
 
         def cb(done: int, total: int, ticker: str) -> None:
-            progress.update(task_id, total=total, completed=done, description=f"Analyzed {ticker}")
+            desc = f"Fetched {ticker}" if ticker else "Starting..."
+            progress.update(task_id, total=total, completed=done, description=desc)
 
         try:
             results = recommend(

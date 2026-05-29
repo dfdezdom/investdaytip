@@ -94,6 +94,9 @@ def recommend(
     total = len(universe)
     scored: list[ScoredAsset] = []
 
+    if progress_cb:
+        progress_cb(0, total, "")
+
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures: dict = {}
         for idx, t in enumerate(universe):
