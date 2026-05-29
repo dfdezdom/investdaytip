@@ -6,9 +6,11 @@ MU     # Micron Technology
 ADBE   # Adobe
 LRCX   # Lam Research
 MRVL   # Marvell Technology
+RIVN   # Rivian
 FSLR   # First Solar
 GOOGL  # Alphabet (Class A)
 EOG    # EOG Resources
 TSM    # Taiwan Semiconductor Manufacturing (ADR)
 SNOW   # Snowflake
 NOW    # ServiceNow
+TEAM  # Atlassian
