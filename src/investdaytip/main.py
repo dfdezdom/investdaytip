@@ -265,9 +265,8 @@ def main(argv: list[str] | None = None) -> int:
         TextColumn("{task.completed}/{task.total}"),
         TimeElapsedColumn(),
         console=console,
-        transient=True,
     ) as progress:
-        task_id = progress.add_task("Fetching market data", total=None)
+        task_id = progress.add_task("Fetching market data", total=0)
 
         def cb(done: int, total: int, ticker: str) -> None:
             progress.update(task_id, total=total, completed=done, description=f"Analyzed {ticker}")
