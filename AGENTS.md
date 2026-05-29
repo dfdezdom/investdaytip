@@ -57,7 +57,8 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - `market_regime()` fetches `^VIX` and `^VXN` via yfinance; thresholds: ≤15 bullish, ≤25 neutral, ≤35 bearish, >35 crash
 - `bubble_risk()` computes VIX percentile over trailing 2 years; <15% → high (complacency), 15-30% → medium, >30% → low
 - `portfolio_review()` loads tickers from file with `_load_tickers_from_file()`, passes through `recommend()` scoring, returns categorized results
-- `run_comprehensive()` is the programmatic API for multi-region/asset-class analysis; exports HTML per combination
+- `run_comprehensive()` is the programmatic API for multi-region/asset-class analysis; exports HTML per combination to `advisor_recommendations/`
+- `advisor_main()` writes the final HTML report to `advisor_recommendations/recommendations_advisor_<timestamp>.html`
 
 ### ETF Data Specifics
 - Expense ratio has 3 fallback sources: `annualReportExpenseRatio` → `netExpenseRatio` → `funds_data.fund_overview`

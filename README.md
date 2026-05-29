@@ -306,7 +306,8 @@ src/investdaytip/
 ├── eu_etf_universe.py     # EU UCITS ETF universe
 ├── asia_universe.py       # Asia stock universe
 └── asia_etf_universe.py   # Asia ETF universe
-portfolios/               # Portfolio ticker files + advisor HTML reports
+portfolios/               # Portfolio ticker files
+advisor_recommendations/   # Advisor-generated HTML reports (git-ignored)
 tests/
 ├── test_main.py           # CLI helper tests
 ├── test_html_export.py    # HTML export tests
