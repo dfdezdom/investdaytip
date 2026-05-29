@@ -108,8 +108,8 @@ def recommend(
                 pass
             if progress_cb:
                 progress_cb(i, total, ticker)
-            if i % (max_workers * 2) == 0:
-                time.sleep(0.5)
+            if i % (max_workers * 5) == 0:
+                time.sleep(0.3)
 
     filtered = [
         s for s in scored
