@@ -45,7 +45,7 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 
 ### Rate Limits & Error Handling
 - `fetch_asset()` retries on `YFRateLimitError` with delays [10, 30, 60]s then returns error dataclass
-- `recommend()` adds `time.sleep(0.5)` after every `max_workers` submissions to avoid throttling
+- `recommend()` adds `time.sleep(0.3)` after every `max_workers * 5` results to avoid throttling
 - Missing data → neutral 50 (never crashes); yfinance errors caught per-ticker, stored in `errors` list
 
 ### CLI Quirks
