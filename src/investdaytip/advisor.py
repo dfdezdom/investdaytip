@@ -259,7 +259,7 @@ def run_comprehensive(
                 # export HTML for this combination
                 timestamp = datetime.now().strftime("%Y%m%d-%H%M")
                 dest = (
-                    f"portfolios/advisor_{region}_{ac}_{timestamp}.html"
+                    f"advisor_recommendations/advisor_{region}_{ac}_{timestamp}.html"
                 )
                 out = export_recommendations_html(
                     filtered,
@@ -522,7 +522,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
 
         if new_results:
             _render(new_results, console)
-            dest = f"portfolios/recommendations_advisor_{datetime.now():%Y%m%d-%H%M}.html"
+            dest = f"advisor_recommendations/recommendations_advisor_{datetime.now():%Y%m%d-%H%M}.html"
             try:
                 out = export_recommendations_html(
                     new_results, dest, top_n=10,
