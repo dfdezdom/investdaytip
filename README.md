@@ -104,23 +104,6 @@ See `investdaytip advisor --help` for all options.
 
 Instead of memorizing flags, talk to an **AI investment advisor** that understands your portfolio, checks market fear, and suggests buys — powered by [OpenCode](https://opencode.ai).
 
-#### Setup
-
-```bash
-# Install opencode (macOS)
-brew install opencode/tap/opencode
-
-# Or via curl (Linux/macOS)
-curl -fsSL https://opencode.ai/install | sh
-```
-
-Then pin the agent to the project:
-
-```bash
-opencode use create
-# Select advisor from the agent list when prompted
-```
-
 #### Usage
 
 Once configured, invoke the advisor from the project root:
