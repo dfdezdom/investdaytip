@@ -257,6 +257,7 @@ def run_comprehensive(
                 result["recommendations"][key] = filtered
 
                 # export HTML for this combination
+                Path("advisor_recommendations").mkdir(parents=True, exist_ok=True)
                 timestamp = datetime.now().strftime("%Y%m%d-%H%M")
                 dest = (
                     f"advisor_recommendations/advisor_{region}_{ac}_{timestamp}.html"
@@ -522,6 +523,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
 
         if new_results:
             _render(new_results, console)
+            Path("advisor_recommendations").mkdir(parents=True, exist_ok=True)
             dest = f"advisor_recommendations/recommendations_advisor_{datetime.now():%Y%m%d-%H%M}.html"
             try:
                 out = export_recommendations_html(
