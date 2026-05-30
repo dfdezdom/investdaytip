@@ -1,8 +1,9 @@
 # InvestDayTip
 
 <p align="center">
-  <img src="./logo.svg" alt="investdaytip logo" width="400">
+  <img src="https://github.com/dfdezdom/investdaytip/blob/main/logo.svg" alt="investdaytip logo" width="400">
 </p>
+
 
 > A multi-factor analysis tool that suggests long-term **stock & ETF** buy recommendations from US, European, and Asian markets, computed live from public market data.
 
