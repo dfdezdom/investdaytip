@@ -58,14 +58,28 @@ investdaytip -n 10                   # Top 10
 investdaytip -a stocks               # Only stocks
 investdaytip -a etfs                 # Only ETFs
 investdaytip -r us                   # Only US
+
 investdaytip -r eu                   # Only Europe
+
 investdaytip -r asia                 # Only Asia
+
+investdaytip -r us eu                # US + Europe
+
 investdaytip -r eu -a stocks         # Only European stocks
+
 investdaytip -r asia -a etfs         # Only Asian ETFs
+
 investdaytip -c USD                  # Only USD-denominated assets
+
 investdaytip -c EUR                  # Only EUR-denominated assets
+
+investdaytip -c USD EUR              # USD + EUR assets
+
 investdaytip -c JPY                  # Only JPY-denominated assets
-investdaytip -r eu -c USD            # EU region + currency post-filter (respects explicit -r)
+
+investdaytip -r eu -c USD            # EU region + USD post-filter
+
+investdaytip -r us eu -c USD EUR     # US + EU, USD + EUR assets
 investdaytip -t AAPL MSFT VOO        # Custom ticker list
 
 investdaytip --tickers-file tickers.txt # Custom ticker file (lines, spaces, commas)
@@ -92,8 +106,8 @@ investdaytip --help
 | `-t, --tickers ...` | Custom ticker list (overrides universe) | curated universe |
 | `--tickers-file PATH` | Text file with custom tickers (merged with `--tickers` if both are used) | disabled |
 | `-a, --asset-class {all,stocks,etfs}` | Asset class filter | `all` |
-| `-c, --currency {all,USD,EUR,GBP,…}` | Currency filter; narrows universe to matching region when no `-r` is given | `all` |
-| `-r, --region {all,us,eu,asia}` | Region filter | `all` |
+| `-r, --region {all,us,eu,asia}` `nargs="+"` | Region filter(s) — e.g. `-r us eu` | `all` |
+| `-c, --currency {all,USD,EUR,GBP,…}` `nargs="+"` | Currency filter(s); narrows universe to matching regions when no `-r` is given | `all` |
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
 | `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable) | `2B` |
 | `--workers N` | Parallel fetch threads | `10` |
@@ -141,8 +155,8 @@ See the [agent definition](.opencode/agents/advisor.md) for full details on capa
 | `--risk {conservative,moderate,aggressive}` | Risk profile (if omitted, asked interactively) | interactive |
 | `--portfolio PATH` | Path to portfolio ticker file | `portfolios/portfolio.txt` |
 | `-a, --asset-class {all,stocks,etfs}` | Asset class filter for buy recommendations | interactive |
-| `-r, --region {all,us,eu,asia}` | Region filter for buy recommendations | interactive |
-| `-c, --currency {all,USD,EUR,GBP,…}` | Currency filter | interactive |
+| `-r, --region {all,us,eu,asia}` `nargs="+"` | Region filter(s) for buy recommendations | interactive |
+| `-c, --currency {all,USD,EUR,GBP,…}` `nargs="+"` | Currency filter(s) | interactive |
 
 ### HTML export
 

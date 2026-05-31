@@ -21,12 +21,12 @@ def get_recommendations(
     tickers: list[str] | None = None,
     top_n: int = 5,
     asset_class: str = "all",
-    region: str = "all",
-    currency: str = "all",
+    region: str | list[str] = "all",
+    currency: str | list[str] = "all",
     min_market_cap: float = 2_000_000_000,
 ) -> list[ScoredAsset]:
     """Programmatic API: return the top ``top_n`` long-term buy recommendations."""
-    return recommend(  # type: ignore[arg-type]
+    return recommend(
         tickers=tickers, top_n=top_n, asset_class=asset_class,
         region=region, currency=currency, min_market_cap=min_market_cap,
     )
@@ -199,14 +199,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     adv.add_argument("-a", "--asset-class", choices=["all", "stocks", "etfs"], default=None,
                      help="Asset class (all/stocks/etfs). If omitted, asked interactively.")
-    adv.add_argument("-r", "--region", choices=["all", "us", "eu", "asia"], default=None,
-                     help="Region (all/us/eu/asia). If omitted, asked interactively.")
+    adv.add_argument("-r", "--region", nargs="+",
+                     choices=["all", "us", "eu", "asia"], default=None,
+                     help="Region(s) — e.g. -r us eu. If omitted, asked interactively.")
     adv.add_argument(
-        "-c", "--currency",
+        "-c", "--currency", nargs="+",
         choices=["all", "USD", "EUR", "GBP", "CHF", "JPY", "HKD", "INR",
                  "KRW", "TWD", "SGD", "AUD", "DKK", "SEK", "NOK", "GBp"],
         default=None,
-        help="Currency filter. If omitted, asked interactively.",
+        help="Currency filter(s) — e.g. -c USD EUR. If omitted, asked interactively.",
     )
 
     parser.add_argument("-n", "--top", type=int, default=5,
@@ -223,14 +224,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("-a", "--asset-class", choices=["all", "stocks", "etfs"], default="all",
                         help="Which asset class to analyze when no -t is given (default: all).")
-    parser.add_argument("-r", "--region", choices=["all", "us", "eu", "asia"], default="all",
-                        help="Which region to analyze when no -t is given (default: all).")
+    parser.add_argument("-r", "--region", nargs="+",
+                        choices=["all", "us", "eu", "asia"], default="all",
+                        help="Region(s) — e.g. -r us eu (default: all).")
     parser.add_argument(
-        "-c", "--currency",
+        "-c", "--currency", nargs="+",
         choices=["all", "USD", "EUR", "GBP", "CHF", "JPY", "HKD", "INR",
                  "KRW", "TWD", "SGD", "AUD", "DKK", "SEK", "NOK", "GBp"],
         default="all",
-        help="Filter by currency (default: all).",
+        help="Currency filter(s) — e.g. -c USD EUR (default: all).",
     )
     parser.add_argument("--workers", type=int, default=10,
                         help="Parallel fetch workers (default: 10).")
@@ -264,9 +266,11 @@ def main(argv: list[str] | None = None) -> int:
     effective_tickers = _merge_ticker_lists(args.tickers, file_tickers)
 
     console = Console()
+    region_str = ", ".join(args.region) if isinstance(args.region, list) else args.region
+    currency_str = ", ".join(args.currency) if isinstance(args.currency, list) else args.currency
     console.print(
         f"[bold cyan]InvestDayTip[/bold cyan] — analyzing markets "
-        f"([italic]{args.asset_class} · {args.region} · {args.currency}[/italic])...\n"
+        f"([italic]{args.asset_class} · {region_str} · {currency_str}[/italic])...\n"
     )
 
     results: list[ScoredAsset] = []

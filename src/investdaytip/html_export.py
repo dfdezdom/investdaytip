@@ -221,8 +221,8 @@ def export_recommendations_html(
     *,
     top_n: int,
     asset_class: str,
-    region: str,
-    currency: str = "all",
+    region: str | list[str] = "all",
+    currency: str | list[str] = "all",
     tickers: list[str] | None,
   tickers_file: str | None = None,
 ) -> str:

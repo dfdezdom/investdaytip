@@ -16,49 +16,53 @@ from investdaytip.universe import DEFAULT_UNIVERSE
 
 
 AssetClass = Literal["all", "stocks", "etfs"]
-Region = Literal["all", "us", "eu", "asia"]
-Currency = Literal[
-    "all", "USD", "EUR", "GBP", "CHF", "JPY", "HKD", "INR",
-    "KRW", "TWD", "SGD", "AUD", "DKK", "SEK", "NOK", "GBp",
-]
 
 
 def _build_universe(
     tickers: Iterable[str] | None,
     asset_class: AssetClass,
-    region: Region,
-    currency: Currency = "all",
+    region: str | list[str],
+    currency: str | list[str] = "all",
 ) -> list[str]:
     if tickers:
         return list(tickers)
 
+    regions = [region] if isinstance(region, str) else region
+    currencies = [currency] if isinstance(currency, str) else currency
+
     # Narrow region based on currency filter to avoid fetching tickers
     # that will be filtered out anyway — reduces yfinance API pressure.
-    effective_region: Region = region
-    if currency != "all" and effective_region == "all":
-        _CURRENCY_TO_REGION: dict[str, Region] = {
+    if "all" in regions and "all" not in currencies:
+        _CURRENCY_TO_REGION: dict[str, str] = {
             "USD": "us",
             "EUR": "eu", "GBP": "eu", "CHF": "eu",
             "DKK": "eu", "SEK": "eu", "NOK": "eu", "GBp": "eu",
             "JPY": "asia", "HKD": "asia", "INR": "asia",
             "KRW": "asia", "TWD": "asia", "SGD": "asia", "AUD": "asia",
         }
-        effective_region = _CURRENCY_TO_REGION.get(currency, "all")
+        derived: set[str] = set()
+        for c in currencies:
+            mapped = _CURRENCY_TO_REGION.get(c)
+            if mapped:
+                derived.add(mapped)
+            else:
+                derived.add("all")
+        regions = sorted(derived) if "all" not in derived else ["all"]
 
     pools: list[list[str]] = []
     if asset_class in ("stocks", "all"):
-        if effective_region in ("us", "all"):
+        if "all" in regions or "us" in regions:
             pools.append(list(DEFAULT_UNIVERSE))
-        if effective_region in ("eu", "all"):
+        if "all" in regions or "eu" in regions:
             pools.append(list(DEFAULT_EU_UNIVERSE))
-        if effective_region in ("asia", "all"):
+        if "all" in regions or "asia" in regions:
             pools.append(list(ASIA_UNIVERSE))
     if asset_class in ("etfs", "all"):
-        if effective_region in ("us", "all"):
+        if "all" in regions or "us" in regions:
             pools.append(list(DEFAULT_ETF_UNIVERSE))
-        if effective_region in ("eu", "all"):
+        if "all" in regions or "eu" in regions:
             pools.append(list(DEFAULT_EU_ETF_UNIVERSE))
-        if effective_region in ("asia", "all"):
+        if "all" in regions or "asia" in regions:
             pools.append(list(ASIA_ETF_UNIVERSE))
 
     return [t for pool in pools for t in pool]
@@ -70,8 +74,8 @@ def recommend(
     max_workers: int = 10,
     min_market_cap: float = 2_000_000_000,
     asset_class: AssetClass = "all",
-    region: Region = "all",
-    currency: Currency = "all",
+    region: str | list[str] = "all",
+    currency: str | list[str] = "all",
     progress_cb=None,
 ) -> list[ScoredAsset]:
     """Score each ticker and return the top ``top_n`` long-term buys.
@@ -85,8 +89,8 @@ def recommend(
             reports figures in the asset's native currency, so this acts as
             an approximate filter for non-USD listings.
         asset_class: "all", "stocks", or "etfs".
-        region: "all", "us", "eu", or "asia".
-        currency: Filter by ISO currency code (e.g. ``"USD"``, ``"EUR"``).
+        region: Region(s) — ``"all"``, ``"us"``, ``"eu"``, ``"asia"`` or a list.
+        currency: Currency filter(s) — e.g. ``"USD"``, ``["USD", "EUR"]``.
         progress_cb: Optional callable ``(done, total, ticker)``.
     """
     universe = _build_universe(tickers, asset_class, region, currency)
@@ -107,8 +111,10 @@ def recommend(
                 pass
             if progress_cb:
                 progress_cb(i, total, ticker)
-    filtered = scored
-    if currency != "all":
-        filtered = [s for s in filtered if s.data.currency == currency]
+    currencies = [currency] if isinstance(currency, str) else currency
+    if "all" not in currencies:
+        filtered = [s for s in scored if s.data.currency in currencies]
+    else:
+        filtered = scored
     filtered.sort(key=lambda s: s.total, reverse=True)
     return filtered[:top_n]

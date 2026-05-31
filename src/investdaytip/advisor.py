@@ -312,9 +312,10 @@ def advisor_main(argv: list[str] | None = None) -> int:
         help="Path to portfolio ticker file (default: portfolios/portfolio.txt)",
     )
     parser.add_argument("-a", "--asset-class", choices=["all", "stocks", "etfs"], default=None)
-    parser.add_argument("-r", "--region", choices=["all", "us", "eu", "asia"], default=None)
+    parser.add_argument("-r", "--region", nargs="+",
+                        choices=["all", "us", "eu", "asia"], default=None)
     parser.add_argument(
-        "-c", "--currency",
+        "-c", "--currency", nargs="+",
         choices=["all", "USD", "EUR", "GBP", "CHF", "JPY", "HKD", "INR",
                  "KRW", "TWD", "SGD", "AUD", "DKK", "SEK", "NOK", "GBp"],
         default=None,
@@ -452,15 +453,18 @@ def advisor_main(argv: list[str] | None = None) -> int:
             reg = args.region
         else:
             _, d_reg = _risk_defaults.get(risk, ("all", "all"))
-            reg = Prompt.ask(
-                "Which regions?",
-                choices=["all", "us", "eu", "asia"],
-                default=d_reg,
-            )
+            reg = [
+                Prompt.ask(
+                    "Which regions?",
+                    choices=["all", "us", "eu", "asia"],
+                    default=d_reg,
+                )
+            ]
 
         if args.currency:
             ccy = args.currency
         else:
+            _reg_for_ccy = reg[0] if isinstance(reg, list) else reg
             _currency_choices = {
                 "us": ["USD", "all"],
                 "eu": ["EUR", "USD", "GBP", "all"],
@@ -468,11 +472,13 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 "all": ["all"],
             }
             _currency_defaults = {"us": "USD", "eu": "EUR", "asia": "all", "all": "all"}
-            ccy = Prompt.ask(
-                "Currency filter?",
-                choices=_currency_choices.get(reg, ["all"]),
-                default=_currency_defaults.get(reg, "all"),
-            )
+            ccy = [
+                Prompt.ask(
+                    "Currency filter?",
+                    choices=_currency_choices.get(_reg_for_ccy, ["all"]),
+                    default=_currency_defaults.get(_reg_for_ccy, "all"),
+                )
+            ]
 
         # Ask about missing sector focus (only in interactive mode)
         target_sector: str | None = None
