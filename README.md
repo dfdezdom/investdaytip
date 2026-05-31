@@ -1,7 +1,7 @@
 # InvestDayTip
 
 <p align="center">
-  <img src="logo.svg" alt="InvestDayTip Logo" width="400">
+  <img src="logo.svg" alt="InvestDayTip Logo" width="300">
 </p>
 
 > A multi-factor analysis tool that suggests long-term **stock & ETF** buy recommendations from US, European, and Asian markets, computed live from public market data.
