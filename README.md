@@ -115,6 +115,7 @@ investdaytip --help
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
 | `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable) | `2B` |
 | `--workers N` | Parallel fetch threads | `10` |
+| `-h, --help` | Show the CLI help message and exit | n/a |
 
 ### Advisor subcommand
 
