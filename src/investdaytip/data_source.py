@@ -256,10 +256,12 @@ def _fetch_etf(ticker: str, t: yf.Ticker, info: dict) -> EtfData:
     return data
 
 
-def fetch_asset(ticker: str) -> AssetData:
+def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> AssetData:
     """Fetch data for a ticker, auto-dispatching stock vs ETF.
 
     Retries up to 3 times with exponential backoff on rate-limit errors.
+    When ``min_market_cap > 0``, skips the expensive ``t.history()`` call
+    for tickers whose market cap / AUM is below the threshold.
     """
     delays = [10, 30, 60]
     for attempt in range(len(delays) + 1):
@@ -281,6 +283,27 @@ def fetch_asset(ticker: str) -> AssetData:
         break
 
     quote_type = (info.get("quoteType") or "").upper()
+
+    # Early market-cap filter — skip history fetch for tiny tickers
+    if min_market_cap > 0:
+        mc: float | None
+        if quote_type == "ETF":
+            mc = _safe_get(info, "totalAssets")
+        else:
+            mc = _safe_get(info, "marketCap")
+        if mc is not None and mc < min_market_cap:
+            data: AssetData
+            if quote_type == "ETF":
+                data = EtfData(ticker=ticker, total_assets=mc)
+                data.category = info.get("category")
+            else:
+                data = StockData(ticker=ticker, market_cap=mc)
+                data.sector = info.get("sector")
+            data.name = info.get("shortName") or info.get("longName") or ""
+            data.currency = info.get("currency")
+            data.exchange = info.get("exchange")
+            return data
+
     with _suppress_stderr():
         if quote_type == "ETF":
             return _fetch_etf(ticker, t, info)
@@ -288,6 +311,6 @@ def fetch_asset(ticker: str) -> AssetData:
 
 
 # Backwards-compatible alias
-def fetch_stock(ticker: str) -> AssetData:
-    return fetch_asset(ticker)
+def fetch_stock(ticker: str, min_market_cap: float = 0.0) -> AssetData:
+    return fetch_asset(ticker, min_market_cap)
 

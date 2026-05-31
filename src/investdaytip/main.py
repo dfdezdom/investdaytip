@@ -23,11 +23,12 @@ def get_recommendations(
     asset_class: str = "all",
     region: str = "all",
     currency: str = "all",
+    min_market_cap: float = 2_000_000_000,
 ) -> list[ScoredAsset]:
     """Programmatic API: return the top ``top_n`` long-term buy recommendations."""
     return recommend(  # type: ignore[arg-type]
         tickers=tickers, top_n=top_n, asset_class=asset_class,
-        region=region, currency=currency,
+        region=region, currency=currency, min_market_cap=min_market_cap,
     )
 
 
@@ -120,6 +121,15 @@ def _merge_ticker_lists(cli_tickers: list[str] | None, file_tickers: list[str]) 
         seen.add(key)
         merged.append(ticker)
     return merged or None
+
+
+def _parse_min_market_cap(raw: str) -> float:
+    """Parse ``1B``, ``500M``, ``2B`` into float. Falls back to plain float."""
+    suffixes = {"B": 1_000_000_000, "M": 1_000_000, "K": 1_000}
+    s = raw.strip().upper()
+    if s and s[-1] in suffixes:
+        return float(s[:-1]) * suffixes[s[-1]]
+    return float(raw)
 
 
 def _render(results: list[ScoredAsset], console: Console) -> None:
@@ -224,6 +234,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--workers", type=int, default=10,
                         help="Parallel fetch workers (default: 10).")
+    parser.add_argument("--min-market-cap", type=_parse_min_market_cap, default=2_000_000_000,
+                        help="Min. market cap (e.g. 1B, 500M). 0 to disable (default: 2B).")
     parser.add_argument(
         "--export-html",
         nargs="?",
@@ -277,6 +289,7 @@ def main(argv: list[str] | None = None) -> int:
                 tickers=effective_tickers,
                 top_n=args.top,
                 max_workers=args.workers,
+                min_market_cap=args.min_market_cap,
                 asset_class=args.asset_class,
                 region=args.region,
                 currency=args.currency,

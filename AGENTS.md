@@ -45,14 +45,13 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 
 ### Rate Limits & Error Handling
 - `fetch_asset()` retries on `YFRateLimitError` with delays [10, 30, 60]s then returns error dataclass
-- `recommend()` adds `time.sleep(0.3)` after every `max_workers * 5` results to avoid throttling
 - Missing data → neutral 50 (never crashes); yfinance errors caught per-ticker, stored in `errors` list
 
 ### CLI Quirks
 - `--export-html` uses `nargs="?"` with `const=""` — no arg means auto-generated filename `investDayTip[-<tag>]-yyyymmdd-hhmm.html`; tag derived from tickers-file stem (stopwords filtered)
 - `advisor` subcommand duplicates many flags from main parser but some default to `None` for interactive prompts
 - Ticker files: supports newlines, spaces, commas, and `#` comments; `_merge_ticker_lists()` deduplicates case-insensitively preserving first-occurrence casing
-- Default `min_market_cap` filter: $2B (applied against native-currency figures, approximate for non-USD)
+- `--min-market-cap` filter: $2B default (e.g. `1B`, `500M`, `0` to disable); applied against native-currency figures, approximate for non-USD
 
 ### Advisor Module
 - `market_regime()` fetches `^VIX` and `^VXN` via yfinance; thresholds: ≤15 bullish, ≤25 neutral, ≤35 bearish, >35 crash

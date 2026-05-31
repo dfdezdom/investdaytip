@@ -18,7 +18,7 @@ from yfinance.exceptions import YFRateLimitError
 
 from investdaytip.data_source import _suppress_stderr
 from investdaytip.html_export import export_recommendations_html
-from investdaytip.main import _load_tickers_from_file, _render
+from investdaytip.main import _load_tickers_from_file, _parse_min_market_cap, _render
 from investdaytip.recommender import recommend
 
 # VIX thresholds
@@ -131,7 +131,7 @@ def bubble_risk() -> dict:
 # Portfolio review
 # ---------------------------------------------------------------------------
 
-def portfolio_review(cartera_path: str) -> dict:
+def portfolio_review(cartera_path: str, min_market_cap: float = 2_000_000_000) -> dict:
     """Score existing portfolio, flag weak positions."""
     if not Path(cartera_path).exists():
         return {"error": f"File not found: {cartera_path}"}
@@ -140,7 +140,7 @@ def portfolio_review(cartera_path: str) -> dict:
     if not tickers:
         return {"error": "No tickers found in file."}
 
-    results = recommend(tickers=tickers, top_n=len(tickers))
+    results = recommend(tickers=tickers, top_n=len(tickers), min_market_cap=min_market_cap)
 
     weak = [s for s in results if s.total < 40]
     moderate = [s for s in results if 40 <= s.total < 60]
@@ -185,6 +185,7 @@ def run_comprehensive(
     asset_classes: Iterable[str] = ("stocks",),
     top_n: int = 10,
     currencies: dict[str, str] | None = None,
+    min_market_cap: float = 2_000_000_000,
 ) -> dict:
     """Run analysis across multiple region×asset_class combinations.
 
@@ -217,7 +218,7 @@ def run_comprehensive(
     result: dict = {
         "market": market_regime(),
         "bubble": bubble_risk(),
-        "portfolio": portfolio_review(portfolio_path),
+        "portfolio": portfolio_review(portfolio_path, min_market_cap),
         "recommendations": {},
         "errors": [],
         "html_reports": [],
@@ -249,6 +250,7 @@ def run_comprehensive(
                     region=region,
                     top_n=top_n,
                     currency=ccy,
+                    min_market_cap=min_market_cap,
                 )
                 filtered = [
                     r for r in recs
@@ -314,6 +316,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
                  "KRW", "TWD", "SGD", "AUD", "DKK", "SEK", "NOK", "GBp"],
         default=None,
     )
+    parser.add_argument("--min-market-cap", type=_parse_min_market_cap, default=2_000_000_000,
+                        help="Min. market cap (e.g. 1B, 500M). 0 to disable (default: 2B).")
     args = parser.parse_args(argv)
 
     from rich.console import Console
@@ -371,7 +375,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
     else:
         with console.status("[bold green]Analyzing portfolio..."):
             try:
-                review = portfolio_review(str(portfolio_path))
+                review = portfolio_review(str(portfolio_path), args.min_market_cap)
             except YFRateLimitError:
                 console.print(
                     "\n[yellow]⏳ Rate limit reached while analyzing portfolio. "
@@ -486,7 +490,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 }
 
             try:
-                results = recommend(asset_class=ac, region=reg, top_n=10, currency=ccy)
+                results = recommend(asset_class=ac, region=reg, top_n=10, currency=ccy, min_market_cap=args.min_market_cap)
             except YFRateLimitError:
                 console.print(
                     "\n[yellow]⏳ yfinance rate limit reached. "

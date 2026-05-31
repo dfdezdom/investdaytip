@@ -97,7 +97,7 @@ def recommend(
         progress_cb(0, total, "")
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {pool.submit(fetch_asset, t): t for t in universe}
+        futures = {pool.submit(fetch_asset, t, min_market_cap): t for t in universe}
         for i, fut in enumerate(as_completed(futures), start=1):
             ticker = futures[fut]
             try:
@@ -107,10 +107,7 @@ def recommend(
                 pass
             if progress_cb:
                 progress_cb(i, total, ticker)
-    filtered = [
-        s for s in scored
-        if s.data.market_cap is None or s.data.market_cap >= min_market_cap
-    ]
+    filtered = scored
     if currency != "all":
         filtered = [s for s in filtered if s.data.currency == currency]
     filtered.sort(key=lambda s: s.total, reverse=True)

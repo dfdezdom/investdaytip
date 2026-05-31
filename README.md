@@ -73,6 +73,8 @@ investdaytip --export-html             # Uses investDayTip-aaaammdd-hhmm.html
                                        # when --tickers-file is set
 
 investdaytip --workers 20            # More parallelism
+investdaytip --min-market-cap 1B     # Raise min market cap to $1B
+investdaytip --min-market-cap 0      # Disable market-cap filter
 investdaytip --help
 
 ./preview.sh                         # Serve generated HTML files on localhost:8000
@@ -89,6 +91,7 @@ investdaytip --help
 | `-c, --currency {all,USD,EUR,GBP,…}` | Currency filter; narrows universe to matching region when no `-r` is given | `all` |
 | `-r, --region {all,us,eu,asia}` | Region filter | `all` |
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
+| `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable) | `2B` |
 | `--workers N` | Parallel fetch threads | `10` |
 
 ### Advisor subcommand
@@ -361,7 +364,7 @@ tickers-files-examples/
 
 - **No currency normalization** — prices, market caps and AUM stay in native currency
 - **Currency filter** (`-c`) compares against yfinance's reported currency field; tickers with a missing/unknown currency pass only when `-c all`
-- **`min_market_cap` filter** is applied against raw native-currency figures
+- **`min_market_cap` filter** (`--min-market-cap`) is applied against raw native-currency figures
 - Some European tickers change Yahoo symbols over time; if a ticker is delisted in Yahoo it's silently skipped
 - ETF expense ratios are sometimes missing in `yfinance` — the scorer falls back to a slightly optimistic default (60) in that case
 - **Long-term, fundamental-driven model**: not suitable for short-term/day trading signals
