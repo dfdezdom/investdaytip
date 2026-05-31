@@ -138,14 +138,14 @@ python -m investdaytip.main advisor --risk <profile> -a etfs -r us
 
 | VIX range | Regime | Action |
 |-----------|--------|--------|
-| < 15 | 🟢 Bullish | **buy** |
-| 15–25 | 🟡 Neutral | **buy** |
-| 25–35 | 🟠 Bearish | **hold** |
+| <= 15 | 🟢 Bullish | **buy** |
+| 16–25 | 🟡 Neutral | **buy** |
+| 26–35 | 🟠 Bearish | **hold** |
 | > 35 | 🔴 Crash | **sell** |
 
 ### Bubble risk (VIX 2-year percentile)
 - > 90 or < 15 → **high**
-- 15–30 → **medium**
+- 15–29 → **medium**
 - otherwise → **low**
 
 ### Bubble burst signals (historical comparison: railroads / dot-com)
@@ -167,8 +167,8 @@ Include this analysis in the **Market diagnosis** section whenever running a mar
 
 ### Portfolio scores
 - < 40 → 🔴 SELL
-- 40–60 → 🟡 HOLD
-- > 60 → 🟢 OK
+- 40–59 → 🟡 HOLD
+- >= 60 → 🟢 OK
 
 ## Presentation format
 
