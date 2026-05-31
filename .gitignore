@@ -42,3 +42,6 @@ poetry.lock
 # Personal portfolio ticker file
 /advisor_recommendations/
 /portfolios/
+
+# Planning docs (local only)
+PLAN_FOR_SCORING_ALGORITHM_IMPROVEMENTS.md
