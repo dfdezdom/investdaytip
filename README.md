@@ -10,6 +10,8 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI version](https://img.shields.io/pypi/v/investdaytip.svg)](https://pypi.org/project/investdaytip/)
 [![CI](https://github.com/dfdezdom/investdaytip/actions/workflows/ci.yml/badge.svg)](https://github.com/dfdezdom/investdaytip/actions/workflows/ci.yml)
+[![GitHub stars](https://img.shields.io/github/stars/dfdezdom/investdaytip?style=flat&logo=github)](https://github.com/dfdezdom/investdaytip/stargazers)
+[![Last commit](https://img.shields.io/github/last-commit/dfdezdom/investdaytip)](https://github.com/dfdezdom/investdaytip/commits/main)
 
 ---
 
@@ -24,7 +26,6 @@
 - 🧾 **Self-contained HTML export** — interactive report with filters and sortable columns
 - 🧪 **Pure scoring functions** — testable without network
 - 🧠 **Interactive advisor** — market pulse, portfolio review, and tailored buy recommendations via the `advisor` subcommand
-- 🤖 **AI-powered advisor** — chat with an intelligent investment advisor that analyzes markets, reviews portfolios, and recommends buys — powered by [OpenCode](https://opencode.ai) agents
 
 ---
 
@@ -48,6 +49,21 @@ pip install -e ".[dev]"
 
 ---
 
+## Quick start
+
+```bash
+pip install investdaytip
+investdaytip
+```
+
+That's it. You'll see the top 5 buys scored across 300+ stocks & ETFs.
+
+<p align="center">
+  <img src="docs/screenshot-cli.svg" alt="InvestDayTip CLI output" width="90%">
+</p>
+
+---
+
 ## Usage
 
 ### CLI
@@ -58,38 +74,25 @@ investdaytip -n 10                   # Top 10
 investdaytip -a stocks               # Only stocks
 investdaytip -a etfs                 # Only ETFs
 investdaytip -r us                   # Only US
-
 investdaytip -r eu                   # Only Europe
-
 investdaytip -r asia                 # Only Asia
-
 investdaytip -r us eu                # US + Europe
-
 investdaytip -r eu -a stocks         # Only European stocks
-
 investdaytip -r asia -a etfs         # Only Asian ETFs
-
 investdaytip -c USD                  # Only USD-denominated assets
-
 investdaytip -c EUR                  # Only EUR-denominated assets
-
 investdaytip -c USD EUR              # USD + EUR assets
-
 investdaytip -c JPY                  # Only JPY-denominated assets
-
 investdaytip -r eu -c USD            # EU region + USD post-filter
-
 investdaytip -r us eu -c USD EUR     # US + EU, USD + EUR assets
 investdaytip -t AAPL MSFT VOO        # Custom ticker list
 
 investdaytip --tickers-file tickers.txt # Custom ticker file (lines, spaces, commas)
 investdaytip --tickers-file tickers-files-examples/semiconductors_relevant_tickers.txt
-
 investdaytip --export-html report.html # Export report with interactive filters
 investdaytip --export-html             # Uses investDayTip-aaaammdd-hhmm.html
                                        # or investDayTip-<tag>-aaaammdd-hhmm.html
                                        # when --tickers-file is set
-
 investdaytip --workers 20            # More parallelism
 investdaytip --min-market-cap 1B     # Raise min market cap to $1B
 investdaytip --min-market-cap 0      # Disable market-cap filter
@@ -125,38 +128,15 @@ investdaytip advisor --risk moderate --portfolio portfolios/portfolio.txt  # Cus
 
 See `investdaytip advisor --help` for all options.
 
-### OpenCode AI Agent (chat mode)
+### OpenCode AI Agent
 
-Instead of memorizing flags, talk to an **AI investment advisor** that understands your portfolio, checks market fear, and suggests buys — powered by [OpenCode](https://opencode.ai).
+> 🤖 Chat with an AI investment advisor that checks VIX, reviews portfolios, and recommends buys — see [`.opencode/agents/advisor.md`](.opencode/agents/advisor.md).
 
-#### Usage
-
-Once configured, invoke the advisor from the project root:
+No memorizing flags. From the project root:
 
 ```text
 @advisor  what's the market pulse?
 ```
-
-The agent will greet you, present options, and **never run analysis without your confirmation**. Full conversational flow:
-
-```
-1. You: @advisor
-2. Agent: "What would you like? Market pulse / Portfolio review / Buy recs / Full analysis?"
-3. You: "Market pulse, moderate risk"
-4. Agent: Runs VIX/VXN check, bubble risk, bubble burst signals → presents results
-```
-
-See the [agent definition](.opencode/agents/advisor.md) for full details on capabilities and interpretation.
-
-#### Options
-
-| Flag | Description | Default |
-|---|---|---|
-| `--risk {conservative,moderate,aggressive}` | Risk profile (if omitted, asked interactively) | interactive |
-| `--portfolio PATH` | Path to portfolio ticker file | `portfolios/portfolio.txt` |
-| `-a, --asset-class {all,stocks,etfs}` | Asset class filter for buy recommendations | interactive |
-| `-r, --region {all,us,eu,asia}` `nargs="+"` | Region filter(s) for buy recommendations | interactive |
-| `-c, --currency {all,USD,EUR,GBP,…}` `nargs="+"` | Currency filter(s) | interactive |
 
 ### HTML export
 
@@ -182,38 +162,7 @@ It also includes:
 - Pre-rendered rows + client-side interactivity (works even if JS is restricted)
 - Direct platform links in table columns: `Ticker` (Google Finance), `T` (TradingView), `Y` (Yahoo Finance)
 
-#### Google Finance exact links
-
-The `Ticker` column uses exact Google Finance quote URLs when a ticker suffix is recognized
-(format: `https://www.google.com/finance/quote/SYMBOL:EXCHANGE?hl=en`).
-
-Current suffix mapping includes:
-
-- US (no suffix) → `NASDAQ` by default, with explicit overrides for known symbols (for example `HWM` → `NYSE`)
-- Germany `.DE` → `ETR`, `.F` → `FRA`
-- France `.PA` → `EPA`
-- Netherlands `.AS` → `AMS`
-- UK `.L` → `LON`
-- Spain `.MC` → `BME`
-- Italy `.MI` → `BIT`
-- Switzerland `.SW` → `SWX`
-- Sweden `.ST` → `STO`
-- Denmark `.CO` → `CPH`
-- Finland `.HE` → `HEL`
-- Norway `.OL` → `OSL`
-- Japan `.T` → `TYO`
-- Hong Kong `.HK` → `HKG`
-- Singapore `.SI` → `SGX`
-- India `.NS` → `NSE`
-- South Korea `.KS` → `KRX`
-- Taiwan `.TW` → `TPE`
-- Australia `.AX` → `ASX`
-- Canada `.TO` → `TSE`
-- China `.SS` → `SHA`, `.SZ` → `SHE`
-
-When a suffix is not mapped, the report falls back to Google Finance search URL.
-
-TradingView links use the same exchange mapping logic.
+Direct platform links (`Ticker` → Google Finance, `T` → TradingView, `Y` → Yahoo Finance) use exchange suffix mapping. See `_normalize_exchange_hint()` and `_exchange_mapping()` in [`src/investdaytip/html_export.py`](src/investdaytip/html_export.py) for the full list of ~20 supported exchanges.
 
 ### Programmatic API
 

@@ -44,4 +44,4 @@ poetry.lock
 /portfolios/
 
 # Planning docs (local only)
-PLAN_FOR_SCORING_ALGORITHM_IMPROVEMENTS.md
+/plan/

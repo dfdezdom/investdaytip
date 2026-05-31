@@ -9,7 +9,11 @@ description = "A tool that suggests 5 stock investment recommendations at the mo
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
-keywords = ["stocks", "investment", "finance", "trading"]
+keywords = [
+    "stocks", "investment", "finance", "trading",
+    "stock screener", "etf", "screening", "fundamental analysis",
+    "yfinance", "investing", "portfolio", "scoring",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: End Users/Desktop",
