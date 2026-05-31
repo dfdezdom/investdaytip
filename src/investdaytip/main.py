@@ -209,6 +209,12 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Currency filter(s) — e.g. -c USD EUR. If omitted, asked interactively.",
     )
+    adv.add_argument("--min-market-cap", type=_parse_min_market_cap, default=2_000_000_000,
+                     help="Min. market cap (e.g. 1B, 500M). 0 to disable (default: 2B).")
+    adv.add_argument("--no-cache", action="store_true",
+                     help="Skip cache and fetch fresh data from yfinance.")
+    adv.add_argument("--cache-clear", action="store_true",
+                     help="Purge all cached data before running.")
 
     parser.add_argument("-n", "--top", type=int, default=5,
                         help="Number of recommendations to return (default: 5).")
@@ -248,6 +254,10 @@ def main(argv: list[str] | None = None) -> int:
             "If PATH is omitted, defaults to investDayTip-aaaammdd-hhmm.html."
         ),
     )
+    parser.add_argument("--no-cache", action="store_true",
+                        help="Skip cache and fetch fresh data from yfinance.")
+    parser.add_argument("--cache-clear", action="store_true",
+                        help="Purge all cached data before running.")
     args = parser.parse_args(argv)
 
     if args.command == "advisor":
@@ -264,6 +274,12 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     effective_tickers = _merge_ticker_lists(args.tickers, file_tickers)
+
+    from investdaytip.cache import clear_cache, set_enabled as cache_set_enabled
+    if args.cache_clear:
+        clear_cache()
+    if args.no_cache:
+        cache_set_enabled(False)
 
     console = Console()
     region_str = ", ".join(args.region) if isinstance(args.region, list) else args.region

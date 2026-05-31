@@ -14,6 +14,7 @@ import os
 import time
 from contextlib import contextmanager, redirect_stderr
 from dataclasses import dataclass, field
+from io import StringIO
 from typing import Optional, Union
 
 import pandas as pd
@@ -170,7 +171,7 @@ def _trend_metrics(
     return price_vs, return_1m, return_12m, slope, vol
 
 
-def _fetch_stock(ticker: str, t: yf.Ticker, info: dict) -> StockData:
+def _fetch_stock(ticker: str, info: dict, history: pd.DataFrame) -> StockData:
     data = StockData(ticker=ticker)
     data.name = info.get("shortName") or info.get("longName")
     data.sector = info.get("sector")
@@ -192,22 +193,18 @@ def _fetch_stock(ticker: str, t: yf.Ticker, info: dict) -> StockData:
     data.market_cap = _safe_get(info, "marketCap")
     data.current_price = _safe_get(info, "currentPrice") or _safe_get(info, "regularMarketPrice")
 
-    try:
-        hist = t.history(period="2y", interval="1d", auto_adjust=True)
-        pvs, r1m, r12, slope, _vol = _trend_metrics(hist)
-        data.price_vs_sma200 = pvs
-        data.return_1m = r1m
-        data.return_12m = r12
-        data.sma200_slope = slope
-        if data.current_price is None and hist is not None and not hist.empty:
-            data.current_price = float(hist["Close"].iloc[-1])
-    except Exception as exc:
-        data.errors.append(f"history fetch failed: {exc}")
+    pvs, r1m, r12, slope, _vol = _trend_metrics(history)
+    data.price_vs_sma200 = pvs
+    data.return_1m = r1m
+    data.return_12m = r12
+    data.sma200_slope = slope
+    if data.current_price is None and history is not None and not history.empty:
+        data.current_price = float(history["Close"].iloc[-1])
 
     return data
 
 
-def _fetch_etf(ticker: str, t: yf.Ticker, info: dict) -> EtfData:
+def _fetch_etf(ticker: str, info: dict, history: pd.DataFrame) -> EtfData:
     data = EtfData(ticker=ticker)
     data.name = info.get("longName") or info.get("shortName")
     data.category = info.get("category")
@@ -226,65 +223,88 @@ def _fetch_etf(ticker: str, t: yf.Ticker, info: dict) -> EtfData:
     data.current_price = _safe_get(info, "regularMarketPrice") or _safe_get(info, "previousClose")
     data.nav = _safe_get(info, "navPrice")
 
-    # Try to backfill expense ratio from fundsData if missing
-    if data.expense_ratio is None:
-        try:
-            funds = getattr(t, "funds_data", None)
-            if funds is not None:
-                desc = funds.fund_overview or {}
-                er = desc.get("annualReportExpenseRatio") or desc.get("expenseRatio")
-                if er is not None:
-                    data.expense_ratio = float(er)
-        except Exception:
-            pass
-
-    try:
-        hist = t.history(period="2y", interval="1d", auto_adjust=True)
-        pvs, r1m, r12, slope, vol = _trend_metrics(hist)
-        data.price_vs_sma200 = pvs
-        data.return_1m = r1m
-        data.return_12m = r12
-        data.sma200_slope = slope
-        data.volatility_1y = vol
-        if r12 is not None and vol is not None and vol > 0:
-            data.sharpe_proxy = (r12 - RISK_FREE_RATE) / vol
-        if data.current_price is None and hist is not None and not hist.empty:
-            data.current_price = float(hist["Close"].iloc[-1])
-    except Exception as exc:
-        data.errors.append(f"history fetch failed: {exc}")
+    pvs, r1m, r12, slope, vol = _trend_metrics(history)
+    data.price_vs_sma200 = pvs
+    data.return_1m = r1m
+    data.return_12m = r12
+    data.sma200_slope = slope
+    data.volatility_1y = vol
+    if r12 is not None and vol is not None and vol > 0:
+        data.sharpe_proxy = (r12 - RISK_FREE_RATE) / vol
+    if data.current_price is None and history is not None and not history.empty:
+        data.current_price = float(history["Close"].iloc[-1])
 
     return data
+
+
+def _enrich_etf_info(t: yf.Ticker, info: dict) -> None:
+    """Backfill expense ratio from ``t.funds_data`` if missing from ``info``.
+
+    Mutates ``info`` in-place so the enriched dict gets cached.
+    """
+    if info.get("annualReportExpenseRatio") is not None or info.get("netExpenseRatio") is not None:
+        return
+    try:
+        funds = getattr(t, "funds_data", None)
+        if funds is not None:
+            desc = funds.fund_overview or {}
+            er = desc.get("annualReportExpenseRatio") or desc.get("expenseRatio")
+            if er is not None:
+                info["netExpenseRatio"] = float(er)
+    except Exception:
+        pass
 
 
 def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> AssetData:
     """Fetch data for a ticker, auto-dispatching stock vs ETF.
 
+    Uses a SQLite cache (``~/.investdaytip/cache.db``) to avoid redundant
+    yfinance calls.  The ``info`` dict is cached for 1 day; price history
+    is cached for 5 minutes.  Use ``--no-cache`` to bypass or
+    ``--cache-clear`` to purge all entries.
+
     Retries up to 3 times with exponential backoff on rate-limit errors.
     When ``min_market_cap > 0``, skips the expensive ``t.history()`` call
     for tickers whose market cap / AUM is below the threshold.
     """
-    delays = [10, 30, 60]
-    for attempt in range(len(delays) + 1):
-        try:
-            with _suppress_stderr():
-                t = yf.Ticker(ticker)
-                info = t.info or {}
-        except YFRateLimitError:
-            if attempt < len(delays):
-                time.sleep(delays[attempt])
-                continue
-            d = StockData(ticker=ticker)
-            d.errors.append(f"rate limited after {len(delays)} retries")
-            return d
-        except Exception as exc:
-            d = StockData(ticker=ticker)
-            d.errors.append(f"info fetch failed: {exc}")
-            return d
-        break
+    from investdaytip.cache import (
+        cache_history_get,
+        cache_history_set,
+        cache_info_get,
+        cache_info_set,
+    )
+
+    # ── Step 1: get / fetch info dict ────────────────────────────────────
+    info = cache_info_get(ticker)
+    t: yf.Ticker | None = None
+    info_fetched_fresh = False
+    if info is None:
+        delays = [10, 30, 60]
+        for attempt in range(len(delays) + 1):
+            try:
+                with _suppress_stderr():
+                    t = yf.Ticker(ticker)
+                    info = t.info or {}
+            except YFRateLimitError:
+                if attempt < len(delays):
+                    time.sleep(delays[attempt])
+                    continue
+                d = StockData(ticker=ticker)
+                d.errors.append(f"rate limited after {len(delays)} retries")
+                return d
+            except Exception as exc:
+                d = StockData(ticker=ticker)
+                d.errors.append(f"info fetch failed: {exc}")
+                return d
+            break
+
+        if (info.get("quoteType") or "").upper() == "ETF":
+            _enrich_etf_info(t, info)
+        info_fetched_fresh = True
 
     quote_type = (info.get("quoteType") or "").upper()
 
-    # Early market-cap filter — skip history fetch for tiny tickers
+    # ── Early market-cap filter — skip history fetch for tiny tickers ───
     if min_market_cap > 0:
         mc: float | None
         if quote_type == "ETF":
@@ -302,12 +322,43 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> AssetData:
             data.name = info.get("shortName") or info.get("longName") or ""
             data.currency = info.get("currency")
             data.exchange = info.get("exchange")
+            if info_fetched_fresh:
+                cache_info_set(ticker, info)
             return data
 
-    with _suppress_stderr():
-        if quote_type == "ETF":
-            return _fetch_etf(ticker, t, info)
-        return _fetch_stock(ticker, t, info)
+    # ── Step 2: get / fetch price history ────────────────────────────────
+    history_str = cache_history_get(ticker)
+    if history_str is not None:
+        history = pd.read_json(StringIO(history_str))
+    else:
+        try:
+            with _suppress_stderr():
+                if t is None:
+                    t = yf.Ticker(ticker)
+                history = t.history(period="2y", interval="1d", auto_adjust=True)
+            cache_history_set(ticker, history.to_json())
+        except Exception as exc:
+            data = (
+                _fetch_etf(ticker, info, pd.DataFrame())
+                if quote_type == "ETF"
+                else _fetch_stock(ticker, info, pd.DataFrame())
+            )
+            data.errors.append(f"history fetch failed: {exc}")
+            # Cache even on failure so next run produces identical result
+            if info_fetched_fresh:
+                cache_info_set(ticker, info)
+                cache_history_set(ticker, pd.DataFrame().to_json())
+            return data
+
+    # Cache info now that history also succeeded — atomic snapshot for
+    # consistent results across consecutive runs.
+    if info_fetched_fresh:
+        cache_info_set(ticker, info)
+
+    # ── Step 3: construct result ─────────────────────────────────────────
+    if quote_type == "ETF":
+        return _fetch_etf(ticker, info, history)
+    return _fetch_stock(ticker, info, history)
 
 
 # Backwards-compatible alias

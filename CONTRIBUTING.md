@@ -26,11 +26,12 @@ Thank you for considering contributing! 🎉
 |---|---|
 | `src/investdaytip/scoring.py` | Pure scoring functions for stocks & ETFs |
 | `src/investdaytip/data_source.py` | yfinance wrapper, dataclasses |
+| `src/investdaytip/cache.py` | SQLite caching layer (per-thread connections, WAL mode) |
 | `src/investdaytip/recommender.py` | Concurrent orchestration |
 | `src/investdaytip/main.py` | CLI entry point (`investdaytip`) |
 | `src/investdaytip/advisor.py` | Interactive advisor subcommand (`investdaytip advisor`) |
 | `src/investdaytip/*_universe.py` | Curated ticker universes |
-| `tests/` | Unit tests (pure, no network) |
+| `tests/` | Unit tests (pure, no network; conftest.py disables cache automatically) |
 
 ## Areas Open for Contribution
 

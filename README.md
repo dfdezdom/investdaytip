@@ -97,6 +97,8 @@ investdaytip --export-html             # Uses investDayTip-aaaammdd-hhmm.html
 investdaytip --workers 20            # More parallelism
 investdaytip --min-market-cap 1B     # Raise min market cap to $1B
 investdaytip --min-market-cap 0      # Disable market-cap filter
+investdaytip --no-cache              # Bypass SQLite cache, fetch fresh data
+investdaytip --cache-clear           # Purge all cached data before running
 investdaytip --help
 
 ./preview.sh                         # Serve generated HTML files on localhost:8000
@@ -114,6 +116,8 @@ investdaytip --help
 | `-c, --currency {all,USD,EUR,GBP,…}` `nargs="+"` | Currency filter(s); narrows universe to matching regions when no `-r` is given | `all` |
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
 | `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable) | `2B` |
+| `--no-cache` | Skip SQLite cache, fetch all data live from Yahoo Finance | disabled |
+| `--cache-clear` | Purge the SQLite cache before running | disabled |
 | `--workers N` | Parallel fetch threads | `10` |
 | `-h, --help` | Show the CLI help message and exit | n/a |
 
@@ -286,6 +290,17 @@ http://localhost:8000/<generated-file-name>.html
 
 All market data is fetched live from **Yahoo Finance** via the [`yfinance`](https://github.com/ranaroussi/yfinance) library. Fundamentals come from `Ticker.info`, prices and trend metrics from `Ticker.history(period="2y")`.
 
+### Local Cache
+
+InvestDayTip includes an **SQLite cache** (`~/.investdaytip/cache.db`) created automatically on first fetch:
+
+| Data | TTL |
+|------|-----|
+| Prices & history | 5 minutes |
+| Fundamentals (info dict) | 1 day |
+
+The cache uses per-thread SQLite connections with a write lock to support concurrent fetches safely. Use `--no-cache` to bypass the cache for a single run, or `--cache-clear` to purge all entries. Caching is automatically disabled when running tests.
+
 ---
 
 ## Project Structure
@@ -298,6 +313,7 @@ src/investdaytip/
 ├── advisor.py             # Interactive advisor: market pulse, portfolio review, buy recs
 ├── html_export.py         # Self-contained HTML report exporter
 ├── recommender.py         # Concurrent orchestration
+├── cache.py               # SQLite caching layer (per-thread connections, WAL mode)
 ├── data_source.py         # yfinance wrapper + dataclasses (StockData / EtfData)
 ├── scoring.py             # Pure scoring functions (score_stock, score_etf)
 ├── universe.py            # US stock universe

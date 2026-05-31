@@ -18,15 +18,16 @@ No linter config checked in — follow PEP 8 + type hints.
 ## Architecture — Key Structural Facts
 
 | Layer | Path | Role |
-|---|---|---|
+|---|---|---|---|
 | CLI + public API | `main.py` | argparse + `get_recommendations()` re-exported from `__init__.py` |
 | Advisor | `advisor.py` | interactive market pulse, portfolio review, buy recs, CLI subcommand |
 | Orchestration | `recommender.py` | builds universe, ThreadPoolExecutor fetches, scores, filters, sorts |
 | Data fetching | `data_source.py` | yfinance wrapper, dataclasses (`StockData` / `EtfData` / `AssetData`). **All network I/O lives here.** |
+| Caching | `cache.py` | SQLite cache with per-thread connections, WAL mode, write lock |
 | Scoring | `scoring.py` | pure functions only — no I/O, no side effects |
 | HTML export | `html_export.py` | self-contained report with inline CSS/JS |
 | Universes | `*_universe.py` (6 modules) | curated ticker lists wired in `recommender._build_universe()` |
-| Tests | `tests/` | 4 files, no live network calls |
+| Tests | `tests/` | 5 files, no live network calls |
 | OpenCode agent | `.opencode/agents/advisor.md` | advisor subagent: permissions, interactive flow, execution methods, and interpretation guide |
 
 Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_export / Rich table`
@@ -42,6 +43,13 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - `ScoredAsset` unified output; `ScoredStock = ScoredAsset` backwards-compatible alias
 - Universe export naming: US + EU use `DEFAULT_` prefix (`DEFAULT_UNIVERSE`, `DEFAULT_EU_ETF_UNIVERSE`), Asia does not (`ASIA_UNIVERSE`, `ASIA_ETF_UNIVERSE`)
 - `_build_universe()` accepts `currency` param; when `currency != "all"` and `region == "all"`, it derives region from currency (USD→us, EUR→eu, JPY→asia) to reduce API calls
+
+### Caching
+- `CacheDB` in `cache.py`: SQLite with `threading.local()` per-thread connections, WAL mode, write lock via `threading.Lock`
+- Two cache entry types per ticker: `{ticker}:info` (fundamentals, TTL 1d) and `{ticker}:history` (prices, TTL 5min)
+- `fetch_asset()` defers cache-write until both info and history are fetched (atomic snapshot); partial results cached on history failure
+- `--no-cache` flag disables cache read/write; `--cache-clear` drops all entries
+- Tests auto-disable cache via `conftest.py::set_enabled(False)` — never hit the network
 
 ### Rate Limits & Error Handling
 - `fetch_asset()` retries on `YFRateLimitError` with delays [10, 30, 60]s then returns error dataclass

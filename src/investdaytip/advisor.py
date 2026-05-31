@@ -322,7 +322,17 @@ def advisor_main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--min-market-cap", type=_parse_min_market_cap, default=2_000_000_000,
                         help="Min. market cap (e.g. 1B, 500M). 0 to disable (default: 2B).")
+    parser.add_argument("--no-cache", action="store_true",
+                        help="Skip cache and fetch fresh data from yfinance.")
+    parser.add_argument("--cache-clear", action="store_true",
+                        help="Purge all cached data before running.")
     args = parser.parse_args(argv)
+
+    from investdaytip.cache import clear_cache, set_enabled as cache_set_enabled
+    if args.cache_clear:
+        clear_cache()
+    if args.no_cache:
+        cache_set_enabled(False)
 
     from rich.console import Console
     from rich.table import Table
