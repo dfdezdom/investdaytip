@@ -205,6 +205,9 @@ def run_comprehensive(
         top_n: How many recommendations per combination.
         currencies: Optional override dict mapping region → currency code.
             Falls back to ``_CURRENCY_DEFAULTS``.
+        min_market_cap: Minimum market cap / AUM in native currency.
+            Tickers below this threshold skip expensive history fetches.
+            Pass ``0`` to disable. Supports human-readable values via CLI.
 
     Returns:
         dict with keys:
