@@ -26,6 +26,7 @@
 - 🧾 **Self-contained HTML export** — interactive report with filters and sortable columns
 - 🧪 **Pure scoring functions** — testable without network
 - 🧠 **Interactive advisor** — market pulse, portfolio review, and tailored buy recommendations via the `advisor` subcommand
+- 🤖 **AI-powered advisor** — chat with an intelligent investment advisor that analyzes markets, reviews portfolios, and recommends buys — powered by [OpenCode](https://opencode.ai) agents
 
 ---
 
