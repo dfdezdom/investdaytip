@@ -23,7 +23,7 @@ Thank you for considering contributing! 🎉
 ## Project Layout
 
 | File | Purpose |
-|---|---|---|
+|---|---|
 | `src/investdaytip/scoring.py` | Pure scoring functions for stocks & ETFs |
 | `src/investdaytip/data_source.py` | yfinance wrapper, dataclasses |
 | `src/investdaytip/recommender.py` | Concurrent orchestration |
