@@ -68,7 +68,7 @@ The CLI prints Rich tables (┏━ ┃ ┗━ glyphs, truncated text like `Sha�
 ### A) Quick market pulse (only VIX + bubble)
 
 ```bash
-source .venv/bin/activate && python -c "
+[ -f .venv/bin/activate ] && source .venv/bin/activate; python -c "
 from investdaytip.advisor import market_regime, bubble_risk
 m = market_regime()
 b = bubble_risk()
@@ -80,7 +80,7 @@ print(f'bubble={b[\"level\"]} pct={b[\"pct_rank\"]} note={b[\"note\"]}')
 ### B) Full interactive CLI (recommended for portfolio + buys)
 
 ```bash
-source .venv/bin/activate && python -m investdaytip.main advisor
+[ -f .venv/bin/activate ] && source .venv/bin/activate; python -m investdaytip.main advisor
 ```
 
 The CLI itself will ask interactive questions — let it handle the prompts.
@@ -90,7 +90,7 @@ The CLI itself will ask interactive questions — let it handle the prompts.
 Use `run_comprehensive()` with the **exact parameters** the user chose:
 
 ```bash
-source .venv/bin/activate && python -c "
+[ -f .venv/bin/activate ] && source .venv/bin/activate; python -c "
 from investdaytip.advisor import run_comprehensive
 r = run_comprehensive(
     risk='<user_risk>',
