@@ -8,6 +8,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![PyPI version](https://img.shields.io/pypi/v/investdaytip.svg)](https://pypi.org/project/investdaytip/)
 
 ---
 
@@ -28,17 +29,19 @@
 
 ## Installation
 
+### From PyPI (recommended)
+
+```bash
+pip install investdaytip
+```
+
+### From source (for development)
+
 ```bash
 git clone https://github.com/dfdezdom/investdaytip.git
 cd investdaytip
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -e .
-```
-
-For development (tests included):
-
-```bash
 pip install -e ".[dev]"
 ```
 
