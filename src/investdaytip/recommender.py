@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterable, Literal
 
@@ -108,9 +107,6 @@ def recommend(
                 pass
             if progress_cb:
                 progress_cb(i, total, ticker)
-            if i % (max_workers * 5) == 0:
-                time.sleep(0.3)
-
     filtered = [
         s for s in scored
         if s.data.market_cap is None or s.data.market_cap >= min_market_cap
