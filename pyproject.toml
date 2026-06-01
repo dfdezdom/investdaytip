@@ -25,10 +25,12 @@ classifiers = [
     "Topic :: Office/Business :: Financial :: Investment",
 ]
 dependencies = [
-    "yfinance>=0.2.40",
-    "pandas>=2.0",
-    "numpy>=1.24",
-    "rich>=13.0",
+    # yfinance changes its scraping/API frequently; cap the major.minor range
+    # so an upstream break doesn't silently propagate to users.
+    "yfinance>=0.2.40,<0.3",
+    "pandas>=2.0,<3.0",
+    "numpy>=1.24,<3.0",
+    "rich>=13.0,<15.0",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +38,8 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "pytest-mock>=3.10",
+    "ruff>=0.4",
+    "mypy>=1.8",
 ]
 
 [project.scripts]
@@ -47,3 +51,30 @@ Issues = "https://github.com/dfdezdom/investdaytip/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/investdaytip"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    "error::DeprecationWarning:investdaytip.*",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# UP (pyupgrade) intentionally omitted: the project convention (see AGENTS.md)
+# is to use typing.Optional[...] for dataclass fields rather than `X | None`.
+select = ["E", "F", "I", "B"]
+ignore = [
+    "E501",  # long f-strings in html_export are intentional
+]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src/investdaytip"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+no_implicit_optional = true
