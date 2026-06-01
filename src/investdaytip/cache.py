@@ -32,6 +32,11 @@ class CacheDB:
         self.db_path = Path(db_path) if db_path else CACHE_DB
         self._local = threading.local()
         self._write_lock = threading.Lock()
+        # Track every per-thread connection so close_all() can release the
+        # connections opened by ThreadPoolExecutor worker threads, which
+        # otherwise leak file handles across repeated recommend() runs.
+        self._all_conns: list[sqlite3.Connection] = []
+        self._conns_lock = threading.Lock()
 
     def _connect(self) -> sqlite3.Connection:
         conn: sqlite3.Connection | None = getattr(self._local, "conn", None)
@@ -47,6 +52,8 @@ class CacheDB:
                 ")"
             )
             self._local.conn = conn
+            with self._conns_lock:
+                self._all_conns.append(conn)
         return conn
 
     def get(self, key: str) -> str | None:
@@ -81,9 +88,32 @@ class CacheDB:
             conn.commit()
 
     def close(self) -> None:
+        """Close the calling thread's connection."""
         conn: sqlite3.Connection | None = getattr(self._local, "conn", None)
         if conn is not None:
             conn.close()
+            self._local.conn = None
+            with self._conns_lock:
+                if conn in self._all_conns:
+                    self._all_conns.remove(conn)
+
+    def close_all(self) -> None:
+        """Close every connection opened by any thread (incl. workers).
+
+        Safe to call from the main thread after a worker pool has been torn
+        down. ``threading.local`` references on dead threads are cleared as
+        their objects are garbage-collected.
+        """
+        with self._conns_lock:
+            conns = list(self._all_conns)
+            self._all_conns.clear()
+        for conn in conns:
+            try:
+                conn.close()
+            except sqlite3.Error:
+                pass
+        # Drop this thread's local reference if it was among the closed set.
+        if getattr(self._local, "conn", None) is not None:
             self._local.conn = None
 
 
@@ -151,3 +181,9 @@ def cache_history_set(ticker: str, history_json: str) -> None:
 def clear_cache() -> None:
     """Purge all cached data."""
     get_db().clear()
+
+
+def close_db() -> None:
+    """Close all open cache connections (no-op if cache never initialised)."""
+    if _db is not None:
+        _db.close_all()

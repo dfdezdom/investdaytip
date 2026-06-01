@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterable, Literal
 
 from investdaytip.asia_etf_universe import ASIA_ETF_UNIVERSE
 from investdaytip.asia_universe import ASIA_UNIVERSE
+from investdaytip.cache import close_db
 from investdaytip.data_source import fetch_asset
 from investdaytip.etf_universe import DEFAULT_ETF_UNIVERSE
 from investdaytip.eu_etf_universe import DEFAULT_EU_ETF_UNIVERSE
@@ -14,13 +16,15 @@ from investdaytip.eu_universe import DEFAULT_EU_UNIVERSE
 from investdaytip.scoring import ScoredAsset, score_asset
 from investdaytip.universe import DEFAULT_UNIVERSE
 
+logger = logging.getLogger(__name__)
+
 
 AssetClass = Literal["all", "stocks", "etfs"]
 
 
 def _build_universe(
     tickers: Iterable[str] | None,
-    asset_class: AssetClass,
+    asset_class: AssetClass | str,
     region: str | list[str],
     currency: str | list[str] = "all",
 ) -> list[str]:
@@ -65,7 +69,18 @@ def _build_universe(
         if "all" in regions or "asia" in regions:
             pools.append(list(ASIA_ETF_UNIVERSE))
 
-    return [t for pool in pools for t in pool]
+    # Deduplicate across pools (overlapping universes, e.g. VXUS/IEMG appear
+    # in both US-ETF and Asia-ETF lists) case-insensitively, preserving the
+    # first-occurrence casing. Avoids fetching/scoring the same ticker twice.
+    seen: set[str] = set()
+    merged: list[str] = []
+    for pool in pools:
+        for t in pool:
+            key = t.upper()
+            if key not in seen:
+                seen.add(key)
+                merged.append(t)
+    return merged
 
 
 def recommend(
@@ -73,7 +88,7 @@ def recommend(
     top_n: int = 5,
     max_workers: int = 10,
     min_market_cap: float = 2_000_000_000,
-    asset_class: AssetClass = "all",
+    asset_class: AssetClass | str = "all",
     region: str | list[str] = "all",
     currency: str | list[str] = "all",
     progress_cb=None,
@@ -100,20 +115,30 @@ def recommend(
     if progress_cb:
         progress_cb(0, total, "")
 
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {pool.submit(fetch_asset, t, min_market_cap): t for t in universe}
-        for i, fut in enumerate(as_completed(futures), start=1):
-            ticker = futures[fut]
-            try:
-                data = fut.result()
-                scored.append(score_asset(data))
-            except Exception:
-                pass
-            if progress_cb:
-                progress_cb(i, total, ticker)
+    try:
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {pool.submit(fetch_asset, t, min_market_cap): t for t in universe}
+            for i, fut in enumerate(as_completed(futures), start=1):
+                ticker = futures[fut]
+                try:
+                    data = fut.result()
+                    scored.append(score_asset(data))
+                except Exception:
+                    logger.warning("Failed to fetch/score %s", ticker, exc_info=True)
+                if progress_cb:
+                    progress_cb(i, total, ticker)
+    finally:
+        # Release per-thread cache connections opened by the worker pool.
+        close_db()
+
     currencies = [currency] if isinstance(currency, str) else currency
     if "all" not in currencies:
-        filtered = [s for s in scored if s.data.currency in currencies]
+        # Keep assets whose currency is unknown (None): a missing field should
+        # not silently exclude an otherwise-valid candidate.
+        filtered = [
+            s for s in scored
+            if s.data.currency is None or s.data.currency in currencies
+        ]
     else:
         filtered = scored
     filtered.sort(key=lambda s: s.total, reverse=True)
