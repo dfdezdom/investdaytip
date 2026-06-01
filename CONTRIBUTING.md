@@ -44,7 +44,7 @@ Thank you for considering contributing! 🎉
 
 ## Guidelines
 
-- Follow [PEP 8](https://pep8.org/) and use type hints.
+- Follow [PEP 8](https://pep8.org/) and use type hints. Lint with `ruff check src tests` and type-check with `mypy` (both in the `dev` extra). Keep `Optional[...]` for dataclass fields — ruff's `UP` rule is intentionally off.
 - **Keep `scoring.py` pure** — no network or I/O. Add network code only in `data_source.py`.
 - New ticker universes should be a new module ending in `_universe.py` and wired up in `recommender._build_universe`.
 - Add tests for any new scoring logic. Mock or construct `StockData`/`EtfData` directly — do not hit the network in tests.
@@ -53,7 +53,7 @@ Thank you for considering contributing! 🎉
 
 ## Submitting a Pull Request
 
-1. Ensure `pytest -q` passes.
+1. Ensure `pytest -q`, `ruff check src tests`, and `mypy` all pass.
 2. Open a pull request against `main` with a clear description.
 3. Link any related issue using `Closes #issue-number`.
 

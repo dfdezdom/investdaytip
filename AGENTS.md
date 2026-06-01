@@ -10,10 +10,15 @@ pytest tests/test_scoring.py -q        # single file
 pytest tests/test_scoring.py::test_strong_stock_scores_high -q  # single test
 pytest -q -k "strong_stock"            # keyword match
 pytest --cov=investdaytip -q           # with coverage
+ruff check src tests                    # lint
+mypy                                    # type-check (config in pyproject.toml)
 ./preview.sh                            # HTTP server (localhost:8000) for HTML reports
 ```
 
-No linter config checked in — follow PEP 8 + type hints.
+`ruff` + `mypy` are configured in `pyproject.toml` (`[tool.ruff]`, `[tool.mypy]`) and
+shipped in the `dev` extra. pytest config lives in `[tool.pytest.ini_options]`.
+Follow PEP 8 + type hints. Note: `UP` (pyupgrade) is intentionally **off** in ruff —
+the convention is `Optional[...]` for dataclass fields, not `X | None`.
 
 ## Architecture — Key Structural Facts
 
@@ -26,8 +31,8 @@ No linter config checked in — follow PEP 8 + type hints.
 | Caching | `cache.py` | SQLite cache with per-thread connections, WAL mode, write lock |
 | Scoring | `scoring.py` | pure functions only — no I/O, no side effects |
 | HTML export | `html_export.py` | self-contained report with inline CSS/JS |
-| Universes | `*_universe.py` (6 modules) | curated ticker lists wired in `recommender._build_universe()` |
-| Tests | `tests/` | 5 files, no live network calls |
+| Universes | `*_universe.py` (6 modules) | curated ticker lists wired in `recommender._build_universe()` (deduplicated case-insensitively) |
+| Tests | `tests/` | 8 files, no live network calls (autouse network guard in `conftest.py`) |
 | OpenCode agent | `.opencode/agents/advisor.md` | advisor subagent: permissions, interactive flow, execution methods, and interpretation guide |
 
 Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_export / Rich table`
@@ -37,19 +42,21 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - `from __future__ import annotations` in every annotated module (not in `__init__.py` or universe files)
 - `Optional[float]` for dataclass fields; `Iterable[str] | None` for function params with `from __future__ import annotations`
 - `field(default_factory=list/dict)` for mutable defaults on dataclasses
-- `_safe_get(info, key)` — extracts/validates `Optional[float]` from yfinance info dicts, handles NaN
+- `_safe_get(info, key)` — extracts/validates `Optional[float]` from yfinance info dicts; rejects non-finite values (NaN **and** ±inf) via `math.isfinite`
+- `_first(*values)` — returns the first non-`None` value; used for fallback chains so a legitimate `0.0` is preserved (an `or` chain would discard it)
 - `_suppress_stderr()` context manager wraps **every** yfinance call — without it, yfinance spams stderr
 - Asset type dispatch: `score_asset()` → `score_stock()` / `score_etf()` via `isinstance`
 - `ScoredAsset` unified output; `ScoredStock = ScoredAsset` backwards-compatible alias
 - Universe export naming: US + EU use `DEFAULT_` prefix (`DEFAULT_UNIVERSE`, `DEFAULT_EU_ETF_UNIVERSE`), Asia does not (`ASIA_UNIVERSE`, `ASIA_ETF_UNIVERSE`)
-- `_build_universe()` accepts `currency` param; when `currency != "all"` and `region == "all"`, it derives region from currency (USD→us, EUR→eu, JPY→asia) to reduce API calls
+- `_build_universe()` accepts `currency` param; when `currency != "all"` and `region == "all"`, it derives region from currency (USD→us, EUR→eu, JPY→asia) to reduce API calls. It deduplicates the merged pools case-insensitively (overlapping universes share tickers like `VXUS`/`IEMG`)
 
 ### Caching
 - `CacheDB` in `cache.py`: SQLite with `threading.local()` per-thread connections, WAL mode, write lock via `threading.Lock`
 - Two cache entry types per ticker: `{ticker}:info` (fundamentals, TTL 1d) and `{ticker}:history` (prices, TTL 5min)
 - `fetch_asset()` defers cache-write until both info and history are fetched (atomic snapshot); partial results cached on history failure
+- Connections are tracked so `CacheDB.close_all()` / module-level `close_db()` can release **worker-thread** connections; `recommend()` calls `close_db()` in a `finally` after the pool tears down
 - `--no-cache` flag disables cache read/write; `--cache-clear` drops all entries
-- Tests auto-disable cache via `conftest.py::set_enabled(False)` — never hit the network
+- Tests auto-disable cache via `conftest.py::disable_cache` (autouse); an autouse `no_network` guard fails fast on unmocked `yf.Ticker`; `enabled_temp_cache` fixture backs cache tests with a `tmp_path` DB (never the real `~/.investdaytip`)
 
 ### Rate Limits & Error Handling
 - `fetch_asset()` retries on `YFRateLimitError` with delays [10, 30, 60]s then returns error dataclass
@@ -59,7 +66,8 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - `--export-html` uses `nargs="?"` with `const=""` — no arg means auto-generated filename `investDayTip[-<tag>]-yyyymmdd-hhmm.html`; tag derived from tickers-file stem (stopwords filtered)
 - `advisor` subcommand duplicates many flags from main parser but some default to `None` for interactive prompts
 - Ticker files: supports newlines, spaces, commas, and `#` comments; `_merge_ticker_lists()` deduplicates case-insensitively preserving first-occurrence casing
-- `--min-market-cap` filter: $2B default (e.g. `1B`, `500M`, `0` to disable); applied against native-currency figures, approximate for non-USD
+- `--min-market-cap` filter: $2B default (e.g. `1B`, `500M`, `0` to disable); applied against native-currency figures, approximate for non-USD. When the filter is active, assets with **missing** market cap are excluded (a missing figure can't satisfy the filter), and history fetch is skipped for them
+- Currency filter keeps assets whose `currency` is `None` (a missing field shouldn't silently drop an otherwise-valid candidate)
 - `-r`/`--region` and `-c`/`--currency` use `nargs="+"` — pass multiple values: `-r us eu`, `-c USD EUR`. Both `str` and `list[str]` accepted programmatically.
 
 ### Advisor Module
@@ -77,8 +85,10 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 ### URL Building (html_export)
 - `_normalize_exchange_hint()` maps yfinance exchange codes: NMS/NGM/NCM→NASDAQ, NYQ→NYSE, ASE/PCX→NYSEARCA
 - `_exchange_mapping()` covers all suffix→exchange pairs (DE→ETR/XETR, PA→EPA/EURONEXT, L→LON/LSE, etc.)
+- `infer_region_from_ticker()` suffix sets must stay in sync with `_exchange_mapping`: EU includes `F` (Frankfurt); Asia includes `SS`/`SZ` (Shanghai/Shenzhen)
 - `HWM` override → NYSE (unsuffixed but NYSE-listed)
 - Unmapped suffixes → fallback Google Finance search URL
+- Server-rendered rows and client-side JS share NaN semantics: `_is_finite_number()`/`_pct_class()` mirror the JS `pctClass()` (None/NaN → muted, never red)
 
 ### Scoring Weights
 - **Stocks**: Quality 35%, Value 25%, Health 20%, Trend 20%
@@ -97,6 +107,8 @@ The `advisor` subagent is configured in `.opencode/agents/advisor.md`. It define
 ## Testing Notes
 - Construct `StockData` / `EtfData` directly — never call yfinance in tests
 - Use `tmp_path` fixture for HTML export and ticker-file tests
+- Mock `investdaytip.advisor.yf.Ticker` / `investdaytip.advisor._fetch_index` for advisor tests; mock `investdaytip.recommender.fetch_asset` (and `close_db`) for recommender tests
+- `tests/test_universes.py` enforces ticker-format/no-duplicate integrity across all 6 universe modules
 
 ## `get_recommendations()` — Programmatic API
 ```python

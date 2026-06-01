@@ -242,7 +242,7 @@ When no `-t` is given, InvestDayTip uses curated universes:
 - **EU stocks** — 65 large-caps from DAX, CAC, FTSE 100, IBEX, AEX, SMI, FTSE MIB, Nordics (`eu_universe.py`)
 - **EU UCITS ETFs** — 38 broad, sector and bond UCITS ETFs (`eu_etf_universe.py`)
 - **Asia stocks** — 76 large-caps from Japan, Hong Kong, Singapore, India, South Korea, Taiwan, and Australia (`asia_universe.py`)
-- **Asia ETFs** — 24 broad-market, country-specific, and sector ETFs with significant Asian exposure (`asia_etf_universe.py`)
+- **Asia ETFs** — 20 broad-market, country-specific, and sector ETFs with significant Asian exposure (`asia_etf_universe.py`)
 
 Tickers use Yahoo Finance suffixes: 
 - **US:** no suffix (AAPL, MSFT)
@@ -348,8 +348,8 @@ tickers-files-examples/
 ## Limitations & Caveats
 
 - **No currency normalization** — prices, market caps and AUM stay in native currency
-- **Currency filter** (`-c`) compares against yfinance's reported currency field; tickers with a missing/unknown currency pass only when `-c all`
-- **`min_market_cap` filter** (`--min-market-cap`) is applied against raw native-currency figures
+- **Currency filter** (`-c`) compares against yfinance's reported currency field; tickers with a missing/unknown currency are always kept (a missing field shouldn't silently drop a candidate)
+- **`min_market_cap` filter** (`--min-market-cap`) is applied against raw native-currency figures; when active, tickers with a missing market cap are excluded
 - Some European tickers change Yahoo symbols over time; if a ticker is delisted in Yahoo it's silently skipped
 - ETF expense ratios are sometimes missing in `yfinance` — the scorer falls back to a slightly optimistic default (60) in that case
 - **Long-term, fundamental-driven model**: not suitable for short-term/day trading signals
@@ -359,10 +359,15 @@ tickers-files-examples/
 ## Testing
 
 ```bash
-pytest -q
+pip install -e ".[dev]"   # pytest, ruff, mypy
+pytest -q                 # run the suite
+ruff check src tests      # lint
+mypy                      # type-check
 ```
 
-The scoring engine is purely functional and tested without network calls.
+The scoring engine is purely functional and tested without network calls; an
+autouse guard in `tests/conftest.py` fails fast if a test reaches yfinance
+unmocked.
 
 ---
 

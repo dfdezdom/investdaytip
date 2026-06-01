@@ -54,7 +54,7 @@ Preview generated HTML files locally:
 # then open http://localhost:8000/<generated-file>.html
 ```
 
-No repository-wide linter is checked in. Follow PEP 8 and type hints (see CONTRIBUTING.md). If linters are added later, prefer the project's configured command.
+`ruff` and `mypy` are configured in `pyproject.toml` (and installed via the `dev` extra). Lint with `ruff check src tests` and type-check with `mypy`. Follow PEP 8 and type hints (see CONTRIBUTING.md). Note: ruff's `UP` (pyupgrade) rule is intentionally disabled — keep `Optional[...]` for dataclass fields rather than `X | None`.
 
 ## High-level architecture (big picture)
 
