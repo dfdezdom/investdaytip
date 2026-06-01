@@ -33,9 +33,9 @@ ASIA_UNIVERSE: list[str] = [
     "1299.HK",  # AIA Group
     "2318.HK",  # Ping An Insurance
     "1288.HK",  # Agricultural Bank of China
-    "9618.HK",  # Nayuki Motors
-    "9901.HK",  # Jackpot Digital
-    "1918.HK",  # China HGS Real Estate
+    "9618.HK",  # JD.com
+    "9901.HK",  # New Oriental Education
+    "1918.HK",  # Sunac China
     
     # Singapore (.SI)
     "D05.SI",  # DBS Group Holdings
@@ -45,13 +45,13 @@ ASIA_UNIVERSE: list[str] = [
     "S63.SI",  # Singapore Telecommunications
     "Z74.SI",  # ST Engineering
     "BS6.SI",  # Genting Singapore
-    "M44U.SI",  # Jiutian Chemical Group
+    "M44U.SI",  # Mapletree Logistics Trust
     
     # India (NSE .NS and BSE .BO)
     "RELIANCE.NS",  # Reliance Industries
     "TCS.NS",  # Tata Consultancy Services
     "HDFCBANK.NS",  # HDFC Bank
-    "INFOSY.NS",  # Infosys
+    "INFY.NS",  # Infosys
     "ITC.NS",  # ITC
     "WIPRO.NS",  # Wipro
     "MARUTI.NS",  # Maruti Suzuki
@@ -66,7 +66,7 @@ ASIA_UNIVERSE: list[str] = [
     "000660.KS",  # SK Hynix
     "051910.KS",  # LG Chem
     "005380.KS",  # Hyundai Motor
-    "012330.KS",  # Hyundai Motor Group
+    "012330.KS",  # Hyundai Mobis
     "066570.KS",  # LG Electronics
     "035720.KS",  # Kakao Corp
     "088980.KS",  # Celltrion
@@ -80,7 +80,7 @@ ASIA_UNIVERSE: list[str] = [
     "1101.TW",  # Taiwan Cement
     "2357.TW",  # Acer
     "2892.TW",  # First Financial Holding
-    "3711.TW",  # MediaTek (listed on Taiwan)
+    "3711.TW",  # ASE Technology Holding
     "1605.TW",  # TSRC Corporation
     
     # Australia (.AX)
@@ -90,7 +90,7 @@ ASIA_UNIVERSE: list[str] = [
     "NAB.AX",  # National Australia Bank
     "BHP.AX",  # BHP Group
     "RIO.AX",  # Rio Tinto
-    "CCP.AX",  # Computershare
+    "CPU.AX",  # Computershare
     "DXN.AX",  # Dexus
     "IAG.AX",  # Insurance Australia Group
     "MQG.AX",  # Macquarie Group
