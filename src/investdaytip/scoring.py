@@ -21,11 +21,11 @@ functions and fall back to a neutral 50 when data is missing.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Optional
 
 from investdaytip.data_source import AssetData, EtfData, StockData
-
 
 STOCK_WEIGHTS = {
     "quality": 0.35,
@@ -60,6 +60,15 @@ def _clamp(x: float, lo: float = 0.0, hi: float = 100.0) -> float:
 
 
 def _linear(value: Optional[float], best: float, worst: float, *, default: float = 50.0) -> float:
+    """Piecewise-linear normalization of ``value`` to a 0-100 score.
+
+    ``best`` maps to 100 and ``worst`` to 0, clamped at both ends. The
+    direction is implied by the arguments: for "higher is better" metrics pass
+    ``best > worst``; for "lower is better" metrics (e.g. debt, expense ratio)
+    pass ``best < worst`` and the negative denominator flips the slope
+    correctly. Missing data (``None``) or a degenerate ``best == worst`` range
+    falls back to the neutral ``default``.
+    """
     if value is None:
         return default
     if best == worst:
@@ -101,6 +110,8 @@ def _quality_score(d: StockData) -> tuple[float, list[str]]:
 
 def _health_score(d: StockData) -> tuple[float, list[str]]:
     notes: list[str] = []
+    # yfinance reports debtToEquity as a percentage (e.g. 45.3 == 0.453x), so
+    # divide by 100 to get the ratio compared against best=0.2x / worst=2.0x.
     de = d.debt_to_equity / 100.0 if d.debt_to_equity is not None else None
     debt = _linear(de, best=0.2, worst=2.0)
     liq = _linear(d.current_ratio, best=2.5, worst=1.0)
@@ -184,7 +195,6 @@ def _etf_size_score(d: EtfData) -> tuple[float, list[str]]:
     # log-scale AUM: $100M -> 0, $100B -> 100
     if d.total_assets is None or d.total_assets <= 0:
         return 50.0, notes
-    import math
     log_aum = math.log10(d.total_assets)
     score = _linear(log_aum, best=11.0, worst=8.0)  # 1e11=100B, 1e8=100M
     if d.total_assets >= 10_000_000_000:

@@ -8,12 +8,12 @@ scoring engine for portfolio review and buy recommendations.
 from __future__ import annotations
 
 import argparse
+import math
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Optional
 
 import yfinance as yf
-
 from yfinance.exceptions import YFRateLimitError
 
 from investdaytip.data_source import _suppress_stderr
@@ -37,7 +37,9 @@ def _fetch_index(ticker: str) -> Optional[float]:
         t = yf.Ticker(ticker)
         hist = t.history(period="5d", interval="1d")
     if hist is not None and not hist.empty and "Close" in hist:
-        return float(hist["Close"].iloc[-1])
+        val = float(hist["Close"].iloc[-1])
+        if math.isfinite(val):
+            return val
     return None
 
 
@@ -328,16 +330,17 @@ def advisor_main(argv: list[str] | None = None) -> int:
                         help="Purge all cached data before running.")
     args = parser.parse_args(argv)
 
-    from investdaytip.cache import clear_cache, set_enabled as cache_set_enabled
+    from investdaytip.cache import clear_cache
+    from investdaytip.cache import set_enabled as cache_set_enabled
     if args.cache_clear:
         clear_cache()
     if args.no_cache:
         cache_set_enabled(False)
 
     from rich.console import Console
-    from rich.table import Table
     from rich.panel import Panel
     from rich.prompt import Prompt
+    from rich.table import Table
 
     console = Console()
 
@@ -435,23 +438,25 @@ def advisor_main(argv: list[str] | None = None) -> int:
                             "Energy", "Consumer", "Utilities", "Real Estate"}
             missing = _all_sectors - set(review["sectors"])
             if missing:
-                console.print(f"\n[bold yellow]📌 Missing sectors:[/bold yellow]")
+                console.print("\n[bold yellow]📌 Missing sectors:[/bold yellow]")
                 for sec in sorted(missing):
                     console.print(f"  • [yellow]{sec}[/yellow]")
 
     # ── Buy recommendations (if regime allows) ────────────
-    if regime["action"] in ("buy", "neutral"):
+    # market_regime() only emits actions "buy" / "hold" / "sell"; the "neutral"
+    # regime maps to action="buy". Only "buy" should surface recommendations.
+    if regime["action"] == "buy":
         console.print(f"\n[bold green]✅ Signal: {regime['action'].upper()}[/bold green]")
 
         # Resolve asset class, region, currency (CLI flags or interactive)
+        _risk_defaults = {
+            "conservative": ("etfs", "eu"),
+            "moderate": ("all", "all"),
+            "aggressive": ("stocks", "all"),
+        }
         if args.asset_class:
             ac = args.asset_class
         else:
-            _risk_defaults = {
-                "conservative": ("etfs", "eu"),
-                "moderate": ("all", "all"),
-                "aggressive": ("stocks", "all"),
-            }
             d_ac, _ = _risk_defaults.get(risk, ("all", "all"))
             ac = Prompt.ask(
                 "What asset types do you want to analyze?",
@@ -515,8 +520,10 @@ def advisor_main(argv: list[str] | None = None) -> int:
                     "\n[yellow]⏳ yfinance rate limit reached. "
                     "Wait 1-2 minutes and run:[/yellow]"
                 )
+                _reg_str = " ".join(reg) if isinstance(reg, list) else str(reg)
+                _ccy_str = " ".join(ccy) if isinstance(ccy, list) else str(ccy)
                 console.print(
-                    f"  [bold]investdaytip -a {ac} -r {reg} -c {ccy} "
+                    f"  [bold]investdaytip -a {ac} -r {_reg_str} -c {_ccy_str} "
                     "--top 10 --export-html[/bold]"
                 )
                 return 1
@@ -528,15 +535,21 @@ def advisor_main(argv: list[str] | None = None) -> int:
 
             # Filter by target sector if requested
             if target_sector and target_sector != "No":
+                def _sector_of(r) -> Optional[str]:
+                    return (
+                        getattr(r.data, "sector", None)
+                        or getattr(r.data, "category", None)
+                    )
+
                 if target_sector == "All":
                     sector_results = [
                         r for r in new_results
-                        if getattr(r.data, "sector", None) in missing
+                        if _sector_of(r) in missing
                     ]
                 else:
                     sector_results = [
                         r for r in new_results
-                        if getattr(r.data, "sector", None) == target_sector
+                        if _sector_of(r) == target_sector
                     ]
                 if sector_results:
                     new_results = sector_results

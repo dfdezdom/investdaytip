@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from investdaytip.html_export import export_recommendations_html
@@ -74,8 +74,8 @@ def _export_filename_tag_from_tickers_file(tickers_file: str) -> str | None:
     stem = Path(tickers_file).stem.lower()
     candidates = [tok for tok in re.split(r"[^a-z0-9]+", stem) if tok]
     stopwords = {
-        "relevant", "relevante", "relevantes", "relevant", "tickers", "ticker",
-        "file", "files", "examples", "relevant_tickers", "relevant-tickers",
+        "relevant", "relevante", "relevantes", "tickers", "ticker",
+        "file", "files", "examples",
     }
     keywords = [tok for tok in candidates if tok not in stopwords]
     if keywords:
@@ -275,7 +275,8 @@ def main(argv: list[str] | None = None) -> int:
 
     effective_tickers = _merge_ticker_lists(args.tickers, file_tickers)
 
-    from investdaytip.cache import clear_cache, set_enabled as cache_set_enabled
+    from investdaytip.cache import clear_cache
+    from investdaytip.cache import set_enabled as cache_set_enabled
     if args.cache_clear:
         clear_cache()
     if args.no_cache:
@@ -326,13 +327,24 @@ def main(argv: list[str] | None = None) -> int:
             destination = args.export_html or _default_export_html_filename(
                 tickers_file=args.tickers_file,
             )
+            # When a custom ticker universe is supplied, recommend() ignores
+            # asset_class/region/currency — so report them as "custom" rather
+            # than the unused argparse defaults to avoid misleading metadata.
+            if effective_tickers:
+                meta_asset_class = "custom"
+                meta_region = "custom"
+                meta_currency = "custom"
+            else:
+                meta_asset_class = args.asset_class
+                meta_region = args.region
+                meta_currency = args.currency
             out_path = export_recommendations_html(
                 results,
                 destination,
                 top_n=args.top,
-                asset_class=args.asset_class,
-                region=args.region,
-                currency=args.currency,
+                asset_class=meta_asset_class,
+                region=meta_region,
+                currency=meta_currency,
                 tickers=effective_tickers,
                 tickers_file=args.tickers_file,
             )

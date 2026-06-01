@@ -3,12 +3,30 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime, timezone
 from html import escape
+from typing import Any, TypeGuard
 from urllib.parse import quote, quote_plus
-from typing import Any
 
 from investdaytip.scoring import ScoredAsset
+
+# Number of <th> columns in the results table header (keep in sync with the
+# <thead> block below); used for the empty-state row colspan server- and
+# client-side.
+_TABLE_COLUMN_COUNT = 15
+
+
+def _is_finite_number(v: Any) -> TypeGuard[float]:
+    """True only for real, finite numeric values (excludes None/NaN/inf/bool)."""
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def _pct_class(v: Any) -> str:
+    """Mirror the client-side ``pctClass``: muted for missing/NaN, else pos/neg."""
+    if not _is_finite_number(v):
+        return "muted"
+    return "pos" if v >= 0 else "neg"
 
 
 def infer_region_from_ticker(ticker: str) -> str:
@@ -18,8 +36,8 @@ def infer_region_from_ticker(ticker: str) -> str:
     """
     upper = ticker.upper()
     suffix = upper.rsplit(".", 1)[-1] if "." in upper else ""
-    eu_suffixes = {"DE", "PA", "AS", "L", "MC", "MI", "SW", "ST", "CO", "HE", "OL"}
-    asia_suffixes = {"T", "HK", "SI", "NS", "KS", "TW", "AX"}
+    eu_suffixes = {"DE", "F", "PA", "AS", "L", "MC", "MI", "SW", "ST", "CO", "HE", "OL"}
+    asia_suffixes = {"T", "HK", "SI", "NS", "KS", "TW", "AX", "SS", "SZ"}
     if suffix in eu_suffixes:
         return "eu"
     if suffix in asia_suffixes:
@@ -172,7 +190,7 @@ def _as_row(index: int, s: ScoredAsset) -> dict[str, Any]:
     "price": d.current_price,
     "price_text": _fmt_price(d.current_price, getattr(d, "currency", None)),
     "pe": pe_value,
-    "pe_text": f"{float(pe_value):.2f}" if isinstance(pe_value, (int, float)) else "-",
+    "pe_text": f"{float(pe_value):.2f}" if _is_finite_number(pe_value) else "-",
     "return_1m": d.return_1m,
     "return_1m_text": _fmt_pct(d.return_1m),
     "return_12m": d.return_12m,
@@ -185,14 +203,17 @@ def _as_row(index: int, s: ScoredAsset) -> dict[str, Any]:
 
 def _render_initial_rows(rows: list[dict[str, Any]]) -> str:
   if not rows:
-    return '<tr><td colspan="15" class="muted">No recommendations were generated for this run.</td></tr>'
+    return (
+      f'<tr><td colspan="{_TABLE_COLUMN_COUNT}" class="muted">'
+      'No recommendations were generated for this run.</td></tr>'
+    )
 
   out: list[str] = []
   for r in rows:
-    one_m_class = "pos" if (r["return_1m"] is not None and r["return_1m"] >= 0) else "neg"
-    one_y_class = "pos" if (r["return_12m"] is not None and r["return_12m"] >= 0) else "neg"
+    one_m_class = _pct_class(r["return_1m"])
+    one_y_class = _pct_class(r["return_12m"])
     score = r.get("score")
-    score_txt = f"{float(score):.1f}" if isinstance(score, (int, float)) else "-"
+    score_txt = f"{float(score):.1f}" if _is_finite_number(score) else "-"
     out.append(
       "<tr>"
       f"<td>{int(r['rank'])}</td>"
@@ -611,7 +632,7 @@ def export_recommendations_html(
           </tr>
         `;
       }}).join("");
-      $("tbody").innerHTML = body || '<tr><td colspan="15" class="muted">No rows match the selected filters.</td></tr>';
+      $("tbody").innerHTML = body || '<tr><td colspan="{_TABLE_COLUMN_COUNT}" class="muted">No rows match the selected filters.</td></tr>';
     }}
 
     function rerender() {{

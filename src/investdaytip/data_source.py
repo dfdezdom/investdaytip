@@ -21,7 +21,6 @@ import pandas as pd
 import yfinance as yf
 from yfinance.exceptions import YFRateLimitError
 
-
 # Silence yfinance's verbose logging (delisted symbols, HTTP errors)
 for _name in ("yfinance", "yfinance.ticker", "yfinance.utils", "yfinance.data", "peewee"):
     logging.getLogger(_name).setLevel(logging.CRITICAL)
@@ -121,11 +120,23 @@ def _safe_get(info: dict, key: str) -> Optional[float]:
         return None
     try:
         f = float(val)
-        if f != f:
+        if not math.isfinite(f):
             return None
         return f
     except (TypeError, ValueError):
         return None
+
+
+def _first(*values: Optional[float]) -> Optional[float]:
+    """Return the first value that is not ``None``.
+
+    Unlike an ``or`` chain, a legitimate ``0.0`` is preserved instead of
+    being treated as missing.
+    """
+    for v in values:
+        if v is not None:
+            return v
+    return None
 
 
 def _trend_metrics(
@@ -180,7 +191,7 @@ def _fetch_stock(ticker: str, info: dict, history: pd.DataFrame) -> StockData:
     data.trailing_pe = _safe_get(info, "trailingPE")
     data.forward_pe = _safe_get(info, "forwardPE")
     data.price_to_book = _safe_get(info, "priceToBook")
-    data.peg_ratio = _safe_get(info, "pegRatio") or _safe_get(info, "trailingPegRatio")
+    data.peg_ratio = _first(_safe_get(info, "pegRatio"), _safe_get(info, "trailingPegRatio"))
     data.return_on_equity = _safe_get(info, "returnOnEquity")
     data.profit_margin = _safe_get(info, "profitMargins")
     data.earnings_growth = _safe_get(info, "earningsGrowth")
@@ -191,7 +202,7 @@ def _fetch_stock(ticker: str, info: dict, history: pd.DataFrame) -> StockData:
     data.dividend_yield = _safe_get(info, "dividendYield")
     data.payout_ratio = _safe_get(info, "payoutRatio")
     data.market_cap = _safe_get(info, "marketCap")
-    data.current_price = _safe_get(info, "currentPrice") or _safe_get(info, "regularMarketPrice")
+    data.current_price = _first(_safe_get(info, "currentPrice"), _safe_get(info, "regularMarketPrice"))
 
     pvs, r1m, r12, slope, _vol = _trend_metrics(history)
     data.price_vs_sma200 = pvs
@@ -212,15 +223,15 @@ def _fetch_etf(ticker: str, info: dict, history: pd.DataFrame) -> EtfData:
     data.currency = info.get("currency")
     data.exchange = info.get("exchange")
     data.total_assets = _safe_get(info, "totalAssets")
-    data.expense_ratio = (
-        _safe_get(info, "annualReportExpenseRatio")
-        or _safe_get(info, "netExpenseRatio")
+    data.expense_ratio = _first(
+        _safe_get(info, "annualReportExpenseRatio"),
+        _safe_get(info, "netExpenseRatio"),
     )
     data.three_year_return = _safe_get(info, "threeYearAverageReturn")
     data.five_year_return = _safe_get(info, "fiveYearAverageReturn")
-    data.beta_3y = _safe_get(info, "beta3Year") or _safe_get(info, "beta")
-    data.yield_ = _safe_get(info, "yield") or _safe_get(info, "trailingAnnualDividendYield")
-    data.current_price = _safe_get(info, "regularMarketPrice") or _safe_get(info, "previousClose")
+    data.beta_3y = _first(_safe_get(info, "beta3Year"), _safe_get(info, "beta"))
+    data.yield_ = _first(_safe_get(info, "yield"), _safe_get(info, "trailingAnnualDividendYield"))
+    data.current_price = _first(_safe_get(info, "regularMarketPrice"), _safe_get(info, "previousClose"))
     data.nav = _safe_get(info, "navPrice")
 
     pvs, r1m, r12, slope, vol = _trend_metrics(history)
@@ -298,10 +309,14 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> AssetData:
                 return d
             break
 
-        if (info.get("quoteType") or "").upper() == "ETF":
+        info = info or {}
+        if (info.get("quoteType") or "").upper() == "ETF" and t is not None:
             _enrich_etf_info(t, info)
         info_fetched_fresh = True
 
+    # ``info`` is guaranteed to be a dict here: it was either a cache hit or
+    # assigned ``t.info or {}`` above (both error paths returned early).
+    assert info is not None
     quote_type = (info.get("quoteType") or "").upper()
 
     # ── Early market-cap filter — skip history fetch for tiny tickers ───
@@ -311,7 +326,10 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> AssetData:
             mc = _safe_get(info, "totalAssets")
         else:
             mc = _safe_get(info, "marketCap")
-        if mc is not None and mc < min_market_cap:
+        # Exclude assets below the threshold OR with unknown market cap:
+        # a missing figure cannot satisfy the filter, so skip the history
+        # fetch and return a minimal record (scored low / filtered out).
+        if mc is None or mc < min_market_cap:
             data: AssetData
             if quote_type == "ETF":
                 data = EtfData(ticker=ticker, total_assets=mc)
