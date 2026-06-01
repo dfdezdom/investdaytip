@@ -484,7 +484,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 "us": ["USD", "all"],
                 "eu": ["EUR", "USD", "GBP", "all"],
                 "asia": ["USD", "JPY", "HKD", "all"],
-                "all": ["all"],
+                "all": ["all", "USD", "EUR", "GBP", "JPY", "HKD"],
             }
             _currency_defaults = {"us": "USD", "eu": "EUR", "asia": "all", "all": "all"}
             ccy = [
