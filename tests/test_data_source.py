@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 from yfinance.exceptions import YFRateLimitError
 
-from investdaytip.data_source import EtfData, StockData, fetch_asset
+from investdaytip.data_source import StockData, fetch_asset
 
 
 def _mock_ticker(info: dict, history: pd.DataFrame | None = None) -> MagicMock:
@@ -55,7 +55,9 @@ def test_fetch_asset_fetches_history_above_market_cap(mocker, stock_info):
     mock.history.assert_called_once()
 
 
-def test_fetch_asset_unknown_market_cap_passes_through(mocker):
+def test_fetch_asset_unknown_market_cap_is_excluded(mocker):
+    # When market cap is missing it cannot satisfy a min_market_cap filter,
+    # so the expensive history fetch is skipped and a minimal record returned.
     info = {
         "quoteType": "STOCK",
         "shortName": "NoMktCap",
@@ -68,11 +70,27 @@ def test_fetch_asset_unknown_market_cap_passes_through(mocker):
 
     assert isinstance(result, StockData)
     assert result.market_cap is None
+    mock.history.assert_not_called()
+
+
+def test_fetch_asset_unknown_market_cap_passes_when_filter_disabled(mocker):
+    # With min_market_cap=0 the filter is off, so history is still fetched.
+    info = {
+        "quoteType": "STOCK",
+        "shortName": "NoMktCap",
+        "currency": "USD",
+    }
+    mock = _mock_ticker(info)
+    mocker.patch("investdaytip.data_source.yf.Ticker", return_value=mock)
+
+    result = fetch_asset("NOMKT", min_market_cap=0)
+
+    assert isinstance(result, StockData)
     mock.history.assert_called_once()
 
 
 def test_fetch_asset_rate_limit_retries_then_returns_error(mocker):
-    ticker = mocker.patch("investdaytip.data_source.yf.Ticker", side_effect=YFRateLimitError())
+    mocker.patch("investdaytip.data_source.yf.Ticker", side_effect=YFRateLimitError())
     sleep = mocker.patch("investdaytip.data_source.time.sleep")
 
     result = fetch_asset("RATELIM")

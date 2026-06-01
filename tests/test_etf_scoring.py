@@ -1,7 +1,7 @@
 """Tests for the ETF scoring engine."""
 
 from investdaytip.data_source import EtfData
-from investdaytip.scoring import score_etf, score_asset
+from investdaytip.scoring import score_asset, score_etf
 
 
 def test_strong_etf_scores_high():

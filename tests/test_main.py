@@ -3,7 +3,12 @@
 from datetime import datetime
 from pathlib import Path
 
-from investdaytip.main import _default_export_html_filename, _load_tickers_from_file, _merge_ticker_lists, _parse_min_market_cap
+from investdaytip.main import (
+    _default_export_html_filename,
+    _load_tickers_from_file,
+    _merge_ticker_lists,
+    _parse_min_market_cap,
+)
 
 
 def test_default_export_html_filename_format():
