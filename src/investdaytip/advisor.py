@@ -635,57 +635,61 @@ def advisor_main(argv: list[str] | None = None) -> int:
         "moderate": ("all", "all"),
         "aggressive": ("stocks", "all"),
     }
-    if args.asset_class:
-        ac = args.asset_class
-    else:
-        d_ac, _ = _risk_defaults.get(risk, ("all", "all"))
-        ac = Prompt.ask(
-            "What asset types do you want to analyze?",
-            choices=["all", "stocks", "etfs"],
-            default=d_ac,
-        )
-
-    if args.region:
-        reg = args.region
-    else:
-        _, d_reg = _risk_defaults.get(risk, ("all", "all"))
-        reg = [
-            Prompt.ask(
-                "Which regions?",
-                choices=["all", "us", "eu", "asia", "superinvestor"],
-                default=d_reg,
+    try:
+        if args.asset_class:
+            ac = args.asset_class
+        else:
+            d_ac, _ = _risk_defaults.get(risk, ("all", "all"))
+            ac = Prompt.ask(
+                "What asset types do you want to analyze?",
+                choices=["all", "stocks", "etfs"],
+                default=d_ac,
             )
-        ]
 
-    if args.currency:
-        ccy = args.currency
-    else:
-        _reg_for_ccy = reg[0] if isinstance(reg, list) else reg
-        _currency_choices = {
-            "us": ["USD", "all"],
-            "eu": ["EUR", "USD", "GBP", "all"],
-            "asia": ["USD", "JPY", "HKD", "all"],
-            "superinvestor": ["USD", "all"],
-            "all": ["all", "USD", "EUR", "GBP", "JPY", "HKD"],
-        }
-        _currency_defaults = {"us": "USD", "eu": "EUR", "asia": "all", "superinvestor": "USD", "all": "all"}
-        ccy = [
-            Prompt.ask(
-                "Currency filter?",
-                choices=_currency_choices.get(_reg_for_ccy, ["all"]),
-                default=_currency_defaults.get(_reg_for_ccy, "all"),
+        if args.region:
+            reg = args.region
+        else:
+            _, d_reg = _risk_defaults.get(risk, ("all", "all"))
+            reg = [
+                Prompt.ask(
+                    "Which regions?",
+                    choices=["all", "us", "eu", "asia", "superinvestor"],
+                    default=d_reg,
+                )
+            ]
+
+        if args.currency:
+            ccy = args.currency
+        else:
+            _reg_for_ccy = reg[0] if isinstance(reg, list) else reg
+            _currency_choices = {
+                "us": ["USD", "all"],
+                "eu": ["EUR", "USD", "GBP", "all"],
+                "asia": ["USD", "JPY", "HKD", "all"],
+                "superinvestor": ["USD", "all"],
+                "all": ["all", "USD", "EUR", "GBP", "JPY", "HKD"],
+            }
+            _currency_defaults = {"us": "USD", "eu": "EUR", "asia": "all", "superinvestor": "USD", "all": "all"}
+            ccy = [
+                Prompt.ask(
+                    "Currency filter?",
+                    choices=_currency_choices.get(_reg_for_ccy, ["all"]),
+                    default=_currency_defaults.get(_reg_for_ccy, "all"),
+                )
+            ]
+
+        # Ask about missing sector focus (only in interactive mode)
+        target_sector: str | None = None
+        if missing and not args.asset_class:
+            sector_choices = sorted(missing) + ["All", "No"]
+            target_sector = Prompt.ask(
+                "Focus on a specific missing sector?",
+                choices=sector_choices,
+                default="No",
             )
-        ]
-
-    # Ask about missing sector focus (only in interactive mode)
-    target_sector: str | None = None
-    if missing and not args.asset_class:
-        sector_choices = sorted(missing) + ["All", "No"]
-        target_sector = Prompt.ask(
-            "Focus on a specific missing sector?",
-            choices=sector_choices,
-            default="No",
-        )
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Interrupted. Exiting.[/yellow]")
+        return 0
 
     with console.status("[bold green]Generating buy recommendations..."):
 
