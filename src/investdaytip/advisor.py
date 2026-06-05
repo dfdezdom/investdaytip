@@ -17,6 +17,7 @@ import yfinance as yf
 from yfinance.exceptions import YFRateLimitError
 
 from investdaytip.data_source import _suppress_stderr
+from investdaytip.dataroma import fetch_superinvestor_universe, get_superinvestor_data
 from investdaytip.html_export import export_recommendations_html
 from investdaytip.main import _load_tickers_from_file, _parse_min_market_cap, _render
 from investdaytip.recommender import recommend
@@ -340,10 +341,30 @@ def advisor_main(argv: list[str] | None = None) -> int:
 
     from rich.console import Console
     from rich.panel import Panel
+    from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
     from rich.prompt import Prompt
     from rich.table import Table
 
     console = Console()
+
+    # ── Warm-up superinvestor cache ────────────────────────
+    if not args.no_cache:
+        if not get_superinvestor_data():
+            with Progress(
+                SpinnerColumn(),
+                BarColumn(),
+                TextColumn("{task.completed}/{task.total}"),
+                TimeElapsedColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as si_progress:
+                si_task = si_progress.add_task("Fetching superinvestor data", total=None)
+                def _si_cb(done: int, total: int, name: str) -> None:
+                    si_progress.update(si_task, total=total, completed=done, description=f"Fetching {name}")
+                try:
+                    fetch_superinvestor_universe(progress_cb=_si_cb)
+                except Exception:
+                    console.print("[yellow]⚠️  Could not fetch superinvestor data, continuing without it.[/yellow]")
 
     # ── Risk profile ───────────────────────────────────────
     risk = args.risk
