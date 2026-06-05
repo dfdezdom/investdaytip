@@ -317,10 +317,10 @@ def main(argv: list[str] | None = None) -> int:
     results: list[ScoredAsset] = []
     with Progress(
         SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         TextColumn("{task.completed}/{task.total}"),
         TimeElapsedColumn(),
+        TextColumn("[progress.description]{task.description}"),
         console=console,
     ) as progress:
         task_id = progress.add_task("Fetching market data", total=None)
