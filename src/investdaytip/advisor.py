@@ -472,7 +472,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
             reg = [
                 Prompt.ask(
                     "Which regions?",
-                    choices=["all", "us", "eu", "asia"],
+                    choices=["all", "us", "eu", "asia", "superinvestor"],
                     default=d_reg,
                 )
             ]
