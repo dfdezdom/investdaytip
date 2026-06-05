@@ -124,7 +124,7 @@ investdaytip --help
 
 ### Advisor subcommand
 
-Interactive market analysis, portfolio review, and buy recommendations:
+Interactive market analysis with **multi-indicator macro pulse** (VIX, 10Y-2Y yield curve, MOVE bond volatility, DXY dollar strength), portfolio review, and buy recommendations:
 
 ```bash
 investdaytip advisor                          # Interactive mode (asks for risk, region, etc.)
@@ -132,6 +132,12 @@ investdaytip advisor --risk moderate          # Non-interactive with risk preset
 investdaytip advisor --risk aggressive -r us -a stocks    # US stocks, aggressive, non-interactive
 investdaytip advisor --risk moderate --portfolio portfolios/portfolio.txt  # Custom portfolio
 ```
+
+The advisor now displays a **composite macro health score** (0-100) alongside VIX:
+- 🟢 **≥70** — Macro healthy
+- 🟡 **≥45** — Mixed signals
+- 🟠 **≥25** — Macro warning
+- 🔴 **<25** — Macro danger
 
 See `investdaytip advisor --help` for all options.
 
@@ -205,6 +211,7 @@ Each recommendation includes:
 | **P/E** | Trailing price-to-earnings ratio (stocks; `-` when unavailable) |
 | **1M Δ** | % change vs ~22 trading days ago |
 | **1Y Δ** | % change vs ~252 trading days ago |
+| **Superinvestors** | Number of managers holding the stock (HTML only; `-` if not in DataRoma universe) |
 | **Score** | Composite 0-100 weighted score |
 | **Breakdown** | Four sub-scores (shown in a compact single line) |
 | **Why** | Top 3 rationale notes |
@@ -293,6 +300,8 @@ http://localhost:8000/<generated-file-name>.html
 
 All market data is fetched live from **Yahoo Finance** via the [`yfinance`](https://github.com/ranaroussi/yfinance) library. Fundamentals come from `Ticker.info`, prices and trend metrics from `Ticker.history(period="2y")`.
 
+**Superinvestor data** is scraped from **DataRoma** (https://www.dataroma.com) — 13F filings from ~82 legendary investors. The data is fetched once and cached for 7 days.
+
 ### Local Cache
 
 InvestDayTip includes an **SQLite cache** (`~/.investdaytip/cache.db`) created automatically on first fetch:
@@ -301,6 +310,7 @@ InvestDayTip includes an **SQLite cache** (`~/.investdaytip/cache.db`) created a
 |------|-----|
 | Prices & history | 5 minutes |
 | Fundamentals (info dict) | 1 day |
+| Superinvestor holdings | 7 days |
 
 The cache uses per-thread SQLite connections with a write lock to support concurrent fetches safely. Use `--no-cache` to bypass the cache for a single run, or `--cache-clear` to purge all entries. Caching is automatically disabled when running tests.
 
@@ -313,7 +323,8 @@ preview.sh                # Local static server for generated HTML reports
 src/investdaytip/
 ├── __init__.py            # Public API: get_recommendations
 ├── main.py                # CLI entry point + rich table rendering
-├── advisor.py             # Interactive advisor: market pulse, portfolio review, buy recs
+├── advisor.py             # Interactive advisor: market pulse (VIX + macro), portfolio review, buy recs
+├── dataroma.py            # DataRoma superinvestor holdings scraper
 ├── html_export.py         # Self-contained HTML report exporter
 ├── recommender.py         # Concurrent orchestration
 ├── cache.py               # SQLite caching layer (per-thread connections, WAL mode)
@@ -329,6 +340,7 @@ src/investdaytip/
 portfolios/               # Portfolio ticker files
 advisor_recommendations/   # Advisor-generated HTML reports (git-ignored)
 tests/
+├── test_advisor.py        # Advisor tests (VIX, macro regime, bubble risk)
 ├── test_main.py           # CLI helper tests
 ├── test_html_export.py    # HTML export tests
 ├── test_scoring.py        # Stock scoring tests
