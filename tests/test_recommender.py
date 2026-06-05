@@ -27,12 +27,13 @@ class TestBuildUniverse:
         assert len(u) == len({t.upper() for t in u})
 
     def test_currency_narrows_region(self):
-        # USD with region=all should derive the US region only.
+        # USD with region=all should derive the US region (including superinvestor).
         from investdaytip.eu_universe import DEFAULT_EU_UNIVERSE
+        from investdaytip.superinvestor_universe import SUPERINVESTOR_UNIVERSE
         from investdaytip.universe import DEFAULT_UNIVERSE
 
         u = _build_universe(None, "stocks", "all", "USD")
-        assert set(u) == set(DEFAULT_UNIVERSE)
+        assert set(u) == set(DEFAULT_UNIVERSE) | set(SUPERINVESTOR_UNIVERSE)
         assert not (set(u) & set(DEFAULT_EU_UNIVERSE))
 
     def test_eur_narrows_to_eu(self):

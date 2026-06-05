@@ -52,6 +52,10 @@ def _build_universe(
                 derived.add(mapped)
             else:
                 derived.add("all")
+        # When USD is selected, also include the superinvestor consensus universe
+        # (all superinvestor tickers are US-listed and overlap with the US universe).
+        if "us" in derived:
+            derived.add("superinvestor")
         regions = sorted(derived) if "all" not in derived else ["all"]
 
     pools: list[list[str]] = []
