@@ -30,7 +30,16 @@ CACHE_KEY = "superinvestor:holdings"
 
 
 def _fetch(url: str) -> str:
-    req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    req = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "identity",
+            "Connection": "keep-alive",
+        },
+    )
     with urlopen(req, timeout=30) as resp:
         return resp.read().decode("utf-8")
 
@@ -51,21 +60,36 @@ def _extract_manager_codes(html: str) -> list[tuple[str, str]]:
 def _extract_tickers_from_holdings_page(html: str) -> dict[str, float]:
     """Parse a manager's holdings page, returning {ticker: pct_of_portfolio}.
 
-    The holdings page includes the top-10 table  on the managers summary,
-    or the full holdings table on the dedicated page.
+    The holdings page uses a table where each row has the stock link in the
+    second <td> and the portfolio percentage in the third <td>.
     """
     tickers: dict[str, float] = {}
-    for m in re.finditer(
-        r'<a href="/m/stock\.php\?sym=([^"]+)"[^>]*>'
-        r'[^<]+</a>.*?'
-        r'(\d+\.\d+)%\s*of\s*portfolio',
-        html,
-        re.DOTALL,
-    ):
-        ticker = m.group(1)
-        pct = float(m.group(2))
-        if ticker not in tickers:
-            tickers[ticker] = pct
+    for row in re.finditer(r'<tr[^>]*>(.*?)</tr>', html, re.DOTALL):
+        row_html = row.group(1)
+        # Find the stock link in the "stock" column
+        stock_match = re.search(
+            r'<td class="stock">.*?<a href="/m/stock\.php\?sym=([^"]+)">',
+            row_html,
+            re.DOTALL,
+        )
+        if not stock_match:
+            continue
+        ticker = stock_match.group(1)
+        # Find the percentage in the next <td> after the stock column
+        # Pattern: <td class="stock">...</td> followed by <td>XX.YY</td>
+        pct_match = re.search(
+            r'<td class="stock">.*?</td>\s*<td[^>]*>([\d.,]+)</td>',
+            row_html,
+            re.DOTALL,
+        )
+        if pct_match:
+            try:
+                pct_str = pct_match.group(1).replace(',', '')
+                pct = float(pct_str)
+                if ticker not in tickers:
+                    tickers[ticker] = pct
+            except ValueError:
+                pass
     return tickers
 
 
