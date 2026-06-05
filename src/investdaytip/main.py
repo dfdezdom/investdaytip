@@ -300,10 +300,10 @@ def main(argv: list[str] | None = None) -> int:
         if not get_superinvestor_data():
             with Progress(
                 SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
                 BarColumn(),
                 TextColumn("{task.completed}/{task.total}"),
                 TimeElapsedColumn(),
+                TextColumn("[progress.description]{task.description}"),
                 console=console,
             ) as si_progress:
                 si_task = si_progress.add_task("Fetching superinvestor data", total=None)
