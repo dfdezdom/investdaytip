@@ -53,7 +53,10 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 
 ### Caching
 - `CacheDB` in `cache.py`: SQLite with `threading.local()` per-thread connections, WAL mode, write lock via `threading.Lock`
-- Two cache entry types per ticker: `{ticker}:info` (fundamentals, TTL 1d) and `{ticker}:history` (prices, TTL 5min)
+- Three cache entry types:
+  - `{ticker}:info` (fundamentals, TTL 1d)
+  - `{ticker}:history` (prices, TTL 5min)
+  - `superinvestor:holdings` (DataRoma aggregated data, TTL 7 days)
 - `fetch_asset()` defers cache-write until both info and history are fetched (atomic snapshot); partial results cached on history failure
 - Connections are tracked so `CacheDB.close_all()` / module-level `close_db()` can release **worker-thread** connections; `recommend()` calls `close_db()` in a `finally` after the pool tears down
 - `--no-cache` flag disables cache read/write; `--cache-clear` drops all entries
@@ -92,6 +95,13 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - Unmapped suffixes → fallback Google Finance search URL
 - Server-rendered rows and client-side JS share NaN semantics: `_is_finite_number()`/`_pct_class()` mirror the JS `pctClass()` (None/NaN → muted, never red)
 
+### DataRoma / Superinvestor Specifics
+- DataRoma data is quarterly (45-day lag), US-only (13F), no official API → scraping-based with caching
+- `fetch_superinvestor_universe()` warms the cache via ~80 HTTP requests (one per manager); shown with a Rich progress bar
+- `score_stock()` looks up `get_superinvestor_data()` to populate `superinvestor_count` on `ScoredAsset`
+- HTML export renders a sortable "Superinvestors" column between 1Y and Score; `-` when the ticker is not in the DataRoma universe
+- `SUPERINVESTOR_UNIVERSE` is used as a curated region (stocks-only); no ETF universe exists for it
+
 ### Scoring Weights
 - **Stocks**: Quality 35%, Value 25%, Health 20%, Trend 20%
 - **ETFs**: Returns 40%, RiskAdj 25%, Size 15%, Cost/Yield 20%
@@ -102,9 +112,9 @@ The `advisor` subagent is configured in `.opencode/agents/advisor.md`. It define
 
 - **Permissions:** bash/read allowed, write with confirmation
 - **Required flow:** always ask the user before running any analysis
-- **Execution methods:** `market_regime()` + `bubble_risk()` for quick pulse, `run_comprehensive()` for multi-region, or interactive CLI `investdaytip advisor`
+- **Execution methods:** `macro_regime()` (VIX + yield curve + bond vol + DXY) for full macro pulse, `market_regime()` + `bubble_risk()` for quick VIX-only pulse, `run_comprehensive()` for multi-region, or interactive CLI `investdaytip advisor`
 - **Output format:** clean markdown (never raw Rich tables)
-- **Interpretation rules:** VIX thresholds, bubble, scores, portfolio signals
+- **Interpretation rules:** VIX thresholds (≤15 bullish, ≤25 neutral, ≤35 bearish, >35 crash), bubble risk (VIX percentile <15% → complacency), macro regime (composite 0-100: ≥70 healthy, ≥45 neutral, ≥25 warning, <25 danger), scores, portfolio signals
 
 ## Testing Notes
 - Construct `StockData` / `EtfData` directly — never call yfinance in tests
