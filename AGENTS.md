@@ -31,7 +31,7 @@ the convention is `Optional[...]` for dataclass fields, not `X | None`.
 | Caching | `cache.py` | SQLite cache with per-thread connections, WAL mode, write lock |
 | Scoring | `scoring.py` | pure functions only — no I/O, no side effects |
 | HTML export | `html_export.py` | self-contained report with inline CSS/JS |
-| Universes | `*_universe.py` (6 modules) | curated ticker lists wired in `recommender._build_universe()` (deduplicated case-insensitively) |
+| Universes | `*_universe.py` (7 modules) | curated ticker lists wired in `recommender._build_universe()` (deduplicated case-insensitively) |
 | Tests | `tests/` | 8 files, no live network calls (autouse network guard in `conftest.py`) |
 | OpenCode agent | `.opencode/agents/advisor.md` | advisor subagent: permissions, interactive flow, execution methods, and interpretation guide |
 
@@ -47,8 +47,9 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - `_suppress_stderr()` context manager wraps **every** yfinance call — without it, yfinance spams stderr
 - Asset type dispatch: `score_asset()` → `score_stock()` / `score_etf()` via `isinstance`
 - `ScoredAsset` unified output; `ScoredStock = ScoredAsset` backwards-compatible alias
-- Universe export naming: US + EU use `DEFAULT_` prefix (`DEFAULT_UNIVERSE`, `DEFAULT_EU_ETF_UNIVERSE`), Asia does not (`ASIA_UNIVERSE`, `ASIA_ETF_UNIVERSE`)
+- Universe export naming: US + EU use `DEFAULT_` prefix (`DEFAULT_UNIVERSE`, `DEFAULT_EU_ETF_UNIVERSE`), Asia does not (`ASIA_UNIVERSE`, `ASIA_ETF_UNIVERSE`), Superinvestor uses `SUPERINVESTOR_UNIVERSE`
 - `_build_universe()` accepts `currency` param; when `currency != "all"` and `region == "all"`, it derives region from currency (USD→us, EUR→eu, JPY→asia) to reduce API calls. It deduplicates the merged pools case-insensitively (overlapping universes share tickers like `VXUS`/`IEMG`)
+- Superinvestor region is stocks-only (no ETF universe); tickers are US-listed with direct 13F data from DataRoma
 
 ### Caching
 - `CacheDB` in `cache.py`: SQLite with `threading.local()` per-thread connections, WAL mode, write lock via `threading.Lock`
@@ -108,10 +109,11 @@ The `advisor` subagent is configured in `.opencode/agents/advisor.md`. It define
 - Construct `StockData` / `EtfData` directly — never call yfinance in tests
 - Use `tmp_path` fixture for HTML export and ticker-file tests
 - Mock `investdaytip.advisor.yf.Ticker` / `investdaytip.advisor._fetch_index` for advisor tests; mock `investdaytip.recommender.fetch_asset` (and `close_db`) for recommender tests
-- `tests/test_universes.py` enforces ticker-format/no-duplicate integrity across all 6 universe modules
+- `tests/test_universes.py` enforces ticker-format/no-duplicate integrity across all 7 universe modules
 
 ## `get_recommendations()` — Programmatic API
 ```python
 from investdaytip import get_recommendations
 picks = get_recommendations(top_n=5, region="asia", asset_class="stocks")
+picks = get_recommendations(top_n=5, region="superinvestor", asset_class="stocks")
 ```

@@ -14,7 +14,7 @@ from investdaytip.scoring import ScoredAsset
 # Number of <th> columns in the results table header (keep in sync with the
 # <thead> block below); used for the empty-state row colspan server- and
 # client-side.
-_TABLE_COLUMN_COUNT = 15
+_TABLE_COLUMN_COUNT = 16
 
 
 def _is_finite_number(v: Any) -> TypeGuard[float]:
@@ -191,6 +191,8 @@ def _as_row(index: int, s: ScoredAsset) -> dict[str, Any]:
     "price_text": _fmt_price(d.current_price, getattr(d, "currency", None)),
     "pe": pe_value,
     "pe_text": f"{float(pe_value):.2f}" if _is_finite_number(pe_value) else "-",
+    "daily_change": d.daily_change,
+    "daily_change_text": _fmt_pct(d.daily_change),
     "return_1m": d.return_1m,
     "return_1m_text": _fmt_pct(d.return_1m),
     "return_12m": d.return_12m,
@@ -212,6 +214,7 @@ def _render_initial_rows(rows: list[dict[str, Any]]) -> str:
   for r in rows:
     one_m_class = _pct_class(r["return_1m"])
     one_y_class = _pct_class(r["return_12m"])
+    daily_class = _pct_class(r["daily_change"])
     score = r.get("score")
     score_txt = f"{float(score):.1f}" if _is_finite_number(score) else "-"
     out.append(
@@ -225,6 +228,7 @@ def _render_initial_rows(rows: list[dict[str, Any]]) -> str:
       f"<td class=\"desktop-only region-col\">{escape(str(r['region']).upper())}</td>"
       f"<td class=\"desktop-only\">{escape(str(r['sector']))}</td>"
       f"<td class=\"num\">{escape(str(r['price_text']))}</td>"
+      f"<td class=\"num {daily_class}\">{escape(str(r['daily_change_text']))}</td>"
       f"<td class=\"num\">{escape(str(r['pe_text']))}</td>"
       f"<td class=\"num {one_m_class}\">{escape(str(r['return_1m_text']))}</td>"
       f"<td class=\"num {one_y_class}\">{escape(str(r['return_12m_text']))}</td>"
@@ -462,6 +466,7 @@ def export_recommendations_html(
           <option value=\"us\">US</option>
           <option value=\"eu\">EU</option>
           <option value=\"asia\">Asia</option>
+          <option value=\"superinvestor\">Superinvestors</option>
         </select>
       </label>
       <label>Min score
@@ -489,6 +494,7 @@ def export_recommendations_html(
           <th class="desktop-only sortable region-col" data-sort-key="region" data-sort-type="text" tabindex="0" aria-sort="none">Region<span class="sort-indicator">↕</span></th>
           <th class="desktop-only sortable" data-sort-key="sector" data-sort-type="text" tabindex="0" aria-sort="none">Sector/Category<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="price" data-sort-type="number" tabindex="0" aria-sort="none">Price<span class="sort-indicator">↕</span></th>
+          <th class="num sortable" data-sort-key="daily_change" data-sort-type="number" tabindex="0" aria-sort="none">% Today<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="pe" data-sort-type="number" tabindex="0" aria-sort="none">P/E<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="return_1m" data-sort-type="number" tabindex="0" aria-sort="none">1M<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="return_12m" data-sort-type="number" tabindex="0" aria-sort="none">1Y<span class="sort-indicator">↕</span></th>
@@ -608,6 +614,7 @@ def export_recommendations_html(
       const body = filtered.map(r => {{
         const oneMClass = pctClass(r.return_1m);
         const oneYClass = pctClass(r.return_12m);
+        const dailyClass = pctClass(r.daily_change);
         const scoreText = Number.isFinite(r.score) ? r.score.toFixed(1) : "-";
         const googleUrl = (r.links && r.links.google) || r.ticker_url;
         const tvUrl = (r.links && r.links.tradingview) || r.ticker_url;
@@ -623,6 +630,7 @@ def export_recommendations_html(
             <td class=\"desktop-only region-col\">${{r.region.toUpperCase()}}</td>
             <td class=\"desktop-only\">${{r.sector}}</td>
             <td class=\"num\">${{r.price_text}}</td>
+            <td class=\"num ${{dailyClass}}\">${{r.daily_change_text}}</td>
             <td class=\"num\">${{r.pe_text}}</td>
             <td class=\"num ${{oneMClass}}\">${{r.return_1m_text}}</td>
             <td class=\"num ${{oneYClass}}\">${{r.return_12m_text}}</td>

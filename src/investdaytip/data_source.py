@@ -66,6 +66,7 @@ class StockData:
     return_1m: Optional[float] = None
     return_12m: Optional[float] = None
     sma200_slope: Optional[float] = None
+    daily_change: Optional[float] = None
 
     errors: list[str] = field(default_factory=list)
 
@@ -94,6 +95,7 @@ class EtfData:
     sma200_slope: Optional[float] = None
     volatility_1y: Optional[float] = None  # annualized
     sharpe_proxy: Optional[float] = None  # (return_12m - rf) / volatility_1y
+    daily_change: Optional[float] = None
 
     errors: list[str] = field(default_factory=list)
 
@@ -141,14 +143,14 @@ def _first(*values: Optional[float]) -> Optional[float]:
 
 def _trend_metrics(
     history: pd.DataFrame,
-) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float], Optional[float]]:
-    """Return (price_vs_sma200, return_1m, return_12m, sma200_slope, annualized_vol)."""
+) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float], Optional[float], Optional[float]]:
+    """Return (price_vs_sma200, return_1m, return_12m, sma200_slope, annualized_vol, daily_change)."""
     if history is None or history.empty or "Close" not in history:
-        return None, None, None, None, None
+        return None, None, None, None, None, None
 
     close = history["Close"].dropna()
     if len(close) < 200:
-        return None, None, None, None, None
+        return None, None, None, None, None, None
 
     sma200 = close.rolling(window=200).mean()
     price = float(close.iloc[-1])
@@ -179,7 +181,13 @@ def _trend_metrics(
         if start > 0:
             slope = (end / start) - 1.0
 
-    return price_vs, return_1m, return_12m, slope, vol
+    daily_change = None
+    if len(close) >= 2:
+        prev_close = float(close.iloc[-2])
+        if prev_close > 0:
+            daily_change = (price / prev_close) - 1.0
+
+    return price_vs, return_1m, return_12m, slope, vol, daily_change
 
 
 def _fetch_stock(ticker: str, info: dict, history: pd.DataFrame) -> StockData:
@@ -204,11 +212,12 @@ def _fetch_stock(ticker: str, info: dict, history: pd.DataFrame) -> StockData:
     data.market_cap = _safe_get(info, "marketCap")
     data.current_price = _first(_safe_get(info, "currentPrice"), _safe_get(info, "regularMarketPrice"))
 
-    pvs, r1m, r12, slope, _vol = _trend_metrics(history)
+    pvs, r1m, r12, slope, _vol, daily = _trend_metrics(history)
     data.price_vs_sma200 = pvs
     data.return_1m = r1m
     data.return_12m = r12
     data.sma200_slope = slope
+    data.daily_change = daily
     if data.current_price is None and history is not None and not history.empty:
         data.current_price = float(history["Close"].iloc[-1])
 
@@ -234,12 +243,13 @@ def _fetch_etf(ticker: str, info: dict, history: pd.DataFrame) -> EtfData:
     data.current_price = _first(_safe_get(info, "regularMarketPrice"), _safe_get(info, "previousClose"))
     data.nav = _safe_get(info, "navPrice")
 
-    pvs, r1m, r12, slope, vol = _trend_metrics(history)
+    pvs, r1m, r12, slope, vol, daily = _trend_metrics(history)
     data.price_vs_sma200 = pvs
     data.return_1m = r1m
     data.return_12m = r12
     data.sma200_slope = slope
     data.volatility_1y = vol
+    data.daily_change = daily
     if r12 is not None and vol is not None and vol > 0:
         data.sharpe_proxy = (r12 - RISK_FREE_RATE) / vol
     if data.current_price is None and history is not None and not history.empty:
@@ -318,31 +328,6 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> AssetData:
     # assigned ``t.info or {}`` above (both error paths returned early).
     assert info is not None
     quote_type = (info.get("quoteType") or "").upper()
-
-    # ── Early market-cap filter — skip history fetch for tiny tickers ───
-    if min_market_cap > 0:
-        mc: float | None
-        if quote_type == "ETF":
-            mc = _safe_get(info, "totalAssets")
-        else:
-            mc = _safe_get(info, "marketCap")
-        # Exclude assets below the threshold OR with unknown market cap:
-        # a missing figure cannot satisfy the filter, so skip the history
-        # fetch and return a minimal record (scored low / filtered out).
-        if mc is None or mc < min_market_cap:
-            data: AssetData
-            if quote_type == "ETF":
-                data = EtfData(ticker=ticker, total_assets=mc)
-                data.category = info.get("category")
-            else:
-                data = StockData(ticker=ticker, market_cap=mc)
-                data.sector = info.get("sector")
-            data.name = info.get("shortName") or info.get("longName") or ""
-            data.currency = info.get("currency")
-            data.exchange = info.get("exchange")
-            if info_fetched_fresh:
-                cache_info_set(ticker, info)
-            return data
 
     # ── Step 2: get / fetch price history ────────────────────────────────
     history_str = cache_history_get(ticker)

@@ -1,0 +1,22 @@
+"""Superinvestor consensus universe — tickers held by ≥2 top investors.
+
+Source: DataRoma (https://www.dataroma.com) — 13F filings from ~82
+superinvestors tracked by the platform. Only tickers with at least two
+independent manager positions are included.
+"""
+
+SUPERINVESTOR_UNIVERSE: list[str] = [
+    "AAPL", "ABM", "ACHC", "ADI", "AMAT", "AMZN", "AON", "APG", "APP",
+    "ASML", "AVGO", "AXP", "BABA", "BAC", "BAX", "BDX", "BKNG", "BN",
+    "BRK.A", "BRK.B", "C", "CBRE", "CNI", "COF", "CP", "CPNG", "CRM",
+    "CROX", "CRS", "CSGP", "CVNA", "CVS", "CVX", "DE", "DHR", "DIS",
+    "ELV", "ET", "FDX", "FERG", "FICO", "FIVE", "FWONK", "GE", "GEHC",
+    "GOOG", "GOOGL", "HCC", "IBKR", "ICE", "IFF", "INTU", "JNJ", "JPM",
+    "KHC", "KKR", "KOF", "LAD", "LEN", "LLY", "LYV", "MA", "MCO",
+    "MDLN", "META", "MGM", "MKL", "MRK", "MSFT", "NCLH", "NFLX", "NU",
+    "NVDA", "NVST", "OMF", "OSK", "OXY", "PDD", "PEP", "PFE", "PM",
+    "PPLI", "PYPL", "QSR", "RACE", "REGN", "RKT", "RPRX", "RTX", "SCHW",
+    "SGI", "SGOV", "SHW", "SLB", "SLM", "SNX", "SPGI", "SUNB", "SYK",
+    "TDG", "TDS", "TMO", "TRU", "TSLA", "TSM", "TSN", "UBER", "UHAL.B",
+    "UNH", "USB", "V", "VMC", "VST", "WAT", "WTW", "ZBH",
+]

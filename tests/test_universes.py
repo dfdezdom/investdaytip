@@ -14,6 +14,7 @@ from investdaytip.asia_universe import ASIA_UNIVERSE
 from investdaytip.etf_universe import DEFAULT_ETF_UNIVERSE
 from investdaytip.eu_etf_universe import DEFAULT_EU_ETF_UNIVERSE
 from investdaytip.eu_universe import DEFAULT_EU_UNIVERSE
+from investdaytip.superinvestor_universe import SUPERINVESTOR_UNIVERSE
 from investdaytip.universe import DEFAULT_UNIVERSE
 
 # Yahoo symbols: a base (letters/digits, may contain - or .) optionally followed
@@ -25,6 +26,7 @@ ALL_UNIVERSES = {
     "us_stocks": DEFAULT_UNIVERSE,
     "eu_stocks": DEFAULT_EU_UNIVERSE,
     "asia_stocks": ASIA_UNIVERSE,
+    "superinvestor_stocks": SUPERINVESTOR_UNIVERSE,
     "us_etfs": DEFAULT_ETF_UNIVERSE,
     "eu_etfs": DEFAULT_EU_ETF_UNIVERSE,
     "asia_etfs": ASIA_ETF_UNIVERSE,

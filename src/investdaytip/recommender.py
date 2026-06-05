@@ -14,6 +14,7 @@ from investdaytip.etf_universe import DEFAULT_ETF_UNIVERSE
 from investdaytip.eu_etf_universe import DEFAULT_EU_ETF_UNIVERSE
 from investdaytip.eu_universe import DEFAULT_EU_UNIVERSE
 from investdaytip.scoring import ScoredAsset, score_asset
+from investdaytip.superinvestor_universe import SUPERINVESTOR_UNIVERSE
 from investdaytip.universe import DEFAULT_UNIVERSE
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,8 @@ def _build_universe(
             pools.append(list(DEFAULT_EU_UNIVERSE))
         if "all" in regions or "asia" in regions:
             pools.append(list(ASIA_UNIVERSE))
+        if "all" in regions or "superinvestor" in regions:
+            pools.append(list(SUPERINVESTOR_UNIVERSE))
     if asset_class in ("etfs", "all"):
         if "all" in regions or "us" in regions:
             pools.append(list(DEFAULT_ETF_UNIVERSE))
@@ -104,7 +107,7 @@ def recommend(
             reports figures in the asset's native currency, so this acts as
             an approximate filter for non-USD listings.
         asset_class: "all", "stocks", or "etfs".
-        region: Region(s) — ``"all"``, ``"us"``, ``"eu"``, ``"asia"`` or a list.
+        region: Region(s) — ``"all"``, ``"us"``, ``"eu"``, ``"asia"``, ``"superinvestor"`` or a list.
         currency: Currency filter(s) — e.g. ``"USD"``, ``["USD", "EUR"]``.
         progress_cb: Optional callable ``(done, total, ticker)``.
     """

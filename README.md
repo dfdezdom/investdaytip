@@ -4,7 +4,7 @@
   <img src="logo.svg" alt="InvestDayTip Logo" width="300">
 </p>
 
-> A multi-factor analysis tool that suggests long-term **stock & ETF** buy recommendations from US, European, and Asian markets, computed live from public market data.
+> A multi-factor analysis tool that suggests long-term **stock & ETF** buy recommendations from US, European, Asian, and Superinvestor-consensus markets, computed live from public market data.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -19,7 +19,7 @@
 
 - 📈 **Multi-factor scoring** — composite 0-100 score per asset
 - 🏦 **Stocks & ETFs** — auto-detected and scored with dedicated models
-- 🌍 **US, European & Asian markets** — S&P 500, DAX, CAC 40, FTSE 100, Nikkei 225, Hang Seng, NSE, and more
+- 🌍 **US, European, Asian & Superinvestor markets** — S&P 500, DAX, CAC 40, FTSE 100, Nikkei 225, Hang Seng, NSE, and superinvestor consensus picks from DataRoma 13F filings
 - 💱 **Currency filter** — narrow by native currency (`USD`, `EUR`, `JPY`, …)
 - ⚡ **Concurrent fetching** — analyzes ~300 tickers in seconds
 - 📊 **Rich CLI output** — price, 1M/1Y change, score breakdown and rationale
@@ -77,6 +77,7 @@ investdaytip -a etfs                 # Only ETFs
 investdaytip -r us                   # Only US
 investdaytip -r eu                   # Only Europe
 investdaytip -r asia                 # Only Asia
+investdaytip -r superinvestor        # Only superinvestor consensus tickers
 investdaytip -r us eu                # US + Europe
 investdaytip -r eu -a stocks         # Only European stocks
 investdaytip -r asia -a etfs         # Only Asian ETFs
@@ -112,7 +113,7 @@ investdaytip --help
 | `-t, --tickers ...` | Custom ticker list (overrides universe) | curated universe |
 | `--tickers-file PATH` | Text file with custom tickers (merged with `--tickers` if both are used) | disabled |
 | `-a, --asset-class {all,stocks,etfs}` | Asset class filter | `all` |
-| `-r, --region {all,us,eu,asia}` `nargs="+"` | Region filter(s) — e.g. `-r us eu` | `all` |
+| `-r, --region {all,us,eu,asia,superinvestor}` `nargs="+"` | Region filter(s) — e.g. `-r us eu` | `all` |
 | `-c, --currency {all,USD,EUR,GBP,…}` `nargs="+"` | Currency filter(s); narrows universe to matching regions when no `-r` is given | `all` |
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
 | `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable) | `2B` |
@@ -156,7 +157,7 @@ The generated report includes filters for:
 
 - Text search (ticker/name/sector)
 - Asset class (`stock` / `etf`)
-- Region (`us` / `eu` / `asia`)
+- Region (`us` / `eu` / `asia` / `superinvestor`)
 - Minimum score
 - Minimum 1M return (%)
 - Minimum 1Y return (%)
@@ -200,6 +201,7 @@ Each recommendation includes:
 | **Ticker link** | Opens Google Finance in a new tab |
 | **T / Y** | Opens TradingView / Yahoo Finance in a new tab |
 | **Price** | Current price in native currency |
+| **% Today** | Daily change vs previous close |
 | **P/E** | Trailing price-to-earnings ratio (stocks; `-` when unavailable) |
 | **1M Δ** | % change vs ~22 trading days ago |
 | **1Y Δ** | % change vs ~252 trading days ago |
@@ -243,6 +245,7 @@ When no `-t` is given, InvestDayTip uses curated universes:
 - **EU UCITS ETFs** — 38 broad, sector and bond UCITS ETFs (`eu_etf_universe.py`)
 - **Asia stocks** — 76 large-caps from Japan, Hong Kong, Singapore, India, South Korea, Taiwan, and Australia (`asia_universe.py`)
 - **Asia ETFs** — 20 broad-market, country-specific, and sector ETFs with significant Asian exposure (`asia_etf_universe.py`)
+- **Superinvestor stocks** — 116 consensus picks held by ≥2 of ~82 top investors tracked by DataRoma 13F filings (`superinvestor_universe.py`)
 
 Tickers use Yahoo Finance suffixes: 
 - **US:** no suffix (AAPL, MSFT)
@@ -318,6 +321,7 @@ src/investdaytip/
 ├── scoring.py             # Pure scoring functions (score_stock, score_etf)
 ├── universe.py            # US stock universe
 ├── etf_universe.py        # US ETF universe
+├── superinvestor_universe.py  # Superinvestor consensus universe (DataRoma 13F)
 ├── eu_universe.py         # EU stock universe
 ├── eu_etf_universe.py     # EU UCITS ETF universe
 ├── asia_universe.py       # Asia stock universe

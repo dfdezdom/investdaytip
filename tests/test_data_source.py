@@ -30,7 +30,7 @@ def stock_info() -> dict:
     }
 
 
-def test_fetch_asset_skips_history_below_market_cap(mocker, stock_info):
+def test_fetch_asset_below_market_cap_still_fetches_history(mocker, stock_info):
     stock_info["marketCap"] = 500_000_000  # $500M — below $2B default
     mock = _mock_ticker(stock_info)
     mocker.patch("investdaytip.data_source.yf.Ticker", return_value=mock)
@@ -40,7 +40,8 @@ def test_fetch_asset_skips_history_below_market_cap(mocker, stock_info):
     assert isinstance(result, StockData)
     assert result.ticker == "BIGC"
     assert result.market_cap == 500_000_000
-    mock.history.assert_not_called()
+    mock.history.assert_called_once()
+    assert result.current_price is not None
 
 
 def test_fetch_asset_fetches_history_above_market_cap(mocker, stock_info):
@@ -55,9 +56,8 @@ def test_fetch_asset_fetches_history_above_market_cap(mocker, stock_info):
     mock.history.assert_called_once()
 
 
-def test_fetch_asset_unknown_market_cap_is_excluded(mocker):
-    # When market cap is missing it cannot satisfy a min_market_cap filter,
-    # so the expensive history fetch is skipped and a minimal record returned.
+def test_fetch_asset_unknown_market_cap_still_fetches_history(mocker):
+    # Market cap is missing but history is still fetched (no early return).
     info = {
         "quoteType": "STOCK",
         "shortName": "NoMktCap",
@@ -70,11 +70,12 @@ def test_fetch_asset_unknown_market_cap_is_excluded(mocker):
 
     assert isinstance(result, StockData)
     assert result.market_cap is None
-    mock.history.assert_not_called()
+    mock.history.assert_called_once()
+    assert result.current_price is not None
 
 
 def test_fetch_asset_unknown_market_cap_passes_when_filter_disabled(mocker):
-    # With min_market_cap=0 the filter is off, so history is still fetched.
+    # With min_market_cap=0, history is still fetched (same as default behavior).
     info = {
         "quoteType": "STOCK",
         "shortName": "NoMktCap",

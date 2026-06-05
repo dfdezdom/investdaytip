@@ -148,6 +148,7 @@ def _render(results: list[ScoredAsset], console: Console) -> None:
     table.add_column("Name")
     table.add_column("Sector/Category", style="dim")
     table.add_column("Price", justify="right")
+    table.add_column("% Today", justify="right")
     table.add_column("P/E", justify="right")
     table.add_column("1M Δ", justify="right")
     table.add_column("1Y Δ", justify="right")
@@ -165,6 +166,7 @@ def _render(results: list[ScoredAsset], console: Console) -> None:
             d.name or "—",
             d.sector or "—",
             _fmt_price(d.current_price, getattr(d, "currency", None)),
+            _fmt_pct(d.daily_change),
             _fmt_pe(getattr(d, "trailing_pe", None)),
             _fmt_pct(d.return_1m),
             _fmt_pct(d.return_12m),
@@ -200,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
     adv.add_argument("-a", "--asset-class", choices=["all", "stocks", "etfs"], default=None,
                      help="Asset class (all/stocks/etfs). If omitted, asked interactively.")
     adv.add_argument("-r", "--region", nargs="+",
-                     choices=["all", "us", "eu", "asia"], default=None,
+                     choices=["all", "us", "eu", "asia", "superinvestor"], default=None,
                      help="Region(s) — e.g. -r us eu. If omitted, asked interactively.")
     adv.add_argument(
         "-c", "--currency", nargs="+",
@@ -231,7 +233,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-a", "--asset-class", choices=["all", "stocks", "etfs"], default="all",
                         help="Which asset class to analyze when no -t is given (default: all).")
     parser.add_argument("-r", "--region", nargs="+",
-                        choices=["all", "us", "eu", "asia"], default="all",
+                        choices=["all", "us", "eu", "asia", "superinvestor"], default="all",
                         help="Region(s) — e.g. -r us eu (default: all).")
     parser.add_argument(
         "-c", "--currency", nargs="+",

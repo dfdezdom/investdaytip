@@ -176,6 +176,7 @@ _CURRENCY_DEFAULTS: dict[str, str] = {
     "us": "USD",
     "eu": "EUR",
     "asia": "all",
+    "superinvestor": "USD",
     "all": "all",
 }
 
@@ -315,7 +316,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("-a", "--asset-class", choices=["all", "stocks", "etfs"], default=None)
     parser.add_argument("-r", "--region", nargs="+",
-                        choices=["all", "us", "eu", "asia"], default=None)
+                        choices=["all", "us", "eu", "asia", "superinvestor"], default=None)
     parser.add_argument(
         "-c", "--currency", nargs="+",
         choices=["all", "USD", "EUR", "GBP", "CHF", "JPY", "HKD", "INR",
@@ -484,9 +485,10 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 "us": ["USD", "all"],
                 "eu": ["EUR", "USD", "GBP", "all"],
                 "asia": ["USD", "JPY", "HKD", "all"],
+                "superinvestor": ["USD", "all"],
                 "all": ["all", "USD", "EUR", "GBP", "JPY", "HKD"],
             }
-            _currency_defaults = {"us": "USD", "eu": "EUR", "asia": "all", "all": "all"}
+            _currency_defaults = {"us": "USD", "eu": "EUR", "asia": "all", "superinvestor": "USD", "all": "all"}
             ccy = [
                 Prompt.ask(
                     "Currency filter?",
