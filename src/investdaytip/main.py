@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
+from investdaytip.dataroma import fetch_superinvestor_universe, get_superinvestor_data
 from investdaytip.html_export import export_recommendations_html
 from investdaytip.recommender import recommend
 from investdaytip.scoring import ScoredAsset
@@ -291,6 +292,27 @@ def main(argv: list[str] | None = None) -> int:
         f"[bold cyan]InvestDayTip[/bold cyan] — analyzing markets "
         f"([italic]{args.asset_class} · {region_str} · {currency_str}[/italic])...\n"
     )
+
+    # Warm-up superinvestor cache before the main scoring loop so that
+    # the HTML Superinvestors column gets real data.  Only when the
+    # user is requesting stocks (or all) and the cache is not disabled.
+    if args.asset_class in ("stocks", "all") and not args.no_cache:
+        if not get_superinvestor_data():
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("{task.completed}/{task.total}"),
+                TimeElapsedColumn(),
+                console=console,
+            ) as si_progress:
+                si_task = si_progress.add_task("Fetching superinvestor data", total=None)
+                def _si_cb(done: int, total: int, name: str) -> None:
+                    si_progress.update(si_task, total=total, completed=done, description=f"Fetching {name}")
+                try:
+                    fetch_superinvestor_universe(progress_cb=_si_cb)
+                except Exception:
+                    console.print("[yellow]⚠️  Could not fetch superinvestor data, continuing without it.[/yellow]")
 
     results: list[ScoredAsset] = []
     with Progress(

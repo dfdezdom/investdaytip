@@ -108,6 +108,7 @@ def fetch_manager_holdings(code: str) -> dict[str, float]:
 def fetch_superinvestor_universe(
     min_overlap: int = 2,
     max_retries: int = 3,
+    progress_cb=None,
 ) -> list[str]:
     """Return ticker list of stocks held by at least ``min_overlap`` superinvestors.
 
@@ -122,7 +123,9 @@ def fetch_superinvestor_universe(
         managers = fetch_manager_list()
         aggregate: dict[str, int] = {}
         weights: dict[str, float] = {}
-        for code, name in managers:
+        for i, (code, name) in enumerate(managers, start=1):
+            if progress_cb:
+                progress_cb(i, len(managers), name)
             for attempt in range(max_retries):
                 try:
                     holdings = fetch_manager_holdings(code)
