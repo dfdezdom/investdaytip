@@ -10,6 +10,7 @@ from investdaytip.asia_etf_universe import ASIA_ETF_UNIVERSE
 from investdaytip.asia_universe import ASIA_UNIVERSE
 from investdaytip.cache import close_db
 from investdaytip.data_source import fetch_asset
+from investdaytip.dataroma import fetch_superinvestor_universe, get_superinvestor_data
 from investdaytip.etf_universe import DEFAULT_ETF_UNIVERSE
 from investdaytip.eu_etf_universe import DEFAULT_EU_ETF_UNIVERSE
 from investdaytip.eu_universe import DEFAULT_EU_UNIVERSE
@@ -121,6 +122,17 @@ def recommend(
 
     if progress_cb:
         progress_cb(0, total, "")
+
+    # Warm up the superinvestor cache once before scoring so that stocks
+    # get real manager_count metadata.  If the cache is empty and the
+    # fetch fails (e.g. DataRoma is down), we log and continue gracefully.
+    if asset_class in ("stocks", "all"):
+        if not get_superinvestor_data():
+            try:
+                logger.info("Warming up superinvestor cache from DataRoma...")
+                fetch_superinvestor_universe()
+            except Exception:
+                logger.warning("Could not fetch superinvestor data, continuing without it.", exc_info=True)
 
     try:
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
