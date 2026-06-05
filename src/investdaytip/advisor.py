@@ -622,150 +622,145 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 for sec in sorted(missing):
                     console.print(f"  • [yellow]{sec}[/yellow]")
 
-    # ── Buy recommendations (if regime allows) ────────────
-    # market_regime() only emits actions "buy" / "hold" / "sell"; the "neutral"
-    # regime maps to action="buy". Only "buy" should surface recommendations.
+    # ── Buy recommendations (always interactive) ──────────
     macro_action = macro["action"]
     if macro_action == "buy":
-        console.print(f"\n[bold green]✅ Signal: {macro_action.upper()}[/bold green]")
-
-        # Resolve asset class, region, currency (CLI flags or interactive)
-        _risk_defaults = {
-            "conservative": ("etfs", "eu"),
-            "moderate": ("all", "all"),
-            "aggressive": ("stocks", "all"),
-        }
-        if args.asset_class:
-            ac = args.asset_class
-        else:
-            d_ac, _ = _risk_defaults.get(risk, ("all", "all"))
-            ac = Prompt.ask(
-                "What asset types do you want to analyze?",
-                choices=["all", "stocks", "etfs"],
-                default=d_ac,
-            )
-
-        if args.region:
-            reg = args.region
-        else:
-            _, d_reg = _risk_defaults.get(risk, ("all", "all"))
-            reg = [
-                Prompt.ask(
-                    "Which regions?",
-                    choices=["all", "us", "eu", "asia", "superinvestor"],
-                    default=d_reg,
-                )
-            ]
-
-        if args.currency:
-            ccy = args.currency
-        else:
-            _reg_for_ccy = reg[0] if isinstance(reg, list) else reg
-            _currency_choices = {
-                "us": ["USD", "all"],
-                "eu": ["EUR", "USD", "GBP", "all"],
-                "asia": ["USD", "JPY", "HKD", "all"],
-                "superinvestor": ["USD", "all"],
-                "all": ["all", "USD", "EUR", "GBP", "JPY", "HKD"],
-            }
-            _currency_defaults = {"us": "USD", "eu": "EUR", "asia": "all", "superinvestor": "USD", "all": "all"}
-            ccy = [
-                Prompt.ask(
-                    "Currency filter?",
-                    choices=_currency_choices.get(_reg_for_ccy, ["all"]),
-                    default=_currency_defaults.get(_reg_for_ccy, "all"),
-                )
-            ]
-
-        # Ask about missing sector focus (only in interactive mode)
-        target_sector: str | None = None
-        if missing and not args.asset_class:
-            sector_choices = sorted(missing) + ["All", "No"]
-            target_sector = Prompt.ask(
-                "Focus on a specific missing sector?",
-                choices=sector_choices,
-                default="No",
-            )
-
-        with console.status("[bold green]Generating buy recommendations..."):
-
-            portfolio_tickers: set[str] = set()
-            if portfolio_path.exists():
-                portfolio_tickers = {
-                    t.upper() for t in _load_tickers_from_file(str(portfolio_path))
-                }
-
-            try:
-                results = recommend(asset_class=ac, region=reg, top_n=10, currency=ccy, min_market_cap=args.min_market_cap)
-            except YFRateLimitError:
-                console.print(
-                    "\n[yellow]⏳ yfinance rate limit reached. "
-                    "Wait 1-2 minutes and run:[/yellow]"
-                )
-                _reg_str = " ".join(reg) if isinstance(reg, list) else str(reg)
-                _ccy_str = " ".join(ccy) if isinstance(ccy, list) else str(ccy)
-                console.print(
-                    f"  [bold]investdaytip -a {ac} -r {_reg_str} -c {_ccy_str} "
-                    "--top 10 --export-html[/bold]"
-                )
-                return 1
-
-            new_results = [
-                r for r in results
-                if r.data.ticker.upper() not in portfolio_tickers
-            ]
-
-            # Filter by target sector if requested
-            if target_sector and target_sector != "No":
-                def _sector_of(r) -> Optional[str]:
-                    return (
-                        getattr(r.data, "sector", None)
-                        or getattr(r.data, "category", None)
-                    )
-
-                if target_sector == "All":
-                    sector_results = [
-                        r for r in new_results
-                        if _sector_of(r) in missing
-                    ]
-                else:
-                    sector_results = [
-                        r for r in new_results
-                        if _sector_of(r) == target_sector
-                    ]
-                if sector_results:
-                    new_results = sector_results
-                else:
-                    label = "missing sectors" if target_sector == "All" else target_sector
-                    console.print(f"[yellow]No {label} picks found — showing all.[/yellow]")
-
-        if new_results:
-            _render(new_results, console)
-            Path("advisor_recommendations").mkdir(parents=True, exist_ok=True)
-            dest = f"advisor_recommendations/recommendations_advisor_{datetime.now():%Y%m%d-%H%M}.html"
-            try:
-                out = export_recommendations_html(
-                    new_results, dest, top_n=10,
-                    asset_class=ac, region=reg,
-                    currency=ccy, tickers=None,
-                )
-                console.print(f"\n[green]📄 HTML report:[/green] {out}")
-            except Exception as exc:
-                console.print(f"\n[red]Error exporting HTML:[/red] {exc}")
-        else:
-            console.print("[yellow]No new recommendations found outside current portfolio.[/yellow]")
-            console.print(
-                "\n[dim italic]Disclaimer: This is not financial advice. "
-                "Do your own research.[/dim italic]"
-            )
-
+        console.print(f"\n[bold green]✅ Macro signal: {macro_action.upper()}[/bold green]")
     else:
-        console.print(f"\n[bold red]⛔ Signal: {macro_action.upper()}[/bold red]")
-        console.print(macro["description"])
-        console.print("Consider increasing defensive positions (bonds, value ETFs).")
-        console.print(
-            "\n[dim italic]Disclaimer: This is not financial advice. "
-            "Do your own research.[/dim italic]"
+        console.print(f"\n[bold yellow]📊 Macro signal: {macro_action.upper()} — {macro['description']}[/bold yellow]")
+
+    # Resolve asset class, region, currency (CLI flags or interactive)
+    _risk_defaults = {
+        "conservative": ("etfs", "eu"),
+        "moderate": ("all", "all"),
+        "aggressive": ("stocks", "all"),
+    }
+    if args.asset_class:
+        ac = args.asset_class
+    else:
+        d_ac, _ = _risk_defaults.get(risk, ("all", "all"))
+        ac = Prompt.ask(
+            "What asset types do you want to analyze?",
+            choices=["all", "stocks", "etfs"],
+            default=d_ac,
         )
+
+    if args.region:
+        reg = args.region
+    else:
+        _, d_reg = _risk_defaults.get(risk, ("all", "all"))
+        reg = [
+            Prompt.ask(
+                "Which regions?",
+                choices=["all", "us", "eu", "asia", "superinvestor"],
+                default=d_reg,
+            )
+        ]
+
+    if args.currency:
+        ccy = args.currency
+    else:
+        _reg_for_ccy = reg[0] if isinstance(reg, list) else reg
+        _currency_choices = {
+            "us": ["USD", "all"],
+            "eu": ["EUR", "USD", "GBP", "all"],
+            "asia": ["USD", "JPY", "HKD", "all"],
+            "superinvestor": ["USD", "all"],
+            "all": ["all", "USD", "EUR", "GBP", "JPY", "HKD"],
+        }
+        _currency_defaults = {"us": "USD", "eu": "EUR", "asia": "all", "superinvestor": "USD", "all": "all"}
+        ccy = [
+            Prompt.ask(
+                "Currency filter?",
+                choices=_currency_choices.get(_reg_for_ccy, ["all"]),
+                default=_currency_defaults.get(_reg_for_ccy, "all"),
+            )
+        ]
+
+    # Ask about missing sector focus (only in interactive mode)
+    target_sector: str | None = None
+    if missing and not args.asset_class:
+        sector_choices = sorted(missing) + ["All", "No"]
+        target_sector = Prompt.ask(
+            "Focus on a specific missing sector?",
+            choices=sector_choices,
+            default="No",
+        )
+
+    with console.status("[bold green]Generating buy recommendations..."):
+
+        portfolio_tickers: set[str] = set()
+        if portfolio_path.exists():
+            portfolio_tickers = {
+                t.upper() for t in _load_tickers_from_file(str(portfolio_path))
+            }
+
+        try:
+            results = recommend(asset_class=ac, region=reg, top_n=10, currency=ccy, min_market_cap=args.min_market_cap)
+        except YFRateLimitError:
+            console.print(
+                "\n[yellow]⏳ yfinance rate limit reached. "
+                "Wait 1-2 minutes and run:[/yellow]"
+            )
+            _reg_str = " ".join(reg) if isinstance(reg, list) else str(reg)
+            _ccy_str = " ".join(ccy) if isinstance(ccy, list) else str(ccy)
+            console.print(
+                f"  [bold]investdaytip -a {ac} -r {_reg_str} -c {_ccy_str} "
+                "--top 10 --export-html[/bold]"
+            )
+            return 1
+
+        new_results = [
+            r for r in results
+            if r.data.ticker.upper() not in portfolio_tickers
+        ]
+
+        # Filter by target sector if requested
+        if target_sector and target_sector != "No":
+            def _sector_of(r) -> Optional[str]:
+                return (
+                    getattr(r.data, "sector", None)
+                    or getattr(r.data, "category", None)
+                )
+
+            if target_sector == "All":
+                sector_results = [
+                    r for r in new_results
+                    if _sector_of(r) in missing
+                ]
+            else:
+                sector_results = [
+                    r for r in new_results
+                    if _sector_of(r) == target_sector
+                ]
+            if sector_results:
+                new_results = sector_results
+            else:
+                label = "missing sectors" if target_sector == "All" else target_sector
+                console.print(f"[yellow]No {label} picks found — showing all.[/yellow]")
+
+    if new_results:
+        _render(new_results, console)
+        Path("advisor_recommendations").mkdir(parents=True, exist_ok=True)
+        dest = f"advisor_recommendations/recommendations_advisor_{datetime.now():%Y%m%d-%H%M}.html"
+        try:
+            out = export_recommendations_html(
+                new_results, dest, top_n=10,
+                asset_class=ac, region=reg,
+                currency=ccy, tickers=None,
+            )
+            console.print(f"\n[green]📄 HTML report:[/green] {out}")
+        except Exception as exc:
+            console.print(f"\n[red]Error exporting HTML:[/red] {exc}")
+    else:
+        console.print("[yellow]No new recommendations found outside current portfolio.[/yellow]")
+
+    if macro_action != "buy":
+        console.print(f"\n[yellow]💡 {macro['description']}[/yellow]")
+
+    console.print(
+        "\n[dim italic]Disclaimer: This is not financial advice. "
+        "Do your own research.[/dim italic]"
+    )
 
     return 0
