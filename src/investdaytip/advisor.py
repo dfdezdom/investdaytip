@@ -21,6 +21,7 @@ from investdaytip.dataroma import fetch_superinvestor_universe, get_superinvesto
 from investdaytip.html_export import export_recommendations_html
 from investdaytip.main import _load_tickers_from_file, _parse_min_market_cap, _render
 from investdaytip.recommender import recommend
+from investdaytip.sentiment import fear_greed_index
 
 # VIX thresholds
 VIX_BULLISH = 15
@@ -201,22 +202,35 @@ def macro_regime() -> dict:
         elif dxy < 95:
             score += 5
 
+    # Fear & Greed impact
+    fg = fear_greed_index()
+    fg_score = fg["score"] if fg and fg.get("score") is not None else None
+    if fg_score is not None:
+        if fg_score < 25:
+            score += 10  # extreme fear — contrarian buy
+        elif fg_score < 45:
+            score += 5   # fear — mildly oversold
+        elif fg_score > 75:
+            score -= 10  # extreme greed — complacency risk
+        elif fg_score > 55:
+            score -= 5   # greed — mildly overbought
+
     score = max(0, min(100, score))
 
     if score >= 70:
-        regime = "healthy"
+        regime, action = "healthy", "buy"
         label = "🟢 Macro healthy"
         desc = "Favorable macro backdrop. Good for long-term equity exposure."
     elif score >= 45:
-        regime = "neutral"
+        regime, action = "neutral", "hold"
         label = "🟡 Mixed signals"
         desc = "Some macro headwinds but no major risks. Selective buying."
     elif score >= 25:
-        regime = "warning"
+        regime, action = "warning", "hold"
         label = "🟠 Macro warning"
         desc = "Multiple macro stress signals. Reduce risk, favor defensives."
     else:
-        regime = "danger"
+        regime, action = "danger", "sell"
         label = "🔴 Macro danger"
         desc = "Severe macro stress. Consider raising cash or hedging."
 
@@ -225,10 +239,12 @@ def macro_regime() -> dict:
         "regime": regime,
         "label": label,
         "description": desc,
+        "action": action,
         "vix": vix_data,
         "yield": yield_data,
         "move": move,
         "dxy": dxy,
+        "fear_greed": fg,
     }
 
 
@@ -525,9 +541,18 @@ def advisor_main(argv: list[str] | None = None) -> int:
     market_table.add_row("10Y−2Y Spread", f"{yield_str} {yield_note}".strip())
     market_table.add_row("MOVE Index", f"{move_str}{move_note}")
     market_table.add_row("DXY", f"{dxy_str}{dxy_note}")
+    fg = macro.get("fear_greed")
+    if fg and fg.get("score") is not None:
+        fg_score = fg["score"]
+        fg_rating = fg.get("rating", "").capitalize()
+        icon = "🟢" if fg_score < 25 else "🟡" if fg_score < 45 else "⚪" if fg_score < 56 else "🟠" if fg_score < 76 else "🔴"
+        fg_str = f"{icon} {fg_score:.1f} — {fg_rating}"
+    else:
+        fg_str = "N/A"
+    market_table.add_row("Fear & Greed", fg_str)
     market_table.add_row("Macro Regime", macro["label"])
     market_table.add_row("Score", f"{macro['score']}/100")
-    market_table.add_row("Signal", f"[bold]{vix['action'].upper()}[/bold]")
+    market_table.add_row("Signal", f"[bold]{macro['action'].upper()}[/bold]")
     market_table.add_row(
         "Bubble risk",
         f"{bubble['level'].upper()} — {bubble['note']}",
@@ -600,9 +625,9 @@ def advisor_main(argv: list[str] | None = None) -> int:
     # ── Buy recommendations (if regime allows) ────────────
     # market_regime() only emits actions "buy" / "hold" / "sell"; the "neutral"
     # regime maps to action="buy". Only "buy" should surface recommendations.
-    vix_action = macro["vix"]["action"]
-    if vix_action == "buy":
-        console.print(f"\n[bold green]✅ Signal: {vix_action.upper()}[/bold green]")
+    macro_action = macro["action"]
+    if macro_action == "buy":
+        console.print(f"\n[bold green]✅ Signal: {macro_action.upper()}[/bold green]")
 
         # Resolve asset class, region, currency (CLI flags or interactive)
         _risk_defaults = {
@@ -735,8 +760,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
             )
 
     else:
-        console.print(f"\n[bold red]⛔ Signal: {vix_action.upper()}[/bold red]")
-        console.print(macro["vix"]["description"])
+        console.print(f"\n[bold red]⛔ Signal: {macro_action.upper()}[/bold red]")
+        console.print(macro["description"])
         console.print("Consider increasing defensive positions (bonds, value ETFs).")
         console.print(
             "\n[dim italic]Disclaimer: This is not financial advice. "

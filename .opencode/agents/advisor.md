@@ -73,10 +73,11 @@ The CLI prints Rich tables (┏━ ┃ ┗━ glyphs, truncated text like `Sha�
 from investdaytip.advisor import macro_regime, bubble_risk
 m = macro_regime()
 b = bubble_risk()
-print(f'Macro={m[\"regime\"]} score={m[\"score\"]}/100')
-print(f'VIX={m[\"vix\"][\"vix\"]} VXN={m[\"vix\"][\"vxn\"]} action={m[\"vix\"][\"action\"]}')
-print(f'10Y-2Y={m[\"yield\"].get(\"spread\", \"N/A\")} MOVE={m[\"move\"]} DXY={m[\"dxy\"]}')
-print(f'bubble={b[\"level\"]} pct={b[\"pct_rank\"]} note={b[\"note\"]}')
+print(f'Macro={m["regime"]} score={m["score"]}/100 action={m["action"]}')
+print(f'VIX={m["vix"]["vix"]} VXN={m["vix"]["vxn"]}')
+print(f'10Y-2Y={m["yield"].get("spread", "N/A")} MOVE={m["move"]} DXY={m["dxy"]}')
+print(f'Fear&Greed={m.get("fear_greed", {}).get("score", "N/A")}/{m.get("fear_greed", {}).get("rating", "N/A")}')
+print(f'bubble={b["level"]} pct={b["pct_rank"]} note={b["note"]}')
 "
 ```
 
@@ -116,10 +117,12 @@ r = run_comprehensive(
 )
 print('=== MACRO ===')
 macro = r['macro']
-print(f'Macro={macro[\"regime\"]} score={macro[\"score\"]}/100 label={macro[\"label\"]}')
-print(f'VIX={macro[\"vix\"][\"vix\"]} VXN={macro[\"vix\"][\"vxn\"]} action={macro[\"vix\"][\"action\"]}')
-print(f'10Y-2Y={macro[\"yield\"].get(\"spread\", \"N/A\")} MOVE={macro[\"move\"]} DXY={macro[\"dxy\"]}')
-print(f'bubble={r[\"bubble\"][\"level\"]} pct={r[\"bubble\"][\"pct_rank\"]}')
+print(f'Macro={macro["regime"]} score={macro["score"]}/100 action={macro["action"]}')
+print(f'VIX={macro["vix"]["vix"]} VXN={macro["vix"]["vxn"]}')
+fg = macro.get("fear_greed", {})
+fg_str = f'{fg.get("score", "N/A")}/{fg.get("rating", "N/A")}' if fg else "N/A"
+print(f'10Y-2Y={macro["yield"].get("spread", "N/A")} MOVE={macro["move"]} DXY={macro["dxy"]} Fear&Greed={fg_str}')
+print(f'bubble={r["bubble"]["level"]} pct={r["bubble"]["pct_rank"]}')
 print()
 print('=== PORTFOLIO ===')
 for s in r['portfolio']['results']:
@@ -152,14 +155,27 @@ python -m investdaytip.main advisor --risk <profile> -a etfs -r us
 
 ## Interpretation guide
 
+### Fear & Greed Index (CNN, 0-100)
+| Score | Rating | Signal |
+|-------|--------|--------|
+| 0-24 | Extreme Fear | 🟢 **Contrarian buy** (oversold) |
+| 25-44 | Fear | 🟡 Mildly oversold |
+| 45-55 | Neutral | ⚪ No strong signal |
+| 56-75 | Greed | 🟠 Mildly overbought |
+| 76-100 | Extreme Greed | 🔴 **Complacency risk** (overbought) |
+
+The Fear & Greed composite score influences the macro score: extreme fear adds up to +10 (bullish contrarian), extreme greed subtracts up to -10 (bearish).
+
 ### Macro regime (composite 0-100 score)
 
-| Score | Regime | Label | Meaning |
-|-------|--------|-------|---------|
-| >= 70 | 🟢 healthy | Macro healthy | Good for long-term equity exposure |
-| >= 45 | 🟡 neutral | Mixed signals | Selective buying, some headwinds |
-| >= 25 | 🟠 warning | Macro warning | Reduce risk, favor defensives |
-| < 25 | 🔴 danger | Macro danger | Consider raising cash or hedging |
+| Score | Regime | Signal | Meaning |
+|-------|--------|--------|---------|
+| >= 70 | 🟢 healthy | 🟢 **BUY** | Good for long-term equity exposure |
+| >= 45 | 🟡 neutral | 🟡 **HOLD** | Selective buying, some headwinds |
+| >= 25 | 🟠 warning | 🟠 **HOLD** | Reduce risk, favor defensives |
+| < 25 | 🔴 danger | 🔴 **SELL** | Consider raising cash or hedging |
+
+The **Signal** is derived from the composite macro score (which includes VIX, yield curve, MOVE, DXY, and Fear & Greed), not from VIX alone.
 
 ### VIX-only regime (legacy, when macro data unavailable)
 

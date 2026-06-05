@@ -18,6 +18,7 @@ CACHE_DB = CACHE_DIR / "cache.db"
 
 TTL_PRICES = 300          # 5 minutes
 TTL_FUNDAMENTALS = 86400  # 1 day
+TTL_SENTIMENT = 3600      # 1 hour
 
 
 class CacheDB:
@@ -176,6 +177,20 @@ def cache_history_set(ticker: str, history_json: str) -> None:
     if not enabled:
         return
     get_db().set(_cache_key(ticker, "history"), history_json, TTL_PRICES)
+
+
+def cache_sentiment_get() -> str | None:
+    """Return cached Fear & Greed JSON string or None."""
+    if not enabled:
+        return None
+    return get_db().get(_cache_key("_global", "fear_greed"))
+
+
+def cache_sentiment_set(data_json: str) -> None:
+    """Store Fear & Greed JSON string in cache with sentiment TTL."""
+    if not enabled:
+        return
+    get_db().set(_cache_key("_global", "fear_greed"), data_json, TTL_SENTIMENT)
 
 
 def clear_cache() -> None:

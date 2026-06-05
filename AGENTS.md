@@ -31,6 +31,7 @@ the convention is `Optional[...]` for dataclass fields, not `X | None`.
 | Caching | `cache.py` | SQLite cache with per-thread connections, WAL mode, write lock |
 | Scoring | `scoring.py` | pure functions only — no I/O, no side effects |
 | HTML export | `html_export.py` | self-contained report with inline CSS/JS |
+| Sentiment | `sentiment.py` | CNN Fear & Greed Index, no yfinance (uses `urllib`) |
 | Universes | `*_universe.py` (7 modules) | curated ticker lists wired in `recommender._build_universe()` (deduplicated case-insensitively) |
 | Tests | `tests/` | 8 files, no live network calls (autouse network guard in `conftest.py`) |
 | OpenCode agent | `.opencode/agents/advisor.md` | advisor subagent: permissions, interactive flow, execution methods, and interpretation guide |
@@ -53,9 +54,10 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 
 ### Caching
 - `CacheDB` in `cache.py`: SQLite with `threading.local()` per-thread connections, WAL mode, write lock via `threading.Lock`
-- Three cache entry types:
+- Four cache entry types:
   - `{ticker}:info` (fundamentals, TTL 1d)
   - `{ticker}:history` (prices, TTL 5min)
+  - `_global:fear_greed` (CNN Fear & Greed Index, TTL 1h)
   - `superinvestor:holdings` (DataRoma aggregated data, TTL 7 days)
 - `fetch_asset()` defers cache-write until both info and history are fetched (atomic snapshot); partial results cached on history failure
 - Connections are tracked so `CacheDB.close_all()` / module-level `close_db()` can release **worker-thread** connections; `recommend()` calls `close_db()` in a `finally` after the pool tears down
@@ -77,7 +79,7 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 ### Advisor Module
 - `market_regime()` fetches `^VIX` and `^VXN` via yfinance; thresholds: ≤15 bullish, ≤25 neutral, ≤35 bearish, >35 crash
 - `bubble_risk()` computes VIX percentile over trailing 2 years; <15% → high (complacency), 15-30% → medium, >30% → low
-- `macro_regime()` — composite 0-100 macro health score combining VIX + 10Y-2Y yield curve + MOVE index (bond vol) + DXY (dollar strength); regimes: ≥70 healthy, ≥45 neutral, ≥25 warning, <25 danger
+- `macro_regime()` — composite 0-100 macro health score combining VIX + 10Y-2Y yield curve + MOVE index (bond vol) + DXY (dollar strength) + CNN Fear & Greed; regimes: ≥70 healthy→buy, ≥45 neutral→hold, ≥25 warning→hold, <25 danger→sell
 - `portfolio_review()` loads tickers from file with `_load_tickers_from_file()`, passes through `recommend()` scoring, returns categorized results
 - `run_comprehensive()` is the programmatic API for multi-region/asset-class analysis; exports HTML per combination to `advisor_recommendations/`
 - `advisor_main()` writes the final HTML report to `advisor_recommendations/recommendations_advisor_<timestamp>.html`
@@ -112,9 +114,9 @@ The `advisor` subagent is configured in `.opencode/agents/advisor.md`. It define
 
 - **Permissions:** bash/read allowed, write with confirmation
 - **Required flow:** always ask the user before running any analysis
-- **Execution methods:** `macro_regime()` (VIX + yield curve + bond vol + DXY) for full macro pulse, `market_regime()` + `bubble_risk()` for quick VIX-only pulse, `run_comprehensive()` for multi-region, or interactive CLI `investdaytip advisor`
+- **Execution methods:** `macro_regime()` (VIX + yield curve + bond vol + DXY + Fear & Greed) for full macro pulse (returns `action`: buy/hold/sell), `market_regime()` + `bubble_risk()` for quick VIX-only pulse, `run_comprehensive()` for multi-region, or interactive CLI `investdaytip advisor`
 - **Output format:** clean markdown (never raw Rich tables)
-- **Interpretation rules:** VIX thresholds (≤15 bullish, ≤25 neutral, ≤35 bearish, >35 crash), bubble risk (VIX percentile <15% → complacency), macro regime (composite 0-100: ≥70 healthy, ≥45 neutral, ≥25 warning, <25 danger), scores, portfolio signals
+- **Interpretation rules:** VIX thresholds (≤15 bullish, ≤25 neutral, ≤35 bearish, >35 crash), bubble risk (VIX percentile <15% → complacency), macro regime (composite 0-100: ≥70 healthy→BUY, ≥45 neutral→HOLD, ≥25 warning→HOLD, <25 danger→SELL), scores, portfolio signals
 
 ## Testing Notes
 - Construct `StockData` / `EtfData` directly — never call yfinance in tests

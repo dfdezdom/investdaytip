@@ -10,6 +10,7 @@ from typing import Any, TypeGuard
 from urllib.parse import quote, quote_plus
 
 from investdaytip.scoring import ScoredAsset
+from investdaytip.sentiment import fear_greed_index
 
 # Number of <th> columns in the results table header (keep in sync with the
 # <thead> block below); used for the empty-state row colspan server- and
@@ -265,6 +266,7 @@ def export_recommendations_html(
         "tickers": tickers or [],
         "tickers_file": tickers_file,
         "row_count": len(rows),
+        "fear_greed": fear_greed_index(),
     }
 
     rows_json = json.dumps(rows, ensure_ascii=True)
@@ -554,6 +556,12 @@ def export_recommendations_html(
         metadata.tickers.length ? `tickers=${{metadata.tickers.join(",")}}` : "tickers=curated",
       ];
       if (metadata.tickers_file) chips.push(`tickers_file=${{metadata.tickers_file}}`);
+      const fg = metadata.fear_greed;
+      if (fg && fg.score != null) {{
+        const fgIcons = {{ "extreme fear": "🟢", "fear": "🟡", "neutral": "⚪", "greed": "🟠", "extreme greed": "🔴" }};
+        const icon = fgIcons[fg.rating] || "⚪";
+        chips.push(`Fear & Greed: ${{icon}} ${{fg.score}} (${{fg.rating}})`);
+      }}
       $("runParams").innerHTML = chips.map(c => `<span class=\"chip\">${{c}}</span>`).join("");
       const when = new Date(metadata.generated_at).toLocaleString();
       $("generatedAt").textContent = `Generated: ${{when}} · Rows: ${{metadata.row_count}}`;
