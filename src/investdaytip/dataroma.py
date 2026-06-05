@@ -16,9 +16,9 @@ import re
 import time
 from html import unescape
 from typing import Any
-from urllib.request import urlopen, Request
+from urllib.request import Request, urlopen
 
-from investdaytip.cache import CacheDB
+from investdaytip.cache import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ def fetch_superinvestor_universe(
     Results are cached for 7 days.  Use ``min_overlap=1`` to include any stock
     held by at least one superinvestor, ``min_overlap=2`` for consensus picks, etc.
     """
-    cached = CacheDB.get(CACHE_KEY)
+    cached = get_db().get(CACHE_KEY)
     if cached:
         data = json.loads(cached)
     else:
@@ -116,7 +116,7 @@ def fetch_superinvestor_universe(
             "weights": weights,
             "manager_count": len(managers),
         }
-        CacheDB.set(CACHE_KEY, json.dumps(data), TTL_SUPERINVESTOR)
+        get_db().set(CACHE_KEY, json.dumps(data), TTL_SUPERINVESTOR)
 
     tickers = [
         t for t, count in data["aggregate"].items()
@@ -132,7 +132,7 @@ def get_superinvestor_data() -> dict[str, dict[str, Any]]:
     Returns::
         {"AAPL": {"manager_count": 12, "total_weight": 34.5, "buys": 3}, ...}
     """
-    cached = CacheDB.get(CACHE_KEY)
+    cached = get_db().get(CACHE_KEY)
     if not cached:
         return {}
     data = json.loads(cached)
