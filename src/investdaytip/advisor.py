@@ -131,6 +131,108 @@ def bubble_risk() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Macro indicators
+# ---------------------------------------------------------------------------
+
+def _fetch_yield_curve() -> dict[str, Optional[float]]:
+    """Fetch 10Y and 2Y Treasury yields and compute spread."""
+    y10 = _fetch_index("^TNX")
+    y2 = _fetch_index("2YY=F")
+    if y10 is not None and y2 is not None:
+        return {"y10": y10, "y2": y2, "spread": y10 - y2}
+    return {}
+
+
+def _fetch_bond_volatility() -> Optional[float]:
+    """Fetch MOVE index (bond volatility)."""
+    return _fetch_index("^MOVE")
+
+
+def _fetch_dxy() -> Optional[float]:
+    """Fetch US Dollar Index."""
+    return _fetch_index("DX-Y.NYB")
+
+
+def macro_regime() -> dict:
+    """Composite macro regime combining VIX, yield curve, bond vol and DXY.
+
+    Returns a 0-100 macro health score and a regime label.
+    """
+    vix_data = market_regime()
+    yield_data = _fetch_yield_curve()
+    move = _fetch_bond_volatility()
+    dxy = _fetch_dxy()
+
+    score = 50  # neutral
+
+    # VIX impact
+    if vix_data["regime"] == "crash":
+        score -= 20
+    elif vix_data["regime"] == "bearish":
+        score -= 10
+    elif vix_data["regime"] == "bullish":
+        score += 10
+
+    # Yield curve impact
+    spread = yield_data.get("spread")
+    if spread is not None:
+        if spread < 0:
+            score -= 20
+        elif spread < 0.5:
+            score -= 10
+        elif spread > 1.0:
+            score += 5
+
+    # MOVE impact
+    if move is not None:
+        if move > 120:
+            score -= 15
+        elif move > 100:
+            score -= 10
+        elif move < 60:
+            score += 5
+
+    # DXY impact
+    if dxy is not None:
+        if dxy > 105:
+            score -= 10
+        elif dxy > 100:
+            score -= 5
+        elif dxy < 95:
+            score += 5
+
+    score = max(0, min(100, score))
+
+    if score >= 70:
+        regime = "healthy"
+        label = "🟢 Macro healthy"
+        desc = "Favorable macro backdrop. Good for long-term equity exposure."
+    elif score >= 45:
+        regime = "neutral"
+        label = "🟡 Mixed signals"
+        desc = "Some macro headwinds but no major risks. Selective buying."
+    elif score >= 25:
+        regime = "warning"
+        label = "🟠 Macro warning"
+        desc = "Multiple macro stress signals. Reduce risk, favor defensives."
+    else:
+        regime = "danger"
+        label = "🔴 Macro danger"
+        desc = "Severe macro stress. Consider raising cash or hedging."
+
+    return {
+        "score": score,
+        "regime": regime,
+        "label": label,
+        "description": desc,
+        "vix": vix_data,
+        "yield": yield_data,
+        "move": move,
+        "dxy": dxy,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Portfolio review
 # ---------------------------------------------------------------------------
 
@@ -215,7 +317,7 @@ def run_comprehensive(
 
     Returns:
         dict with keys:
-            - ``market``: market_regime() output
+            - ``macro``: macro_regime() output
             - ``bubble``: bubble_risk() output
             - ``portfolio``: portfolio_review() output
             - ``recommendations``: dict ``"{region}:{asset_class}"`` → list of ScoredAsset
@@ -223,7 +325,7 @@ def run_comprehensive(
             - ``html_reports``: list of generated HTML file paths
     """
     result: dict = {
-        "market": market_regime(),
+        "macro": macro_regime(),
         "bubble": bubble_risk(),
         "portfolio": portfolio_review(portfolio_path, min_market_cap),
         "recommendations": {},
@@ -380,21 +482,52 @@ def advisor_main(argv: list[str] | None = None) -> int:
 
     # ── Market analysis ────────────────────────────────────
     with console.status("[bold green]Analyzing market..."):
-        regime = market_regime()
+        macro = macro_regime()
         bubble = bubble_risk()
 
-    # VIX info
-    vix_str = f"{regime['vix']:.2f}" if regime["vix"] is not None else "N/A"
-    vxn_str = f"{regime['vxn']:.2f}" if regime["vxn"] is not None else "N/A"
+    vix = macro["vix"]
+    vix_str = f"{vix['vix']:.2f}" if vix["vix"] is not None else "N/A"
+    vxn_str = f"{vix['vxn']:.2f}" if vix["vxn"] is not None else "N/A"
+
+    yd = macro["yield"]
+    if yd.get("y10") is not None and yd.get("y2") is not None:
+        yield_str = f"{yd['spread']:.2f}% ({yd['y10']:.2f}% − {yd['y2']:.2f}%)"
+        yield_note = "inverted" if yd["spread"] < 0 else "normal"
+    else:
+        yield_str = "N/A"
+        yield_note = ""
+
+    move_str = f"{macro['move']:.2f}" if macro["move"] is not None else "N/A"
+    move_note = ""
+    if macro["move"] is not None:
+        if macro["move"] > 120:
+            move_note = " (bond panic)"
+        elif macro["move"] > 100:
+            move_note = " (elevated)"
+        elif macro["move"] < 60:
+            move_note = " (calm)"
+
+    dxy_str = f"{macro['dxy']:.2f}" if macro["dxy"] is not None else "N/A"
+    dxy_note = ""
+    if macro["dxy"] is not None:
+        if macro["dxy"] > 105:
+            dxy_note = " (strong)"
+        elif macro["dxy"] > 100:
+            dxy_note = " (neutral)"
+        elif macro["dxy"] < 95:
+            dxy_note = " (weak)"
 
     market_table = Table(title="📈 Market Analysis", show_lines=True)
     market_table.add_column("Indicator", style="bold cyan")
     market_table.add_column("Value")
     market_table.add_row("VIX (S&P 500)", vix_str)
     market_table.add_row("VXN (Nasdaq 100)", vxn_str)
-    market_table.add_row("Regime", regime["label"])
-    market_table.add_row("Description", regime["description"])
-    market_table.add_row("Signal", f"[bold]{regime['action'].upper()}[/bold]")
+    market_table.add_row("10Y−2Y Spread", f"{yield_str} {yield_note}".strip())
+    market_table.add_row("MOVE Index", f"{move_str}{move_note}")
+    market_table.add_row("DXY", f"{dxy_str}{dxy_note}")
+    market_table.add_row("Macro Regime", macro["label"])
+    market_table.add_row("Score", f"{macro['score']}/100")
+    market_table.add_row("Signal", f"[bold]{vix['action'].upper()}[/bold]")
     market_table.add_row(
         "Bubble risk",
         f"{bubble['level'].upper()} — {bubble['note']}",
@@ -467,8 +600,9 @@ def advisor_main(argv: list[str] | None = None) -> int:
     # ── Buy recommendations (if regime allows) ────────────
     # market_regime() only emits actions "buy" / "hold" / "sell"; the "neutral"
     # regime maps to action="buy". Only "buy" should surface recommendations.
-    if regime["action"] == "buy":
-        console.print(f"\n[bold green]✅ Signal: {regime['action'].upper()}[/bold green]")
+    vix_action = macro["vix"]["action"]
+    if vix_action == "buy":
+        console.print(f"\n[bold green]✅ Signal: {vix_action.upper()}[/bold green]")
 
         # Resolve asset class, region, currency (CLI flags or interactive)
         _risk_defaults = {
@@ -601,8 +735,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
             )
 
     else:
-        console.print(f"\n[bold red]⛔ Signal: {regime['action'].upper()}[/bold red]")
-        console.print(regime["description"])
+        console.print(f"\n[bold red]⛔ Signal: {vix_action.upper()}[/bold red]")
+        console.print(macro["vix"]["description"])
         console.print("Consider increasing defensive positions (bonds, value ETFs).")
         console.print(
             "\n[dim italic]Disclaimer: This is not financial advice. "

@@ -83,6 +83,66 @@ class TestFetchIndex:
         assert r["action"] == "hold"
 
 
+class TestMacroRegime:
+    def test_healthy_all_good(self, mocker):
+        """All signals favorable -> healthy macro."""
+        def _fetch(ticker):
+            vals = {
+                "^VIX": 12.0,
+                "^VXN": 15.0,
+                "^TNX": 5.50,
+                "2YY=F": 3.50,
+                "^MOVE": 50.0,
+                "DX-Y.NYB": 92.0,
+            }
+            return vals.get(ticker)
+        mocker.patch("investdaytip.advisor._fetch_index", side_effect=_fetch)
+        r = advisor.macro_regime()
+        assert r["regime"] == "healthy"
+        assert r["score"] >= 70
+
+    def test_danger_inverted_curve(self, mocker):
+        """Inverted yield curve + high VIX + high MOVE -> danger."""
+        def _fetch(ticker):
+            vals = {
+                "^VIX": 40.0,
+                "^VXN": 45.0,
+                "^TNX": 3.50,
+                "2YY=F": 4.00,
+                "^MOVE": 130.0,
+                "DX-Y.NYB": 108.0,
+            }
+            return vals.get(ticker)
+        mocker.patch("investdaytip.advisor._fetch_index", side_effect=_fetch)
+        r = advisor.macro_regime()
+        assert r["regime"] == "danger"
+        assert r["score"] < 25
+
+    def test_warning_flat_curve(self, mocker):
+        """Flat curve + elevated MOVE -> warning."""
+        def _fetch(ticker):
+            vals = {
+                "^VIX": 30.0,
+                "^VXN": 32.0,
+                "^TNX": 4.80,
+                "2YY=F": 3.90,
+                "^MOVE": 105.0,
+                "DX-Y.NYB": 102.0,
+            }
+            return vals.get(ticker)
+        mocker.patch("investdaytip.advisor._fetch_index", side_effect=_fetch)
+        r = advisor.macro_regime()
+        assert r["regime"] == "warning"
+        assert 25 <= r["score"] < 45
+
+    def test_missing_data_neutral(self, mocker):
+        """Missing macro data defaults to neutral score (~50)."""
+        mocker.patch("investdaytip.advisor._fetch_index", return_value=None)
+        r = advisor.macro_regime()
+        assert r["regime"] == "neutral"
+        assert 45 <= r["score"] <= 55
+
+
 class TestBubbleRisk:
     def _patch_vix_history(self, mocker, closes):
         df = pd.DataFrame({"Close": closes})

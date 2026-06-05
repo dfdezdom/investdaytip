@@ -74,6 +74,7 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 ### Advisor Module
 - `market_regime()` fetches `^VIX` and `^VXN` via yfinance; thresholds: ≤15 bullish, ≤25 neutral, ≤35 bearish, >35 crash
 - `bubble_risk()` computes VIX percentile over trailing 2 years; <15% → high (complacency), 15-30% → medium, >30% → low
+- `macro_regime()` — composite 0-100 macro health score combining VIX + 10Y-2Y yield curve + MOVE index (bond vol) + DXY (dollar strength); regimes: ≥70 healthy, ≥45 neutral, ≥25 warning, <25 danger
 - `portfolio_review()` loads tickers from file with `_load_tickers_from_file()`, passes through `recommend()` scoring, returns categorized results
 - `run_comprehensive()` is the programmatic API for multi-region/asset-class analysis; exports HTML per combination to `advisor_recommendations/`
 - `advisor_main()` writes the final HTML report to `advisor_recommendations/recommendations_advisor_<timestamp>.html`
