@@ -14,7 +14,7 @@ from investdaytip.scoring import ScoredAsset
 # Number of <th> columns in the results table header (keep in sync with the
 # <thead> block below); used for the empty-state row colspan server- and
 # client-side.
-_TABLE_COLUMN_COUNT = 16
+_TABLE_COLUMN_COUNT = 17
 
 
 def _is_finite_number(v: Any) -> TypeGuard[float]:
@@ -197,6 +197,8 @@ def _as_row(index: int, s: ScoredAsset) -> dict[str, Any]:
     "return_1m_text": _fmt_pct(d.return_1m),
     "return_12m": d.return_12m,
     "return_12m_text": _fmt_pct(d.return_12m),
+    "superinvestor_count": s.superinvestor_count,
+    "superinvestor_count_text": f"{s.superinvestor_count}" if s.superinvestor_count is not None else "-",
     "score": round(s.total, 2),
     "breakdown": " / ".join(f"{int(round(v))}" for v in s.breakdown.values()),
     "why": "; ".join(s.rationale[:3]) if s.rationale else "-",
@@ -232,6 +234,7 @@ def _render_initial_rows(rows: list[dict[str, Any]]) -> str:
       f"<td class=\"num\">{escape(str(r['pe_text']))}</td>"
       f"<td class=\"num {one_m_class}\">{escape(str(r['return_1m_text']))}</td>"
       f"<td class=\"num {one_y_class}\">{escape(str(r['return_12m_text']))}</td>"
+      f"<td class=\"num\">{escape(str(r['superinvestor_count_text']))}</td>"
       f"<td class=\"num\"><strong>{escape(score_txt)}</strong></td>"
       f"<td class=\"desktop-only breakdown-col\">{escape(str(r['breakdown']))}</td>"
       f"<td class=\"desktop-only why-col\">{escape(str(r['why']))}</td>"
@@ -498,6 +501,7 @@ def export_recommendations_html(
           <th class="num sortable" data-sort-key="pe" data-sort-type="number" tabindex="0" aria-sort="none">P/E<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="return_1m" data-sort-type="number" tabindex="0" aria-sort="none">1M<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="return_12m" data-sort-type="number" tabindex="0" aria-sort="none">1Y<span class="sort-indicator">↕</span></th>
+          <th class="num sortable" data-sort-key="superinvestor_count" data-sort-type="number" tabindex="0" aria-sort="none">Superinvestors<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="score" data-sort-type="number" tabindex="0" aria-sort="none">Score<span class="sort-indicator">↕</span></th>
           <th class="desktop-only sortable breakdown-col" data-sort-key="breakdown" data-sort-type="text" tabindex="0" aria-sort="none">Breakdown<span class="sort-indicator">↕</span></th>
           <th class="desktop-only sortable why-col" data-sort-key="why" data-sort-type="text" tabindex="0" aria-sort="none">Why<span class="sort-indicator">↕</span></th>
@@ -633,10 +637,11 @@ def export_recommendations_html(
             <td class=\"num ${{dailyClass}}\">${{r.daily_change_text}}</td>
             <td class=\"num\">${{r.pe_text}}</td>
             <td class=\"num ${{oneMClass}}\">${{r.return_1m_text}}</td>
-            <td class=\"num ${{oneYClass}}\">${{r.return_12m_text}}</td>
-            <td class=\"num\"><strong>${{scoreText}}</strong></td>
-            <td class=\"desktop-only breakdown-col\">${{r.breakdown}}</td>
-            <td class=\"desktop-only why-col\">${{r.why}}</td>
+            <td class="num ${{oneYClass}}">${{r.return_12m_text}}</td>
+            <td class="num">${{r.superinvestor_count_text}}</td>
+            <td class="num"><strong>${{scoreText}}</strong></td>
+            <td class="desktop-only breakdown-col">${{r.breakdown}}</td>
+            <td class="desktop-only why-col">${{r.why}}</td>
           </tr>
         `;
       }}).join("");

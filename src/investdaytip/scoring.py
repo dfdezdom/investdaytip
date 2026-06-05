@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from investdaytip.data_source import AssetData, EtfData, StockData
+from investdaytip.dataroma import get_superinvestor_data
 
 STOCK_WEIGHTS = {
     "quality": 0.35,
@@ -49,6 +50,7 @@ class ScoredAsset:
     total: float
     breakdown: dict[str, float] = field(default_factory=dict)
     rationale: list[str] = field(default_factory=list)
+    superinvestor_count: Optional[int] = None
 
 
 # Backwards-compatible alias (existing tests / external callers)
@@ -153,12 +155,16 @@ def score_stock(data: StockData) -> ScoredAsset:
     if not rationale:
         rationale.append("Limited data available; score based on neutral defaults.")
 
+    si_data = get_superinvestor_data()
+    si_count = si_data.get(data.ticker, {}).get("manager_count")
+
     return ScoredAsset(
         data=data,
         asset_type="STOCK",
         total=total,
         breakdown={"Quality": quality, "Value": value, "Health": health, "Trend": trend},
         rationale=rationale,
+        superinvestor_count=si_count,
     )
 
 
