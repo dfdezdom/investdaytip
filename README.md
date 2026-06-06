@@ -156,6 +156,28 @@ The advisor now displays a **composite macro health score** (0-100) alongside VI
 
 See `investdaytip advisor --help` for all options.
 
+#### Market Indicators
+
+The advisor fetches six live indicators to compute the composite **macro health score** (0-100):
+
+| Indicator | Ticker | What it measures | Reference ranges | Score impact |
+|---|---|---|---|---|
+| **VIX** | `^VIX` | Expected S&P 500 volatility over the next 30 days | ≤15 calm, ≤25 neutral, ≤35 fear, >35 panic | ±20 |
+| **VXN** | `^VXN` | Expected Nasdaq 100 volatility (tech-heavy complement to VIX) | (informational only) | — |
+| **10Y-2Y Spread** | `^TNX` + `2YY=F` | US Treasury yield curve slope — inverted curve signals recession risk | >1% healthy, 0–1% neutral, <0% inverted | −20 / +5 |
+| **MOVE** | `^MOVE` | Bond market volatility (Merrill Lynch Option Volatility Estimate) | <60 calm, 60–100 normal, 100–120 elevated, >120 panic | −15 / +5 |
+| **DXY** | `DX-Y.NYB` | US Dollar Index — strength against EUR, JPY, GBP, CAD, SEK, CHF | <95 weak, 95–100 neutral, 100–105 strong, >105 very strong | −10 / +5 |
+| **Fear & Greed** | [CNN API](https://production.dataviz.cnn.io/index/fearandgreed/graphdata) | Composite market sentiment from 7 sub-indicators (momentum, breadth, put/call, volatility, junk bonds, safe havens) | 0–100; <25 extreme fear, >75 extreme greed | ±10 (contrarian) |
+
+The score starts at a neutral **50** and each indicator adjusts it up or down based on current readings. The final score determines the macro signal:
+
+- 🟢 **≥70** — Macro healthy → **buy**
+- 🟡 **≥45** — Mixed signals → **hold**
+- 🟠 **≥25** — Macro warning → **hold**
+- 🔴 **<25** — Macro danger → **sell**
+
+All indicators are shown live in the `📈 Market Analysis` table when running `investdaytip advisor`.
+
 ### OpenCode AI Agent
 
 > 🤖 Chat with an AI investment advisor that checks VIX, reviews portfolios, and recommends buys — see [`.opencode/agents/advisor.md`](.opencode/agents/advisor.md).
