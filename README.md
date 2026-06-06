@@ -277,7 +277,7 @@ The repository includes ready-to-use ticker sets in `tickers-files-examples/` fo
 - `quantum_computing_relevant_tickers.txt`
 - `semiconductors_relevant_tickers.txt`
 - `space_relevant_tickers.txt`
-- `spanish_relevant_tickers.txt`
+- `spain_relevant_tickers.txt`
 - `technology_relevant_tickers.txt`
 
 Example:
