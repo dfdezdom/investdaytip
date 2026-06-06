@@ -399,11 +399,17 @@ src/investdaytip/
 portfolios/               # Portfolio ticker files
 advisor_recommendations/   # Advisor-generated HTML reports (git-ignored)
 tests/
+├── test_integration.py    # End-to-end integration tests (sorting, filters, CLI, export)
 ├── test_advisor.py        # Advisor tests (VIX, macro regime, bubble risk)
+├── test_recommender.py    # Recommendation orchestration tests
 ├── test_main.py           # CLI helper tests
 ├── test_html_export.py    # HTML export tests
 ├── test_scoring.py        # Stock scoring tests
-└── test_etf_scoring.py    # ETF scoring tests
+├── test_etf_scoring.py    # ETF scoring tests
+├── test_sentiment.py      # Fear & Greed sentiment tests
+├── test_cache.py          # SQLite cache tests
+├── test_universes.py      # Universe integrity tests
+└── test_data_source.py    # Data fetching tests
 tickers-files-examples/
 ├── semiconductors_relevant_tickers.txt
 ├── artificial_intelligence_relevant_tickers.txt
@@ -440,9 +446,10 @@ ruff check src tests      # lint
 mypy                      # type-check
 ```
 
-The scoring engine is purely functional and tested without network calls; an
-autouse guard in `tests/conftest.py` fails fast if a test reaches yfinance
-unmocked.
+**122 tests** across 11 test files. The scoring engine is purely functional
+and tested without network calls; an autouse guard in `tests/conftest.py` fails
+fast if a test reaches yfinance unmocked. Integration tests mock the full
+`recommend()` → `main()` → export pipeline.
 
 ---
 
