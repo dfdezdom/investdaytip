@@ -28,6 +28,7 @@
 - 🧠 **Interactive advisor** — market pulse, portfolio review, and tailored buy recommendations via the `advisor` subcommand
 - 🤖 **AI-powered advisor** — chat with an intelligent investment advisor that analyzes markets, reviews portfolios, and recommends buys — powered by [OpenCode](https://opencode.ai) agents
 - 📊 **Backtest validation** — historical backtesting with automated before/after comparison script
+- 📝 **Structured logging** — Python standard logging for errors, warnings, and operational events
 
 ---
 
