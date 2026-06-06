@@ -38,6 +38,18 @@
 pip install investdaytip
 ```
 
+### Upgrade
+
+```bash
+pip install --upgrade investdaytip
+```
+
+Force reinstall if the version doesn't update (e.g. cached old wheel):
+
+```bash
+pip install --upgrade --no-cache-dir investdaytip
+```
+
 ### From source (for development)
 
 ```bash
