@@ -232,11 +232,12 @@ def main(argv: list[str] | None = None) -> int:
     adv.add_argument("--cache-clear", action="store_true",
                      help="Purge all cached data before running.")
 
-    parser.add_argument("-n", "--top", type=int, default=5,
-                        help="Number of recommendations to return (default: 5).")
-    parser.add_argument("-t", "--tickers", nargs="+", default=None,
-                        help="Custom ticker list. Defaults to a curated universe.")
-    parser.add_argument(
+    main_grp = parser.add_argument_group("Main options")
+    main_grp.add_argument("-n", "--top", type=int, default=5,
+                          help="Number of recommendations to return (default: 5).")
+    main_grp.add_argument("-t", "--tickers", nargs="+", default=None,
+                          help="Custom ticker list. Defaults to a curated universe.")
+    main_grp.add_argument(
         "--tickers-file",
         default=None,
         help=(
@@ -244,23 +245,7 @@ def main(argv: list[str] | None = None) -> int:
             "'#' for comments). Merged with --tickers if both are provided."
         ),
     )
-    parser.add_argument("-a", "--asset-class", choices=["all", "stocks", "etfs"], default="all",
-                        help="Which asset class to analyze when no -t is given (default: all).")
-    parser.add_argument("-r", "--region", nargs="+",
-                        choices=["all", "us", "eu", "asia", "superinvestor"], default="all",
-                        help="Region(s) — e.g. -r us eu (default: all).")
-    parser.add_argument(
-        "-c", "--currency", nargs="+",
-        choices=["all", "USD", "EUR", "GBP", "CHF", "JPY", "HKD", "INR",
-                 "KRW", "TWD", "SGD", "AUD", "DKK", "SEK", "NOK", "GBp"],
-        default="all",
-        help="Currency filter(s) — e.g. -c USD EUR (default: all).",
-    )
-    parser.add_argument("--workers", type=int, default=10,
-                        help="Parallel fetch workers (default: 10).")
-    parser.add_argument("--min-market-cap", type=_parse_min_market_cap, default=2_000_000_000,
-                        help="Min. market cap (e.g. 1B, 500M). 0 to disable (default: 2B).")
-    parser.add_argument(
+    main_grp.add_argument(
         "--export-html",
         nargs="?",
         const="",
@@ -270,12 +255,34 @@ def main(argv: list[str] | None = None) -> int:
             "If PATH is omitted, defaults to investDayTip-aaaammdd-hhmm.html."
         ),
     )
-    parser.add_argument("--superinvestor", action="store_true",
-                        help="Include superinvestor ownership data from DataRoma.")
-    parser.add_argument("--no-cache", action="store_true",
-                        help="Skip cache and fetch fresh data from yfinance.")
-    parser.add_argument("--cache-clear", action="store_true",
-                        help="Purge all cached data before running.")
+
+    filter_grp = parser.add_argument_group("Filtering")
+    filter_grp.add_argument("-a", "--asset-class", choices=["all", "stocks", "etfs"], default="all",
+                            help="Which asset class to analyze when no -t is given (default: all).")
+    filter_grp.add_argument("-r", "--region", nargs="+",
+                            choices=["all", "us", "eu", "asia", "superinvestor"], default="all",
+                            help="Region(s) — e.g. -r us eu (default: all).")
+    filter_grp.add_argument(
+        "-c", "--currency", nargs="+",
+        choices=["all", "USD", "EUR", "GBP", "CHF", "JPY", "HKD", "INR",
+                 "KRW", "TWD", "SGD", "AUD", "DKK", "SEK", "NOK", "GBp"],
+        default="all",
+        help="Currency filter(s) — e.g. -c USD EUR (default: all).",
+    )
+    filter_grp.add_argument("--min-market-cap", type=_parse_min_market_cap, default=2_000_000_000,
+                            help="Min. market cap (e.g. 1B, 500M). 0 to disable (default: 2B).")
+
+    data_grp = parser.add_argument_group("Data")
+    data_grp.add_argument("--superinvestor", action="store_true",
+                          help="Include superinvestor ownership data from DataRoma.")
+    data_grp.add_argument("--no-cache", action="store_true",
+                          help="Skip cache and fetch fresh data from yfinance.")
+    data_grp.add_argument("--cache-clear", action="store_true",
+                          help="Purge all cached data before running.")
+
+    perf_grp = parser.add_argument_group("Performance")
+    perf_grp.add_argument("--workers", type=int, default=10,
+                          help="Parallel fetch workers (default: 10).")
     if argcomplete is not None:
         argcomplete.autocomplete(parser)
     args = parser.parse_args(argv)
