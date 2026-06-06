@@ -76,6 +76,7 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - `--min-market-cap` filter: $2B default (e.g. `1B`, `500M`, `0` to disable); applied against native-currency figures, approximate for non-USD. When the filter is active, assets with **missing** market cap are excluded (a missing figure can't satisfy the filter), and history fetch is skipped for them
 - Currency filter keeps assets whose `currency` is `None` (a missing field shouldn't silently drop an otherwise-valid candidate)
 - `-r`/`--region` and `-c`/`--currency` use `nargs="+"` — pass multiple values: `-r us eu`, `-c USD EUR`. Both `str` and `list[str]` accepted programmatically.
+- `-s`/`--sector` accepts a single string; prefix match case-insensitive (e.g. `Financial` matches Financial Services). Applied inside `recommend()` before the `top_n` truncation, so it filters the full universe rather than just the top results.
 - `--superinvestor` controls DataRoma scraping (~80 HTTP requests) and the "Superinvestors" column; the curated `SUPERINVESTOR_UNIVERSE` tickers are **always** included in the stock pool (they are quality stocks), but the manager-count data and column are only fetched/displayed when the flag is present
 - **Tab completion**: `argcomplete>=3.0` is a dependency; `argcomplete.autocomplete(parser)` is called before `parse_args()` so `investdaytip -<TAB>` and `investdaytip --region <TAB>` work after running `eval "$(register-python-argcomplete investdaytip)"`
 
@@ -135,4 +136,5 @@ The `advisor` subagent is configured in `.opencode/agents/advisor.md`. It define
 from investdaytip import get_recommendations
 picks = get_recommendations(top_n=5, region="asia", asset_class="stocks")
 picks = get_recommendations(top_n=5, region="superinvestor", asset_class="stocks")
+picks = get_recommendations(top_n=5, sector="Financial")
 ```

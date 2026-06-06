@@ -116,6 +116,7 @@ investdaytip --help
 | `-a, --asset-class {all,stocks,etfs}` | Asset class filter | `all` |
 | `-r, --region {all,us,eu,asia,superinvestor}` `nargs="+"` | Region filter(s) — e.g. `-r us eu` | `all` |
 | `-c, --currency {all,USD,EUR,GBP,…}` `nargs="+"` | Currency filter(s); narrows universe to matching regions when no `-r` is given | `all` |
+| `-s, --sector TEXT` | Sector/category prefix filter, case-insensitive (e.g. `Financial` matches Financial Services) | disabled |
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
 | `--superinvestor` | Include superinvestor ownership data from DataRoma (adds ~80 HTTP requests, shows column in HTML and CLI) | disabled |
 | `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable) | `2B` |
@@ -193,6 +194,9 @@ for s in picks:
     print(f"  Price: {s.data.current_price} {s.data.currency}")
     print(f"  1M: {s.data.return_1m:.2%}  1Y: {s.data.return_12m:.2%}")
     print(f"  Why: {'; '.join(s.rationale[:3])}")
+
+# Or filter by sector (prefix match, case-insensitive)
+picks = get_recommendations(top_n=5, sector="Financial")  # Financial + Financial Services
 
 # Or mix regions and asset classes
 picks = get_recommendations(top_n=10, region="all")  # US + EU + Asia stocks & ETFs
