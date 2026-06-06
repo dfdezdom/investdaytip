@@ -9,7 +9,7 @@ from html import escape
 from typing import Any, TypeGuard
 from urllib.parse import quote, quote_plus
 
-from investdaytip.backtest import BacktestResult
+from investdaytip.backtest import BacktestResult, _interpret_backtest
 from investdaytip.scoring import ScoredAsset
 from investdaytip.sentiment import fear_greed_index
 
@@ -782,6 +782,7 @@ def export_backtest_html(
 ) -> str:
     """Write a self-contained HTML backtest report."""
     summary_metrics = [
+        ("Snapshots", str(result.total_snapshots), ""),
         ("Cumulative Return", _fmt_pct_str(result.cumulative_return), _pct_class(result.cumulative_return)),
         ("Benchmark Return", _fmt_pct_str(result.benchmark_cumulative_return), _pct_class(result.benchmark_cumulative_return)),
         ("Alpha", _fmt_pct_str(result.alpha), _pct_class(result.alpha)),
@@ -843,6 +844,7 @@ def export_backtest_html(
     .errors {{ background: #fff5f5; border: 1px solid #e8c4c4; border-radius: 10px; padding: 12px; margin-top: 16px; }}
     .errors h3 {{ margin: 0 0 6px; font-size: 0.95rem; color: #a84035; }}
     .errors ul {{ margin: 0; padding-left: 20px; color: #7a3a30; }}
+    .interpretation {{ background: #fff; border: 1px solid #dde5cf; border-radius: 12px; padding: 14px 18px; margin-bottom: 20px; line-height: 1.55; color: #1f2a1f; font-size: 0.95rem; }}
     @media (max-width: 700px) {{
       body {{ padding: 14px; }}
       .summary {{ grid-template-columns: repeat(2, 1fr); }}
@@ -861,6 +863,8 @@ def export_backtest_html(
         for label, val, cls in summary_metrics
       )}
     </div>
+
+    <div class="interpretation">{escape(_interpret_backtest(result))}</div>
 
     <table>
       <thead>
