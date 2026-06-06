@@ -43,5 +43,4 @@ poetry.lock
 /advisor_recommendations/
 /portfolios/
 
-# Planning docs (local only)
-/plan/
+
