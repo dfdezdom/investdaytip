@@ -111,6 +111,7 @@ investdaytip --export-html             # Uses investDayTip-aaaammdd-hhmm.html
                                        # when --tickers-file is set
 
 investdaytip --superinvestor         # Fetch DataRoma superinvestor data and display column
+investdaytip --include-technical     # Include RSI + MACD in scoring (opt-in)
 investdaytip --min-market-cap 1B     # Raise min market cap to $1B
 investdaytip --min-market-cap 0      # Disable market-cap filter
 
@@ -144,6 +145,7 @@ investdaytip backtest --cache-clear     # Purge cache before backtest
 | `-s, --sector TEXT` | Sector/category prefix filter, case-insensitive (e.g. `Financial` matches Financial Services) | disabled |
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
 | `--superinvestor` | Include superinvestor ownership data from DataRoma (adds ~80 HTTP requests, shows column in HTML and CLI) | disabled |
+| `--include-technical` | Include RSI + MACD technical indicators in the Trend pillar scoring | disabled |
 | `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable) | `2B` |
 | `--no-cache` | Skip SQLite cache, fetch all data live from Yahoo Finance | disabled |
 | `--cache-clear` | Purge the SQLite cache before running | disabled |
@@ -272,6 +274,7 @@ The generated report includes filters for:
 - Minimum 1Y return (%)
 
 When `--superinvestor` is enabled, an additional **"Superinvestors"** sortable column appears between 1Y and Score showing the number of tracked managers holding each ticker.
+When `--include-technical` is enabled, **"RSI"** and **"MACD"** columns appear between 1Y (or Superinvestors) and Score.
 
 It also includes:
 
@@ -319,6 +322,8 @@ Each recommendation includes:
 | **P/E** | Trailing price-to-earnings ratio (stocks; `-` when unavailable) |
 | **1M Δ** | % change vs ~22 trading days ago |
 | **1Y Δ** | % change vs ~252 trading days ago |
+| **RSI** | RSI-14 (when `--include-technical` is enabled) |
+| **MACD** | MACD histogram % vs price (when `--include-technical` is enabled) |
 | **Superinvestors** | Number of managers holding the stock (HTML only; `-` if not in DataRoma universe) |
 | **Score** | Composite 0-100 weighted score |
 | **Breakdown** | Four sub-scores (shown in a compact single line) |
@@ -337,7 +342,7 @@ Each metric is normalized to **0-100** via piecewise-linear functions over empir
 | **Quality** | 35% | ROE, profit margin, earnings & revenue growth |
 | **Value** | 25% | trailing P/E, P/B, PEG |
 | **Health** | 20% | Debt/Equity, current ratio, free cash flow |
-| **Trend** | 20% | price vs SMA200, 12-month return, SMA200 slope |
+| **Trend** | 20% | price vs SMA200, 12-month return, SMA200 slope (plus RSI-14 + MACD histogram when `--include-technical` is enabled) |
 
 ### ETFs
 

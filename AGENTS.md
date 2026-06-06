@@ -124,7 +124,7 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - No ETF universe exists for superinvestor
 
 ### Scoring Weights
-- **Stocks**: Quality 35%, Value 25%, Health 20%, Trend 20%
+- **Stocks**: Quality 35%, Value 25%, Health 20%, Trend 20% (with optional RSI-14 + MACD histogram via `--include-technical`)
 - **ETFs**: Returns 40%, RiskAdj 25%, Size 15%, Cost/Yield 20%
 
 ## OpenCode Agent
@@ -185,6 +185,13 @@ python scripts/scoring_baseline.py run \
 
 # 4. Compare
 python scripts/scoring_baseline.py compare baseline-before.json baseline-after.json
+```
+
+When validating `--include-technical` scoring changes, add the flag to both runs:
+
+```bash
+python scripts/scoring_baseline.py run --tag before --include-technical ...
+python scripts/scoring_baseline.py run --tag after --include-technical ...
 ```
 
 ### Decision rules

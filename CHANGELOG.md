@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.3.1 (2026-06-07)
+
+### Features
+
+- **Technical analysis indicators** (`--include-technical`): opt-in RSI-14 + MACD histogram integrated into the Trend pillar
+  - RSI is inverted (lower = better entry) with a floor at 20 to avoid rewarding stocks in free-fall
+  - MACD histogram normalized by price for cross-ticker comparability
+  - When enabled, RSI and MACD columns appear in both CLI Rich table and HTML export
+  - Backtest baseline runner (`scripts/scoring_baseline.py`) supports `--include-technical` for before/after comparison
+
+### Tests
+
+- 6 new tests for technical indicator computation and scoring behavior
+- 176 total tests, all passing
+
+### Docs
+
+- README updated with `--include-technical` flag, RSI/MACD output columns, and Trend pillar description
+- AGENTS.md updated with `--include-technical` validation note
+
+---
+
 ## v0.3.0 (2026-06-06)
 
 ### Features
