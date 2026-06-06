@@ -107,12 +107,15 @@ investdaytip --export-html report.html # Export report with interactive filters
 investdaytip --export-html             # Uses investDayTip-aaaammdd-hhmm.html
                                        # or investDayTip-<tag>-aaaammdd-hhmm.html
                                        # when --tickers-file is set
-investdaytip --workers 20            # More parallelism
+
+investdaytip --superinvestor         # Fetch DataRoma superinvestor data and display column
 investdaytip --min-market-cap 1B     # Raise min market cap to $1B
 investdaytip --min-market-cap 0      # Disable market-cap filter
-investdaytip --superinvestor         # Fetch DataRoma superinvestor data and display column
+
 investdaytip --no-cache              # Bypass SQLite cache, fetch fresh data
 investdaytip --cache-clear           # Purge all cached data before running
+investdaytip --workers 20            # More parallelism
+
 investdaytip --help
 
 ./preview.sh                         # Serve generated HTML files on localhost:8000
