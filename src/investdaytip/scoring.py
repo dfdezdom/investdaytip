@@ -127,23 +127,49 @@ def _health_score(d: StockData) -> tuple[float, list[str]]:
     return (debt * 0.45) + (liq * 0.25) + (fcf * 0.30), notes
 
 
-def _trend_score(d: StockData) -> tuple[float, list[str]]:
+def _technical_score(d: StockData | EtfData) -> tuple[float, list[str]]:
+    """Score technical indicators (RSI + MACD) as a sub-component of Trend.
+
+    RSI is inverted (lower = better entry) with a floor at 20 to avoid
+    rewarding stocks in free-fall.  MACD histogram rewards positive momentum.
+    """
+    notes: list[str] = []
+    rsi_raw = d.rsi_14
+    if rsi_raw is not None and rsi_raw < 20.0:
+        rsi_raw = 20.0
+    rsi = _linear(rsi_raw, best=35.0, worst=65.0, default=50.0)
+    macd = _linear(d.macd_histogram, best=0.05, worst=-0.05, default=50.0)
+    if d.rsi_14 is not None and d.rsi_14 < 30.0:
+        notes.append(f"RSI {d.rsi_14:.1f} suggests oversold")
+    if d.macd_histogram is not None and d.macd_histogram > 0.0:
+        notes.append("MACD histogram positive")
+    return (rsi * 0.15) + (macd * 0.25), notes
+
+
+def _trend_score(d: StockData, *, include_technical: bool = False) -> tuple[float, list[str]]:
     notes: list[str] = []
     pvs = _linear(d.price_vs_sma200, best=0.15, worst=-0.20)
     r12 = _linear(d.return_12m, best=0.30, worst=-0.20)
     slope = _linear(d.sma200_slope, best=0.10, worst=-0.10)
+    if include_technical:
+        tech, tech_notes = _technical_score(d)
+        notes.extend(tech_notes)
+    else:
+        tech = 0.0
     if d.price_vs_sma200 is not None and d.price_vs_sma200 > 0:
         notes.append(f"trading {d.price_vs_sma200 * 100:.1f}% above 200d SMA")
     if d.return_12m is not None and d.return_12m > 0.10:
         notes.append(f"12-month return of {d.return_12m * 100:.1f}%")
+    if include_technical:
+        return (pvs * 0.20) + (r12 * 0.20) + (slope * 0.20) + tech, notes
     return (pvs * 0.35) + (r12 * 0.30) + (slope * 0.35), notes
 
 
-def score_stock(data: StockData) -> ScoredAsset:
+def score_stock(data: StockData, *, include_technical: bool = False) -> ScoredAsset:
     quality, q_notes = _quality_score(data)
     value, v_notes = _value_score(data)
     health, h_notes = _health_score(data)
-    trend, t_notes = _trend_score(data)
+    trend, t_notes = _trend_score(data, include_technical=include_technical)
 
     total = (
         quality * STOCK_WEIGHTS["quality"]
@@ -249,8 +275,8 @@ def score_etf(data: EtfData) -> ScoredAsset:
 # Dispatch
 # ---------------------------------------------------------------------------
 
-def score_asset(data: AssetData) -> ScoredAsset:
+def score_asset(data: AssetData, *, include_technical: bool = False) -> ScoredAsset:
     if isinstance(data, EtfData):
         return score_etf(data)
-    return score_stock(data)
+    return score_stock(data, include_technical=include_technical)
 

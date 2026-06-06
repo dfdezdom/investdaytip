@@ -2,11 +2,12 @@
 
 from unittest.mock import MagicMock
 
+import numpy as np
 import pandas as pd
 import pytest
 from yfinance.exceptions import YFRateLimitError
 
-from investdaytip.data_source import StockData, fetch_asset
+from investdaytip.data_source import StockData, _technical_indicators, fetch_asset
 
 
 def _mock_ticker(info: dict, history: pd.DataFrame | None = None) -> MagicMock:
@@ -110,3 +111,35 @@ def test_fetch_asset_generic_error_returns_error_dataclass(mocker):
     assert isinstance(result, StockData)
     assert any("info fetch failed" in e for e in result.errors)
     sleep.assert_not_called()
+
+
+def test_technical_indicators_returns_none_for_short_series():
+    short = pd.Series([100.0] * 10)
+    rsi, macd = _technical_indicators(short)
+    assert rsi is None
+    assert macd is None
+
+
+def test_technical_indicators_computes_rsi_and_macd():
+    # Build a 40-day downtrend to get RSI below 50
+    prices = [100.0]
+    for _ in range(39):
+        prices.append(prices[-1] * 0.99)  # ~1% daily decline
+    close = pd.Series(prices)
+    rsi, macd = _technical_indicators(close)
+
+    assert rsi is not None
+    assert 0.0 <= rsi <= 100.0
+    assert rsi < 50.0  # downtrend → RSI below 50
+
+    assert macd is not None
+    assert isinstance(macd, float)
+
+
+def test_technical_indicators_oversold_rsi():
+    # Sharp 40-day drop to drive RSI very low
+    prices = np.linspace(100, 50, 40)
+    close = pd.Series(prices)
+    rsi, _ = _technical_indicators(close)
+    assert rsi is not None
+    assert rsi < 30.0  # clearly oversold

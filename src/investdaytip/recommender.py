@@ -100,6 +100,7 @@ def recommend(
     currency: str | list[str] = "all",
     sector: str | None = None,
     progress_cb=None,
+    include_technical: bool = False,
 ) -> list[ScoredAsset]:
     """Score each ticker and return the top ``top_n`` long-term buys.
 
@@ -131,7 +132,7 @@ def recommend(
                 ticker = futures[fut]
                 try:
                     data = fut.result()
-                    scored.append(score_asset(data))
+                    scored.append(score_asset(data, include_technical=include_technical))
                 except Exception:
                     logger.warning("Failed to fetch/score %s", ticker, exc_info=True)
                 if progress_cb:

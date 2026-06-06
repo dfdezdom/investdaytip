@@ -25,7 +25,12 @@ import pandas as pd
 import yfinance as yf
 from yfinance.exceptions import YFRateLimitError
 
-from investdaytip.data_source import StockData, _suppress_stderr, _trend_metrics
+from investdaytip.data_source import (
+    StockData,
+    _suppress_stderr,
+    _technical_indicators,
+    _trend_metrics,
+)
 from investdaytip.recommender import _build_universe
 from investdaytip.scoring import ScoredAsset, score_stock
 
@@ -384,6 +389,9 @@ def _build_historical_stock_data(
     price_vs_sma200, return_1m, return_12m, sma200_slope, _vol, daily_change = (
         trend if trend else (None, None, None, None, None, None)
     )
+    rsi_14, macd_histogram = _technical_indicators(
+        hist_slice["Close"].dropna()
+    ) if "Close" in hist_slice else (None, None)
 
     # ── Fundamental metrics from annual fiscal-year data ──
     ni = _latest_value_before(income_stmt, quarter_date, "NetIncome")
@@ -469,6 +477,8 @@ def _build_historical_stock_data(
         return_12m=return_12m,
         sma200_slope=sma200_slope,
         daily_change=daily_change,
+        rsi_14=rsi_14,
+        macd_histogram=macd_histogram,
     )
 
 
@@ -655,6 +665,7 @@ def run_backtest(
     reporting_lag_days: int = 60,
     max_workers: int = 10,
     on_progress: Callable[[str, int, int], None] | None = None,
+    include_technical: bool = False,
 ) -> BacktestResult:
     """Run a historical backtest of the stock scoring model.
 
@@ -779,7 +790,7 @@ def run_backtest(
             ):
                 continue
 
-            scored.append(score_stock(sd_obj))
+            scored.append(score_stock(sd_obj, include_technical=include_technical))
 
         scored.sort(key=lambda s: s.total, reverse=True)
         picks = scored[:top_n]

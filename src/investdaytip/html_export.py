@@ -179,6 +179,8 @@ def _as_row(index: int, s: ScoredAsset) -> dict[str, Any]:
   d = s.data
   pe_value = getattr(d, "trailing_pe", None)
   exchange_hint = getattr(d, "exchange", None)
+  rsi_value = getattr(d, "rsi_14", None)
+  macd_value = getattr(d, "macd_histogram", None)
   return {
     "rank": index,
     "asset_type": s.asset_type.lower(),
@@ -200,13 +202,17 @@ def _as_row(index: int, s: ScoredAsset) -> dict[str, Any]:
     "return_12m_text": _fmt_pct(d.return_12m),
     "superinvestor_count": s.superinvestor_count,
     "superinvestor_count_text": f"{s.superinvestor_count}" if s.superinvestor_count is not None else "-",
+    "rsi": rsi_value,
+    "rsi_text": f"{float(rsi_value):.1f}" if _is_finite_number(rsi_value) else "-",
+    "macd": macd_value,
+    "macd_text": f"{float(macd_value) * 100:.2f}%" if _is_finite_number(macd_value) else "-",
     "score": round(s.total, 2),
     "breakdown": " / ".join(f"{int(round(v))}" for v in s.breakdown.values()),
     "why": "; ".join(s.rationale[:3]) if s.rationale else "-",
   }
 
 
-def _render_initial_rows(rows: list[dict[str, Any]], include_superinvestor: bool = False, column_count: int = 16) -> str:
+def _render_initial_rows(rows: list[dict[str, Any]], include_superinvestor: bool = False, include_technical: bool = False, column_count: int = 16) -> str:
   if not rows:
     return (
       f'<tr><td colspan="{column_count}" class="muted">'
@@ -238,6 +244,11 @@ def _render_initial_rows(rows: list[dict[str, Any]], include_superinvestor: bool
     )
     if include_superinvestor:
       cells += f"<td class=\"num\">{escape(str(r['superinvestor_count_text']))}</td>"
+    if include_technical:
+      cells += (
+        f"<td class=\"num\">{escape(str(r['rsi_text']))}</td>"
+        f"<td class=\"num\">{escape(str(r['macd_text']))}</td>"
+      )
     cells += (
       f"<td class=\"num\"><strong>{escape(score_txt)}</strong></td>"
       f"<td class=\"desktop-only breakdown-col\">{escape(str(r['breakdown']))}</td>"
@@ -258,10 +269,11 @@ def export_recommendations_html(
     tickers: list[str] | None,
   tickers_file: str | None = None,
   include_superinvestor: bool = False,
+  include_technical: bool = False,
   sector: str | None = None,
 ) -> str:
     """Write a self-contained, filterable HTML report to ``destination``."""
-    col_count = _TABLE_BASE_COLUMN_COUNT + (1 if include_superinvestor else 0)
+    col_count = _TABLE_BASE_COLUMN_COUNT + (1 if include_superinvestor else 0) + (2 if include_technical else 0)
     rows = [_as_row(i, s) for i, s in enumerate(results, start=1)]
     metadata = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -278,7 +290,7 @@ def export_recommendations_html(
 
     rows_json = json.dumps(rows, ensure_ascii=True)
     metadata_json = json.dumps(metadata, ensure_ascii=True)
-    initial_rows_html = _render_initial_rows(rows, include_superinvestor=include_superinvestor, column_count=col_count)
+    initial_rows_html = _render_initial_rows(rows, include_superinvestor=include_superinvestor, include_technical=include_technical, column_count=col_count)
 
     # Build optional column sections
     if include_superinvestor:
@@ -287,6 +299,12 @@ def export_recommendations_html(
     else:
         superinvestor_th = ""
         superinvestor_td = ""
+    if include_technical:
+        technical_th = '<th class="num sortable" data-sort-key="rsi" data-sort-type="number" tabindex="0" aria-sort="none">RSI<span class="sort-indicator">↕</span></th>\n          <th class="num sortable" data-sort-key="macd" data-sort-type="number" tabindex="0" aria-sort="none">MACD<span class="sort-indicator">↕</span></th>\n          '
+        technical_td = '<td class="num">${r.rsi_text}</td>\n            <td class="num">${r.macd_text}</td>\n            '
+    else:
+        technical_th = ""
+        technical_td = ""
 
     html = f"""<!doctype html>
 <html lang=\"en\">
@@ -518,7 +536,7 @@ def export_recommendations_html(
           <th class="num sortable" data-sort-key="pe" data-sort-type="number" tabindex="0" aria-sort="none">P/E<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="return_1m" data-sort-type="number" tabindex="0" aria-sort="none">1M<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="return_12m" data-sort-type="number" tabindex="0" aria-sort="none">1Y<span class="sort-indicator">↕</span></th>
-          {superinvestor_th}<th class="num sortable" data-sort-key="score" data-sort-type="number" tabindex="0" aria-sort="none">Score<span class="sort-indicator">↕</span></th>
+          {superinvestor_th}{technical_th}<th class="num sortable" data-sort-key="score" data-sort-type="number" tabindex="0" aria-sort="none">Score<span class="sort-indicator">↕</span></th>
           <th class="desktop-only sortable breakdown-col" data-sort-key="breakdown" data-sort-type="text" tabindex="0" aria-sort="none">Breakdown<span class="sort-indicator">↕</span></th>
           <th class="desktop-only sortable why-col" data-sort-key="why" data-sort-type="text" tabindex="0" aria-sort="none">Why<span class="sort-indicator">↕</span></th>
         </tr>
@@ -660,7 +678,7 @@ def export_recommendations_html(
             <td class=\"num\">${{r.pe_text}}</td>
             <td class=\"num ${{oneMClass}}\">${{r.return_1m_text}}</td>
             <td class="num ${{oneYClass}}">${{r.return_12m_text}}</td>
-            {superinvestor_td}<td class="num"><strong>${{scoreText}}</strong></td>
+            {superinvestor_td}{technical_td}<td class="num"><strong>${{scoreText}}</strong></td>
             <td class="desktop-only breakdown-col">${{r.breakdown}}</td>
             <td class="desktop-only why-col">${{r.why}}</td>
           </tr>

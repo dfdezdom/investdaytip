@@ -67,6 +67,9 @@ class StockData:
     return_12m: Optional[float] = None
     sma200_slope: Optional[float] = None
     daily_change: Optional[float] = None
+    # Technical indicators
+    rsi_14: Optional[float] = None
+    macd_histogram: Optional[float] = None
 
     errors: list[str] = field(default_factory=list)
 
@@ -96,6 +99,9 @@ class EtfData:
     volatility_1y: Optional[float] = None  # annualized
     sharpe_proxy: Optional[float] = None  # (return_12m - rf) / volatility_1y
     daily_change: Optional[float] = None
+    # Technical indicators
+    rsi_14: Optional[float] = None
+    macd_histogram: Optional[float] = None
 
     errors: list[str] = field(default_factory=list)
 
@@ -190,6 +196,48 @@ def _trend_metrics(
     return price_vs, return_1m, return_12m, slope, vol, daily_change
 
 
+def _technical_indicators(
+    close: pd.Series,
+) -> tuple[Optional[float], Optional[float]]:
+    """Return (rsi_14, macd_histogram_pct).
+
+    RSI uses a 14-day look-back.  MACD histogram is the difference between
+    the MACD line (EMA12 - EMA26) and its 9-day EMA signal, expressed as
+    a percentage of the latest close so the value is comparable across
+    tickers with different price levels.
+
+    Both require at least 35 data points; otherwise (None, None) is returned.
+    """
+    clean = close.dropna()
+    if len(clean) < 35:
+        return None, None
+
+    # RSI(14)
+    delta = clean.diff()
+    gain = delta.where(delta > 0, 0.0)
+    loss = (-delta).where(delta < 0, 0.0)
+    avg_gain = gain.rolling(window=14).mean().iloc[-1]
+    avg_loss = loss.rolling(window=14).mean().iloc[-1]
+    if pd.isna(avg_gain) or pd.isna(avg_loss):
+        rsi = None
+    elif avg_loss == 0:
+        rsi = 100.0
+    else:
+        rs = avg_gain / avg_loss
+        rsi = 100.0 - (100.0 / (1.0 + rs))
+
+    # MACD histogram (normalized by price)
+    ema_12 = clean.ewm(span=12, adjust=False).mean()
+    ema_26 = clean.ewm(span=26, adjust=False).mean()
+    macd_line = ema_12 - ema_26
+    signal_line = macd_line.ewm(span=9, adjust=False).mean()
+    hist = macd_line.iloc[-1] - signal_line.iloc[-1]
+    last_price = float(clean.iloc[-1])
+    hist_pct = (hist / last_price) if last_price > 0 else None
+
+    return rsi, hist_pct
+
+
 def _fetch_stock(ticker: str, info: dict, history: pd.DataFrame) -> StockData:
     data = StockData(ticker=ticker)
     data.name = info.get("shortName") or info.get("longName")
@@ -218,6 +266,11 @@ def _fetch_stock(ticker: str, info: dict, history: pd.DataFrame) -> StockData:
     data.return_12m = r12
     data.sma200_slope = slope
     data.daily_change = daily
+    if history is not None and not history.empty:
+        close = history["Close"].dropna()
+        rsi, macd = _technical_indicators(close)
+        data.rsi_14 = rsi
+        data.macd_histogram = macd
     if data.current_price is None and history is not None and not history.empty:
         data.current_price = float(history["Close"].iloc[-1])
 
@@ -252,6 +305,11 @@ def _fetch_etf(ticker: str, info: dict, history: pd.DataFrame) -> EtfData:
     data.daily_change = daily
     if r12 is not None and vol is not None and vol > 0:
         data.sharpe_proxy = (r12 - RISK_FREE_RATE) / vol
+    if history is not None and not history.empty:
+        close = history["Close"].dropna()
+        rsi, macd = _technical_indicators(close)
+        data.rsi_14 = rsi
+        data.macd_histogram = macd
     if data.current_price is None and history is not None and not history.empty:
         data.current_price = float(history["Close"].iloc[-1])
 

@@ -41,6 +41,8 @@ def _run_backtest(args: argparse.Namespace) -> dict[str, Any]:
         cmd.append("--dynamic-weights")
     if args.regime:
         cmd.extend(["--regime", args.regime])
+    if args.include_technical:
+        cmd.append("--include-technical")
 
     # Run in temp dir so HTML file is captured
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -185,6 +187,7 @@ def main() -> None:
     run.add_argument("-t", "--tickers", default=None)
     run.add_argument("--dynamic-weights", action="store_true")
     run.add_argument("--regime", default=None)
+    run.add_argument("--include-technical", action="store_true")
     run.add_argument("-o", "--output", default=".")
 
     cmp = sub.add_parser("compare", help="Compare two baseline JSON files")

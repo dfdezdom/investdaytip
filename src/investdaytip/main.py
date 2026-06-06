@@ -142,7 +142,7 @@ def _parse_min_market_cap(raw: str) -> float:
     return float(raw)
 
 
-def _render(results: list[ScoredAsset], console: Console, include_superinvestor: bool = False) -> None:
+def _render(results: list[ScoredAsset], console: Console, include_superinvestor: bool = False, include_technical: bool = False) -> None:
     if not results:
         logger.error("No recommendations could be generated.")
         console.print("[red]No recommendations could be generated.[/red]")
@@ -165,6 +165,9 @@ def _render(results: list[ScoredAsset], console: Console, include_superinvestor:
     table.add_column("1Y Δ", justify="right")
     if include_superinvestor:
         table.add_column("Sup.", justify="right", style="bold")
+    if include_technical:
+        table.add_column("RSI", justify="right")
+        table.add_column("MACD", justify="right")
     table.add_column("Score", justify="right", style="bold green")
     table.add_column("Breakdown", justify="right", style="cyan")
     table.add_column("Why", style="white")
@@ -186,6 +189,11 @@ def _render(results: list[ScoredAsset], console: Console, include_superinvestor:
         ]
         if include_superinvestor:
             row.append(f"{s.superinvestor_count}" if s.superinvestor_count is not None else "—")
+        if include_technical:
+            rsi_val = getattr(d, "rsi_14", None)
+            macd_val = getattr(d, "macd_histogram", None)
+            row.append(f"{rsi_val:.1f}" if rsi_val is not None else "—")
+            row.append(f"{macd_val*100:.2f}%" if macd_val is not None else "—")
         row.extend([
             f"{s.total:.1f}",
             _format_breakdown(s),
@@ -265,6 +273,7 @@ def _run_backtest_cli(args: argparse.Namespace) -> int:
             reporting_lag_days=args.lag_days,
             max_workers=args.max_workers,
             on_progress=on_progress,
+            include_technical=args.include_technical,
         )
 
     # ── Console summary ──
@@ -442,6 +451,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="Clear all cached data.")
     bt.add_argument("--max-workers", type=int, default=10,
                     help="Parallel fetch workers (default: 10).")
+    bt.add_argument("--include-technical", action="store_true",
+                    help="Include RSI and MACD in scoring.")
 
     main_grp = parser.add_argument_group("Main options")
     main_grp.add_argument("-n", "--top", type=int, default=5,
@@ -491,6 +502,8 @@ def main(argv: list[str] | None = None) -> int:
     perf_grp = parser.add_argument_group("Performance")
     perf_grp.add_argument("--workers", type=int, default=10,
                           help="Parallel fetch workers (default: 10).")
+    perf_grp.add_argument("--include-technical", action="store_true",
+                          help="Include RSI and MACD in scoring.")
     if argcomplete is not None:
         argcomplete.autocomplete(parser)
     args = parser.parse_args(argv)
@@ -578,13 +591,14 @@ def main(argv: list[str] | None = None) -> int:
                 currency=args.currency,
                 sector=args.sector,
                 progress_cb=cb,
+                include_technical=args.include_technical,
             )
         except Exception as exc:
             logger.error("Error during analysis: %s", exc)
             console.print(f"[red]Error during analysis: {exc}[/red]")
             return 1
 
-    _render(results, console, include_superinvestor=args.superinvestor)
+    _render(results, console, include_superinvestor=args.superinvestor, include_technical=args.include_technical)
 
     if args.export_html is not None:
         try:
@@ -612,6 +626,7 @@ def main(argv: list[str] | None = None) -> int:
                 tickers=effective_tickers,
                 tickers_file=args.tickers_file,
                 include_superinvestor=args.superinvestor,
+                include_technical=args.include_technical,
                 sector=args.sector,
             )
             logger.info("HTML report exported: %s", out_path)
