@@ -203,6 +203,46 @@ python scripts/scoring_baseline.py compare baseline-before.json baseline-after.j
 - The script stores config + all metrics in a JSON file so comparisons are fully reproducible.
 - **Always verify data completeness**: yfinance annual financial statements may return `NaN` for the oldest fiscal year (e.g., FY2021 data is often incomplete). Prefer shorter periods (e.g., `2y` or `3y`) when validating financial-statement-driven scoring changes to ensure all snapshots have complete data.
 
+## yfinance API Verification
+
+Periodically verify that all yfinance fields used by the project still exist:
+
+```python
+import yfinance as yf
+
+# Stock fields (AAPL as representative)
+t = yf.Ticker('AAPL')
+info = t.info
+for f in ['trailingPE', 'forwardPE', 'priceToBook', 'pegRatio',
+          'returnOnEquity', 'profitMargins', 'earningsGrowth',
+          'revenueGrowth', 'debtToEquity', 'currentRatio', 'freeCashflow',
+          'dividendYield', 'payoutRatio', 'marketCap', 'currentPrice',
+          'regularMarketPrice', 'shortName', 'longName', 'sector',
+          'currency', 'exchange']:
+    assert f in info, f"Missing stock field: {f}"
+
+# ETF fields (VOO as representative)
+etf = yf.Ticker('VOO')
+info_etf = etf.info
+for f in ['totalAssets', 'netExpenseRatio', 'threeYearAverageReturn',
+          'fiveYearAverageReturn', 'beta3Year', 'yield',
+          'trailingAnnualDividendYield', 'navPrice',
+          'category', 'fundFamily', 'quoteType']:
+    assert f in info_etf, f"Missing ETF field: {f}"
+
+# Verify properties
+assert t.balance_sheet is not None
+assert t.income_stmt is not None
+assert t.cashflow is not None
+assert len(t.dividends) > 0
+
+# Verify macro indices
+for idx in ['^VIX', '^VXN', '^TNX', '2YY=F', '^MOVE', 'DX-Y.NYB']:
+    assert not yf.Ticker(idx).history(period='5d').empty
+```
+
+**Last verified: 2025-06-06** — All fields present and functional.
+
 ## `get_recommendations()` — Programmatic API
 ```python
 from investdaytip import get_recommendations
