@@ -374,7 +374,7 @@ http://localhost:8000/<generated-file-name>.html
 
 ### Shell tab completion
 
-Autocomplete flags, subcommands, and option values with `TAB`:
+Requires the `argcomplete` package (installed automatically with `pip install investdaytip`):
 
 ```bash
 # Enable for the current session:
