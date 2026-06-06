@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.metadata
+import logging
 import re
 import sys
 from datetime import datetime
@@ -22,6 +23,8 @@ from investdaytip.dataroma import fetch_superinvestor_universe, get_superinvesto
 from investdaytip.html_export import export_backtest_html, export_recommendations_html
 from investdaytip.recommender import recommend
 from investdaytip.scoring import ScoredAsset
+
+logger = logging.getLogger(__name__)
 
 
 def get_recommendations(
@@ -141,6 +144,7 @@ def _parse_min_market_cap(raw: str) -> float:
 
 def _render(results: list[ScoredAsset], console: Console, include_superinvestor: bool = False) -> None:
     if not results:
+        logger.error("No recommendations could be generated.")
         console.print("[red]No recommendations could be generated.[/red]")
         return
 
@@ -278,8 +282,10 @@ def _run_backtest_cli(args: argparse.Namespace) -> int:
                 region=region_str,
                 interval_months=args.interval_months,
             )
+            logger.info("Backtest HTML report exported: %s", destination)
             console.print(f"[green]HTML report exported:[/green] {destination}")
         except Exception as exc:
+            logger.error("Failed to export backtest HTML report: %s", exc)
             console.print(f"[red]Failed to export HTML report: {exc}[/red]")
             return 1
 
@@ -293,11 +299,14 @@ def _render_backtest_result(console: Console, result: BacktestResult) -> None:
     from investdaytip.backtest import _benchmark_label, _interpret_backtest
 
     if result.errors:
+        for e in result.errors:
+            logger.warning("Backtest warning: %s", e)
         console.print("[yellow]Warnings:[/yellow]")
         for e in result.errors:
             console.print(f"  [dim]{e}[/dim]")
 
     if result.total_snapshots == 0:
+        logger.warning("No snapshots were generated.")
         console.print("[red]No snapshots were generated.[/red]")
         return
 
@@ -353,6 +362,11 @@ def _render_backtest_result(console: Console, result: BacktestResult) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     parser = argparse.ArgumentParser(
         prog="investdaytip",
         description="Suggests long-term stock & ETF buy recommendations using multi-factor analysis.",
@@ -494,6 +508,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             file_tickers = _load_tickers_from_file(args.tickers_file)
         except Exception as exc:
+            logger.error("Could not read --tickers-file: %s", exc)
             Console().print(f"[red]Could not read --tickers-file: {exc}[/red]")
             return 1
 
@@ -534,6 +549,7 @@ def main(argv: list[str] | None = None) -> int:
                 try:
                     fetch_superinvestor_universe(progress_cb=_si_cb)
                 except Exception:
+                    logger.warning("Could not fetch superinvestor data, continuing without it.")
                     console.print("[yellow]⚠️  Could not fetch superinvestor data, continuing without it.[/yellow]")
 
     results: list[ScoredAsset] = []
@@ -564,6 +580,7 @@ def main(argv: list[str] | None = None) -> int:
                 progress_cb=cb,
             )
         except Exception as exc:
+            logger.error("Error during analysis: %s", exc)
             console.print(f"[red]Error during analysis: {exc}[/red]")
             return 1
 
@@ -597,8 +614,10 @@ def main(argv: list[str] | None = None) -> int:
                 include_superinvestor=args.superinvestor,
                 sector=args.sector,
             )
+            logger.info("HTML report exported: %s", out_path)
             console.print(f"[green]HTML report exported:[/green] {out_path}")
         except Exception as exc:
+            logger.error("Failed to export HTML report: %s", exc)
             console.print(f"[red]Failed to export HTML report: {exc}[/red]")
             return 1
 

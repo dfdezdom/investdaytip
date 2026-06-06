@@ -8,6 +8,7 @@ scoring engine for portfolio review and buy recommendations.
 from __future__ import annotations
 
 import argparse
+import logging
 import math
 from datetime import datetime
 from pathlib import Path
@@ -22,6 +23,8 @@ from investdaytip.html_export import export_recommendations_html
 from investdaytip.main import _load_tickers_from_file, _parse_min_market_cap, _render
 from investdaytip.recommender import recommend
 from investdaytip.sentiment import fear_greed_index
+
+logger = logging.getLogger(__name__)
 
 # VIX thresholds
 VIX_BULLISH = 15
@@ -490,6 +493,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 try:
                     fetch_superinvestor_universe(progress_cb=_si_cb)
                 except Exception:
+                    logger.warning("Could not fetch superinvestor data, continuing without it.")
                     console.print("[yellow]⚠️  Could not fetch superinvestor data, continuing without it.[/yellow]")
 
     # ── Risk profile ───────────────────────────────────────
@@ -571,6 +575,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
     portfolio_path = Path(args.portfolio)
     missing: set[str] = set()
     if not portfolio_path.exists():
+        logger.warning("Portfolio file not found: %s", args.portfolio)
         console.print(f"\n[yellow]Portfolio file not found: {args.portfolio}[/yellow]")
         console.print(
             "Add a ticker file (one per line, # for comments) to the "
@@ -582,6 +587,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
             try:
                 review = portfolio_review(str(portfolio_path), args.min_market_cap)
             except YFRateLimitError:
+                logger.warning("Rate limit reached while analyzing portfolio.")
                 console.print(
                     "\n[yellow]⏳ Rate limit reached while analyzing portfolio. "
                     "Wait 1-2 minutes and try again.[/yellow]"
@@ -589,6 +595,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 return 1
 
         if "error" in review:
+            logger.error("Portfolio review error: %s", review['error'])
             console.print(f"\n[red]{review['error']}[/red]")
         else:
             port_table = Table(title="📋 Current Portfolio", show_lines=True)
@@ -710,6 +717,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
         try:
             results = recommend(asset_class=ac, region=reg, top_n=10, currency=ccy, min_market_cap=args.min_market_cap, sector=args.sector)
         except YFRateLimitError:
+            logger.warning("yfinance rate limit reached.")
             console.print(
                 "\n[yellow]⏳ yfinance rate limit reached. "
                 "Wait 1-2 minutes and run:[/yellow]"
@@ -749,6 +757,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 new_results = sector_results
             else:
                 label = "missing sectors" if target_sector == "All" else target_sector
+                logger.info("No %s picks found — showing all.", label)
                 console.print(f"[yellow]No {label} picks found — showing all.[/yellow]")
 
     if new_results:
@@ -762,10 +771,13 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 currency=ccy, tickers=None,
                 include_superinvestor=args.superinvestor,
             )
+            logger.info("Advisor HTML report exported: %s", out)
             console.print(f"\n[green]📄 HTML report:[/green] {out}")
         except Exception as exc:
+            logger.error("Error exporting advisor HTML: %s", exc)
             console.print(f"\n[red]Error exporting HTML:[/red] {exc}")
     else:
+        logger.info("No new recommendations found outside current portfolio.")
         console.print("[yellow]No new recommendations found outside current portfolio.[/yellow]")
 
     if macro_action != "buy":
