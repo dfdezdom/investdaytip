@@ -56,7 +56,7 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - `CacheDB` in `cache.py`: SQLite with `threading.local()` per-thread connections, WAL mode, write lock via `threading.Lock`
 - Four cache entry types:
   - `{ticker}:info` (fundamentals, TTL 1d)
-  - `{ticker}:history` (prices, TTL 5min)
+  - `{ticker}:history` (prices, TTL 15min)
   - `_global:fear_greed` (CNN Fear & Greed Index, TTL 1h)
   - `superinvestor:holdings` (DataRoma aggregated data, TTL 7 days)
 - `fetch_asset()` defers cache-write until both info and history are fetched (atomic snapshot); partial results cached on history failure

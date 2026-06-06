@@ -271,6 +271,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     filter_grp.add_argument("--min-market-cap", type=_parse_min_market_cap, default=2_000_000_000,
                             help="Min. market cap (e.g. 1B, 500M). 0 to disable (default: 2B).")
+    filter_grp.add_argument("-s", "--sector", type=str, default=None,
+                            help="Filter by sector prefix, case-insensitive (e.g. \"Financial\" matches Financial Services).")
 
     data_grp = parser.add_argument_group("Data")
     data_grp.add_argument("--superinvestor", action="store_true",
@@ -363,6 +365,7 @@ def main(argv: list[str] | None = None) -> int:
                 asset_class=args.asset_class,
                 region=args.region,
                 currency=args.currency,
+                sector=args.sector,
                 progress_cb=cb,
             )
         except Exception as exc:
@@ -397,6 +400,7 @@ def main(argv: list[str] | None = None) -> int:
                 tickers=effective_tickers,
                 tickers_file=args.tickers_file,
                 include_superinvestor=args.superinvestor,
+                sector=args.sector,
             )
             console.print(f"[green]HTML report exported:[/green] {out_path}")
         except Exception as exc:

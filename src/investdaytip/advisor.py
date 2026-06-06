@@ -444,6 +444,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--min-market-cap", type=_parse_min_market_cap, default=2_000_000_000,
                         help="Min. market cap (e.g. 1B, 500M). 0 to disable (default: 2B).")
+    parser.add_argument("-s", "--sector", type=str, default=None,
+                        help="Filter by sector/category (e.g. \"Technology\", \"Healthcare\").")
     parser.add_argument("--superinvestor", action="store_true",
                         help="Include superinvestor ownership data from DataRoma.")
     parser.add_argument("--no-cache", action="store_true",
@@ -702,7 +704,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
             }
 
         try:
-            results = recommend(asset_class=ac, region=reg, top_n=10, currency=ccy, min_market_cap=args.min_market_cap)
+            results = recommend(asset_class=ac, region=reg, top_n=10, currency=ccy, min_market_cap=args.min_market_cap, sector=args.sector)
         except YFRateLimitError:
             console.print(
                 "\n[yellow]⏳ yfinance rate limit reached. "

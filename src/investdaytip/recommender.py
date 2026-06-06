@@ -98,6 +98,7 @@ def recommend(
     asset_class: AssetClass | str = "all",
     region: str | list[str] = "all",
     currency: str | list[str] = "all",
+    sector: str | None = None,
     progress_cb=None,
 ) -> list[ScoredAsset]:
     """Score each ticker and return the top ``top_n`` long-term buys.
@@ -113,6 +114,7 @@ def recommend(
         asset_class: "all", "stocks", or "etfs".
         region: Region(s) — ``"all"``, ``"us"``, ``"eu"``, ``"asia"``, ``"superinvestor"`` or a list.
         currency: Currency filter(s) — e.g. ``"USD"``, ``["USD", "EUR"]``.
+        sector: Sector/category prefix filter (case-insensitive) — e.g. ``"Technology"``, ``"Healthcare"``.
         progress_cb: Optional callable ``(done, total, ticker)``.
     """
     universe = _build_universe(tickers, asset_class, region, currency)
@@ -148,5 +150,13 @@ def recommend(
         ]
     else:
         filtered = scored
+
+    if sector:
+        sector_lower = sector.lower()
+        filtered = [
+            s for s in filtered
+            if s.data.sector and s.data.sector.lower().startswith(sector_lower)
+        ]
+
     filtered.sort(key=lambda s: s.total, reverse=True)
     return filtered[:top_n]

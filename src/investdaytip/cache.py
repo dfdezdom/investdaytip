@@ -16,7 +16,7 @@ from typing import Any
 CACHE_DIR = Path.home() / ".investdaytip"
 CACHE_DB = CACHE_DIR / "cache.db"
 
-TTL_PRICES = 300          # 5 minutes
+TTL_PRICES = 900          # 15 minutes
 TTL_FUNDAMENTALS = 86400  # 1 day
 TTL_SENTIMENT = 3600      # 1 hour
 

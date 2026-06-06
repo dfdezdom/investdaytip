@@ -257,6 +257,7 @@ def export_recommendations_html(
     tickers: list[str] | None,
   tickers_file: str | None = None,
   include_superinvestor: bool = False,
+  sector: str | None = None,
 ) -> str:
     """Write a self-contained, filterable HTML report to ``destination``."""
     col_count = _TABLE_BASE_COLUMN_COUNT + (1 if include_superinvestor else 0)
@@ -270,6 +271,7 @@ def export_recommendations_html(
         "tickers": tickers or [],
         "tickers_file": tickers_file,
         "row_count": len(rows),
+        "sector": sector,
         "fear_greed": fear_greed_index(),
     }
 

@@ -326,7 +326,7 @@ InvestDayTip includes an **SQLite cache** (`~/.investdaytip/cache.db`) created a
 
 | Data | TTL |
 |------|-----|
-| Prices & history | 5 minutes |
+| Prices & history | 15 minutes |
 | Fundamentals (info dict) | 1 day |
 | Superinvestor holdings | 7 days |
 
