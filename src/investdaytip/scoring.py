@@ -6,7 +6,7 @@ Stocks and ETFs are scored with different models but produce a unified
 **Stock model** (Graham/Buffett + momentum, weights):
     Quality (35%)  — ROE, margins, growth
     Value   (25%)  — P/E, P/B, PEG
-    Health  (20%)  — debt, liquidity, FCF
+    Health  (20%)  — debt, liquidity, FCF, ROIC
     Trend   (20%)  — 200d-SMA position, 12m return, SMA slope
 
 **ETF model**:
@@ -41,6 +41,37 @@ ETF_WEIGHTS = {
     "size": 0.15,
     "cost_yield": 0.20,
 }
+
+
+_BULLISH_WEIGHTS = {
+    "quality": 0.30,
+    "value": 0.20,
+    "health": 0.15,
+    "trend": 0.35,
+}
+
+_BEARISH_WEIGHTS = {
+    "quality": 0.30,
+    "value": 0.30,
+    "health": 0.25,
+    "trend": 0.15,
+}
+
+
+def _adjust_stock_weights(weights: dict[str, float], regime: str) -> dict[str, float]:
+    """Adjust stock scoring weights based on market regime.
+
+    Regimes (from ``macro_regime()``):
+        * healthy / bullish / risk_on  → higher Trend (momentum)
+        * warning / danger / bearish / risk_off / crash → higher Health/Value
+        * neutral                        → keep default weights
+    """
+    r = regime.lower().strip()
+    if r in ("healthy", "bullish", "risk_on"):
+        return _BULLISH_WEIGHTS.copy()
+    if r in ("warning", "danger", "bearish", "risk_off", "crash"):
+        return _BEARISH_WEIGHTS.copy()
+    return weights.copy()
 
 
 @dataclass
@@ -120,11 +151,14 @@ def _health_score(d: StockData) -> tuple[float, list[str]]:
     fcf = 50.0
     if d.free_cashflow is not None:
         fcf = 80.0 if d.free_cashflow > 0 else 20.0
+    roic = _linear(d.roic, best=0.20, worst=0.0)
     if de is not None and de < 0.5:
         notes.append(f"low leverage (D/E={de:.2f})")
     if d.free_cashflow is not None and d.free_cashflow > 0:
         notes.append("positive free cash flow")
-    return (debt * 0.45) + (liq * 0.25) + (fcf * 0.30), notes
+    if d.roic is not None and d.roic > 0.15:
+        notes.append(f"strong ROIC ({d.roic * 100:.1f}%)")
+    return (debt * 0.30) + (liq * 0.20) + (fcf * 0.25) + (roic * 0.25), notes
 
 
 def _trend_score(d: StockData) -> tuple[float, list[str]]:
@@ -139,17 +173,25 @@ def _trend_score(d: StockData) -> tuple[float, list[str]]:
     return (pvs * 0.35) + (r12 * 0.30) + (slope * 0.35), notes
 
 
-def score_stock(data: StockData) -> ScoredAsset:
+def score_stock(
+    data: StockData, *, dynamic_weights: bool = False, regime: Optional[str] = None
+) -> ScoredAsset:
     quality, q_notes = _quality_score(data)
     value, v_notes = _value_score(data)
     health, h_notes = _health_score(data)
     trend, t_notes = _trend_score(data)
 
+    weights = (
+        _adjust_stock_weights(STOCK_WEIGHTS, regime)
+        if dynamic_weights and regime
+        else STOCK_WEIGHTS.copy()
+    )
+
     total = (
-        quality * STOCK_WEIGHTS["quality"]
-        + value * STOCK_WEIGHTS["value"]
-        + health * STOCK_WEIGHTS["health"]
-        + trend * STOCK_WEIGHTS["trend"]
+        quality * weights["quality"]
+        + value * weights["value"]
+        + health * weights["health"]
+        + trend * weights["trend"]
     )
     rationale = q_notes + v_notes + h_notes + t_notes
     if not rationale:
@@ -171,6 +213,20 @@ def score_stock(data: StockData) -> ScoredAsset:
 # ---------------------------------------------------------------------------
 # ETF scoring
 # ---------------------------------------------------------------------------
+
+def _etf_sector_score(d: EtfData) -> tuple[float, list[str]]:
+    """Compare ETF 12-month return to its category average."""
+    notes: list[str] = []
+    if d.return_12m is not None and d.category_avg_return is not None:
+        diff = d.return_12m - d.category_avg_return
+        score = _linear(diff, best=0.05, worst=-0.05)
+        if diff > 0.02:
+            notes.append(f"outperformed category by {diff * 100:.1f}%")
+        elif diff < -0.02:
+            notes.append(f"underperformed category by {abs(diff) * 100:.1f}%")
+        return score, notes
+    return 50.0, notes
+
 
 def _etf_returns_score(d: EtfData) -> tuple[float, list[str]]:
     notes: list[str] = []
@@ -220,19 +276,31 @@ def _etf_cost_yield_score(d: EtfData) -> tuple[float, list[str]]:
     return (cost * 0.65) + (yld * 0.35), notes
 
 
-def score_etf(data: EtfData) -> ScoredAsset:
+def score_etf(data: EtfData, *, sector_relative: bool = False) -> ScoredAsset:
     ret, r_notes = _etf_returns_score(data)
     risk, k_notes = _etf_risk_adj_score(data)
     size, s_notes = _etf_size_score(data)
     cy, c_notes = _etf_cost_yield_score(data)
+    sector, sec_notes = _etf_sector_score(data)
+
+    weights = ETF_WEIGHTS.copy()
+    breakdown: dict[str, float] = {"Returns": ret, "RiskAdj": risk, "Size": size, "Cost/Yield": cy}
+    if sector_relative:
+        # Reduce Returns weight to make room for Sector component
+        weights["returns"] = 0.35
+        weights["sector"] = 0.05
+        breakdown["Sector"] = sector
 
     total = (
-        ret * ETF_WEIGHTS["returns"]
-        + risk * ETF_WEIGHTS["risk_adj"]
-        + size * ETF_WEIGHTS["size"]
-        + cy * ETF_WEIGHTS["cost_yield"]
+        ret * weights["returns"]
+        + risk * weights["risk_adj"]
+        + size * weights["size"]
+        + cy * weights["cost_yield"]
     )
-    rationale = r_notes + k_notes + s_notes + c_notes
+    if sector_relative:
+        total += sector * weights["sector"]
+
+    rationale = r_notes + k_notes + s_notes + c_notes + sec_notes
     if not rationale:
         rationale.append("Limited data available; score based on neutral defaults.")
 
@@ -240,7 +308,7 @@ def score_etf(data: EtfData) -> ScoredAsset:
         data=data,
         asset_type="ETF",
         total=total,
-        breakdown={"Returns": ret, "RiskAdj": risk, "Size": size, "Cost/Yield": cy},
+        breakdown=breakdown,
         rationale=rationale,
     )
 
@@ -249,8 +317,10 @@ def score_etf(data: EtfData) -> ScoredAsset:
 # Dispatch
 # ---------------------------------------------------------------------------
 
-def score_asset(data: AssetData) -> ScoredAsset:
+def score_asset(
+    data: AssetData, *, dynamic_weights: bool = False, regime: Optional[str] = None, sector_relative: bool = False
+) -> ScoredAsset:
     if isinstance(data, EtfData):
-        return score_etf(data)
-    return score_stock(data)
+        return score_etf(data, sector_relative=sector_relative)
+    return score_stock(data, dynamic_weights=dynamic_weights, regime=regime)
 

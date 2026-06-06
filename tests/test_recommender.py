@@ -93,4 +93,4 @@ class TestRecommend:
         with caplog.at_level("WARNING"):
             out = recommend(tickers=["XXX"], top_n=5)
         assert out == []
-        assert any("Failed to fetch/score" in rec.message for rec in caplog.records)
+        assert any("Failed to fetch" in rec.message for rec in caplog.records)

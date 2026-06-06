@@ -31,11 +31,16 @@ def get_recommendations(
     region: str | list[str] = "all",
     currency: str | list[str] = "all",
     min_market_cap: float = 2_000_000_000,
+    dynamic_weights: bool = False,
+    regime: str | None = None,
+    sector_relative: bool = False,
 ) -> list[ScoredAsset]:
     """Programmatic API: return the top ``top_n`` long-term buy recommendations."""
     return recommend(
         tickers=tickers, top_n=top_n, asset_class=asset_class,
         region=region, currency=currency, min_market_cap=min_market_cap,
+        dynamic_weights=dynamic_weights, regime=regime,
+        sector_relative=sector_relative,
     )
 
 
@@ -207,6 +212,20 @@ def _run_backtest_cli(args: argparse.Namespace) -> int:
     from investdaytip.recommender import _build_universe
 
     console = Console()
+
+    # Determine market regime when dynamic weights are requested
+    bt_regime: str | None = None
+    if args.dynamic_weights:
+        if args.regime:
+            bt_regime = args.regime
+            console.print(f"[dim]Macro regime (manual): {bt_regime}[/dim]\n")
+        else:
+            from investdaytip.advisor import macro_regime
+            mreg = macro_regime()
+            bt_regime = mreg.get("regime", "neutral")
+            score = mreg.get("score", "N/A")
+            console.print(f"[dim]Macro regime: {bt_regime} (score={score})[/dim]\n")
+
     region_str = ", ".join(args.region) if isinstance(args.region, list) else args.region
     console.print(
         f"[bold cyan]InvestDayTip Backtest[/bold cyan] — "
@@ -261,6 +280,8 @@ def _run_backtest_cli(args: argparse.Namespace) -> int:
             reporting_lag_days=args.lag_days,
             max_workers=args.max_workers,
             on_progress=on_progress,
+            dynamic_weights=args.dynamic_weights,
+            regime=bt_regime,
         )
 
     # ── Console summary ──
@@ -422,6 +443,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="Benchmark ticker (default: auto from region).")
     bt.add_argument("--export-html", nargs="?", const="", default=None,
                     help="Export to self-contained HTML file.")
+    bt.add_argument("--dynamic-weights", action="store_true",
+                    help="Adjust stock scoring weights based on market regime (VIX).")
+    bt.add_argument("--regime", type=str, default=None,
+                    choices=["bullish", "bearish", "neutral", "crash", "risk_on", "risk_off"],
+                    help="Override market regime for --dynamic-weights.")
     bt.add_argument("--no-cache", action="store_true",
                     help="Bypass SQLite cache.")
     bt.add_argument("--cache-clear", action="store_true",
@@ -469,6 +495,13 @@ def main(argv: list[str] | None = None) -> int:
     data_grp = parser.add_argument_group("Data")
     data_grp.add_argument("--superinvestor", action="store_true",
                           help="Include superinvestor ownership data.")
+    data_grp.add_argument("--dynamic-weights", action="store_true",
+                          help="Adjust stock scoring weights based on market regime (VIX).")
+    data_grp.add_argument("--regime", type=str, default=None,
+                          choices=["bullish", "bearish", "neutral", "crash", "risk_on", "risk_off"],
+                          help="Override market regime for --dynamic-weights.")
+    data_grp.add_argument("--etf-sector-relative", action="store_true",
+                          help="Compare ETF returns to category average in scoring.")
     data_grp.add_argument("--no-cache", action="store_true",
                           help="Bypass SQLite cache.")
     data_grp.add_argument("--cache-clear", action="store_true",
@@ -506,7 +539,23 @@ def main(argv: list[str] | None = None) -> int:
     if args.no_cache:
         cache_set_enabled(False)
 
+    # Determine market regime when dynamic weights are requested
+    regime: str | None = None
+    macro_display: str | None = None
+    if args.dynamic_weights:
+        if args.regime:
+            regime = args.regime
+        else:
+            from investdaytip.advisor import macro_regime
+            mreg = macro_regime()
+            regime = mreg.get("regime", "neutral")
+            macro_display = f"score={mreg.get('score', 'N/A')}"
+
     console = Console()
+    if args.dynamic_weights and macro_display is not None:
+        console.print(
+            f"[dim]Macro regime: {regime} ({macro_display})[/dim]\n"
+        )
     region_str = ", ".join(args.region) if isinstance(args.region, list) else args.region
     currency_str = ", ".join(args.currency) if isinstance(args.currency, list) else args.currency
     console.print(
@@ -562,6 +611,9 @@ def main(argv: list[str] | None = None) -> int:
                 currency=args.currency,
                 sector=args.sector,
                 progress_cb=cb,
+                dynamic_weights=args.dynamic_weights,
+                regime=regime,
+                sector_relative=args.etf_sector_relative,
             )
         except Exception as exc:
             console.print(f"[red]Error during analysis: {exc}[/red]")
