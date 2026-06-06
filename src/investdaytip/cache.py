@@ -18,6 +18,7 @@ CACHE_DB = CACHE_DIR / "cache.db"
 
 TTL_PRICES = 900          # 15 minutes
 TTL_FUNDAMENTALS = 86400  # 1 day
+TTL_FINANCIALS = 604800   # 7 days
 TTL_SENTIMENT = 3600      # 1 hour
 
 
@@ -191,6 +192,37 @@ def cache_sentiment_set(data_json: str) -> None:
     if not enabled:
         return
     get_db().set(_cache_key("_global", "fear_greed"), data_json, TTL_SENTIMENT)
+
+
+def cache_financial_get(ticker: str, kind: str) -> str | None:
+    """Return cached financial-statement JSON string or None.
+
+    *kind* is one of ``"balance_sheet"``, ``"income_stmt"``, ``"cashflow"``.
+    """
+    if not enabled:
+        return None
+    return get_db().get(_cache_key(ticker, kind))
+
+
+def cache_financial_set(ticker: str, kind: str, df_json: str) -> None:
+    """Store financial-statement JSON string in cache with 7-day TTL."""
+    if not enabled:
+        return
+    get_db().set(_cache_key(ticker, kind), df_json, TTL_FINANCIALS)
+
+
+def cache_dividends_get(ticker: str) -> str | None:
+    """Return cached dividends JSON string or None."""
+    if not enabled:
+        return None
+    return get_db().get(_cache_key(ticker, "dividends"))
+
+
+def cache_dividends_set(ticker: str, series_json: str) -> None:
+    """Store dividends JSON string in cache with 7-day TTL."""
+    if not enabled:
+        return
+    get_db().set(_cache_key(ticker, "dividends"), series_json, TTL_FINANCIALS)
 
 
 def clear_cache() -> None:

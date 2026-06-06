@@ -3,11 +3,13 @@
 import re
 from pathlib import Path
 
+from investdaytip.backtest import BacktestResult, BacktestSnapshot
 from investdaytip.data_source import EtfData, StockData
 from investdaytip.html_export import (
     _TABLE_BASE_COLUMN_COUNT,
     _google_finance_url,
     _tradingview_url,
+    export_backtest_html,
     export_recommendations_html,
     infer_region_from_ticker,
 )
@@ -108,3 +110,79 @@ def test_tradingview_url_uses_exchange_hint_for_unsuffixed_us_tickers():
 
 def test_google_finance_url_falls_back_to_search_when_unmapped():
     assert _google_finance_url("FOO.XY") == "https://www.google.com/finance?hl=en&q=FOO.XY"
+
+
+# ── Backtest HTML export ──────────────────────────────────────────────────────
+
+
+def _make_backtest_sample() -> BacktestResult:
+    from investdaytip.scoring import ScoredAsset
+
+    s1 = ScoredAsset(
+        data=StockData(ticker="AAPL", name="Apple", sector="Technology",
+                       current_price=190.5, return_1m=0.03, return_12m=0.21,
+                       currency="USD"),
+        asset_type="STOCK", total=88.2,
+        breakdown={"Q": 90, "V": 75, "H": 85, "T": 88},
+        rationale=["strong ROE"],
+    )
+    s2 = ScoredAsset(
+        data=StockData(ticker="MSFT", name="Microsoft", sector="Technology",
+                       current_price=350.0, return_1m=0.02, return_12m=0.18,
+                       currency="USD"),
+        asset_type="STOCK", total=85.0,
+        breakdown={"Q": 88, "V": 70, "H": 80, "T": 86},
+        rationale=["solid growth"],
+    )
+    snap1 = BacktestSnapshot(
+        date=__import__("datetime").datetime(2024, 6, 1),
+        picks=[s1, s2],
+        avg_return_6m=0.08, avg_return_12m=0.22,
+        benchmark_return_6m=0.05, benchmark_return_12m=0.18,
+    )
+    snap2 = BacktestSnapshot(
+        date=__import__("datetime").datetime(2024, 9, 1),
+        picks=[s2, s1],
+        avg_return_6m=0.06, avg_return_12m=0.20,
+        benchmark_return_6m=0.04, benchmark_return_12m=0.16,
+    )
+    return BacktestResult(
+        snapshots=[snap1, snap2], total_snapshots=2,
+        cumulative_return=0.15, benchmark_cumulative_return=0.10,
+        sharpe=1.5, benchmark_sharpe=0.9,
+        win_rate_6m=1.0, win_rate_12m=1.0,
+        max_drawdown=-0.05, alpha=0.04,
+    )
+
+
+def test_export_backtest_html_contains_metrics(tmp_path):
+    result = _make_backtest_sample()
+    out = tmp_path / "backtest.html"
+    export_backtest_html(result, str(out), tickers=["AAPL", "MSFT"])
+    html = out.read_text(encoding="utf-8")
+    assert "Backtest Report" in html
+    assert "Cumulative Return" in html
+    assert "15.00%" in html or "15%" in html
+    assert "10.00%" in html
+    assert "1.50" in html
+    assert "AAPL" in html
+    assert "MSFT" in html
+    assert "2024-06-01" in html
+    assert "2024-09-01" in html
+
+
+def test_export_backtest_html_empty_result(tmp_path):
+    result = BacktestResult(snapshots=[])
+    out = tmp_path / "empty.html"
+    export_backtest_html(result, str(out))
+    html = out.read_text(encoding="utf-8")
+    assert "No snapshots were generated" in html
+
+
+def test_export_backtest_html_shows_errors(tmp_path):
+    result = BacktestResult(snapshots=[], errors=["Could not fetch SPY", "Rate limit hit"])
+    out = tmp_path / "errors.html"
+    export_backtest_html(result, str(out))
+    html = out.read_text(encoding="utf-8")
+    assert "Could not fetch SPY" in html
+    assert "Rate limit hit" in html

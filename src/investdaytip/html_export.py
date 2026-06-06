@@ -9,6 +9,7 @@ from html import escape
 from typing import Any, TypeGuard
 from urllib.parse import quote, quote_plus
 
+from investdaytip.backtest import BacktestResult
 from investdaytip.scoring import ScoredAsset
 from investdaytip.sentiment import fear_greed_index
 
@@ -715,4 +716,174 @@ def export_recommendations_html(
     with open(destination, "w", encoding="utf-8") as f:
         f.write(html)
 
+    return destination
+
+
+# ── Backtest HTML export ──────────────────────────────────────────────────────
+
+
+def _fmt_pct_str(value: Any) -> str:
+    if not _is_finite_number(value):
+        return "-"
+    return f"{float(value) * 100:.2f}%"
+
+
+def _fmt_num(value: Any, decimals: int = 2) -> str:
+    if not _is_finite_number(value):
+        return "-"
+    return f"{float(value):,.{decimals}f}"
+
+
+_SNAPSHOT_COL_COUNT = 6
+
+
+def _render_backtest_rows(result: BacktestResult) -> str:
+    if not result.snapshots:
+        return (
+            f'<tr><td colspan="{_SNAPSHOT_COL_COUNT}" class="muted">'
+            "No snapshots were generated.</td></tr>"
+        )
+    out: list[str] = []
+    for snap in result.snapshots:
+        picks_str = ", ".join(
+            f"{p.data.ticker} ({p.total:.1f})" for p in snap.picks
+        )
+        r6 = _fmt_pct_str(snap.avg_return_6m)
+        r12 = _fmt_pct_str(snap.avg_return_12m)
+        b6 = _fmt_pct_str(snap.benchmark_return_6m)
+        b12 = _fmt_pct_str(snap.benchmark_return_12m)
+
+        r6_cls = _pct_class(snap.avg_return_6m)
+        r12_cls = _pct_class(snap.avg_return_12m)
+        b6_cls = _pct_class(snap.benchmark_return_6m)
+        b12_cls = _pct_class(snap.benchmark_return_12m)
+
+        out.append(
+            f"<tr>"
+            f"<td>{snap.date.strftime('%Y-%m-%d')}</td>"
+            f"<td>{escape(picks_str)}</td>"
+            f"<td class=\"num {r6_cls}\">{r6}</td>"
+            f"<td class=\"num {r12_cls}\">{r12}</td>"
+            f"<td class=\"num {b6_cls}\">{b6}</td>"
+            f"<td class=\"num {b12_cls}\">{b12}</td>"
+            f"</tr>"
+        )
+    return "".join(out)
+
+
+def export_backtest_html(
+    result: BacktestResult,
+    destination: str,
+    *,
+    tickers: list[str] | None = None,
+    top_n: int = 5,
+    region: str = "us",
+    interval_months: int = 3,
+) -> str:
+    """Write a self-contained HTML backtest report."""
+    summary_metrics = [
+        ("Cumulative Return", _fmt_pct_str(result.cumulative_return), _pct_class(result.cumulative_return)),
+        ("Benchmark Return", _fmt_pct_str(result.benchmark_cumulative_return), _pct_class(result.benchmark_cumulative_return)),
+        ("Alpha", _fmt_pct_str(result.alpha), _pct_class(result.alpha)),
+        ("Sharpe Ratio", _fmt_num(result.sharpe), ""),
+        ("Benchmark Sharpe", _fmt_num(result.benchmark_sharpe), ""),
+        ("Win Rate 6M", _fmt_pct_str(result.win_rate_6m), "pos"),
+        ("Win Rate 12M", _fmt_pct_str(result.win_rate_12m), "pos"),
+        ("Max Drawdown", _fmt_pct_str(result.max_drawdown), "neg"),
+    ]
+    meta_rows = (
+        f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} · "
+        f"Region: {region} · Top {top_n} picks per snapshot · "
+        f"Interval: {interval_months}mo · "
+        f"Snapshots: {result.total_snapshots}"
+    )
+    if tickers:
+        meta_rows += f" · Tickers: {', '.join(tickers)}"
+
+    rows_html = _render_backtest_rows(result)
+
+    html = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>InvestDayTip — Backtest Report</title>
+  <style>
+    * {{ box-sizing: border-box; }}
+    body {{
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0; padding: 24px; background: #f3f5ef; color: #1f2a1f;
+    }}
+    .wrap {{ max-width: 1200px; margin: 0 auto; }}
+    h1 {{ margin: 0 0 4px; font-size: 1.5rem; }}
+    .meta {{ color: #58664d; font-size: 0.88rem; margin-bottom: 20px; }}
+    .summary {{
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 10px; background: #fff; border: 1px solid #dde5cf;
+      border-radius: 12px; padding: 16px; margin-bottom: 20px;
+    }}
+    .summary-item {{ text-align: center; }}
+    .summary-label {{ font-size: 0.78rem; color: #58664d; text-transform: uppercase; letter-spacing: 0.04em; }}
+    .summary-value {{ font-size: 1.2rem; font-weight: 700; margin-top: 4px; }}
+    table {{
+      width: 100%; border-collapse: collapse; background: #fff;
+      border: 1px solid #dde5cf; border-radius: 12px; overflow: hidden;
+    }}
+    thead th {{
+      text-align: left; font-size: 0.82rem; letter-spacing: 0.02em;
+      color: #2a402d; background: #e9f2df;
+      border-bottom: 1px solid #dde5cf; padding: 10px;
+      position: sticky; top: 0; z-index: 1;
+    }}
+    tbody td {{ border-top: 1px solid #edf2e6; padding: 10px; font-size: 0.92rem; vertical-align: top; }}
+    .num {{ text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }}
+    .pos {{ color: #1e7a35; font-weight: 600; }}
+    .neg {{ color: #a84035; font-weight: 600; }}
+    .muted {{ color: #58664d; }}
+    .errors {{ background: #fff5f5; border: 1px solid #e8c4c4; border-radius: 10px; padding: 12px; margin-top: 16px; }}
+    .errors h3 {{ margin: 0 0 6px; font-size: 0.95rem; color: #a84035; }}
+    .errors ul {{ margin: 0; padding-left: 20px; color: #7a3a30; }}
+    @media (max-width: 700px) {{
+      body {{ padding: 14px; }}
+      .summary {{ grid-template-columns: repeat(2, 1fr); }}
+    }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Backtest Report</h1>
+    <div class="meta">{meta_rows}</div>
+
+    <div class="summary">
+      {"".join(
+        f'<div class="summary-item"><div class="summary-label">{label}</div>'
+        f'<div class="summary-value {cls}">{val}</div></div>'
+        for label, val, cls in summary_metrics
+      )}
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Picks (score)</th>
+          <th class="num">Port. 6M</th>
+          <th class="num">Port. 12M</th>
+          <th class="num">Bench. 6M</th>
+          <th class="num">Bench. 12M</th>
+        </tr>
+      </thead>
+      <tbody>{rows_html}</tbody>
+    </table>
+
+    {"".join(
+      f'<div class="errors"><h3>Warnings / Errors</h3><ul>'
+      f'{"".join(f"<li>{escape(e)}</li>" for e in result.errors)}</ul></div>'
+    ) if result.errors else ""}
+  </div>
+</body>
+</html>"""
+
+    with open(destination, "w", encoding="utf-8") as f:
+        f.write(html)
     return destination

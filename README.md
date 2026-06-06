@@ -118,6 +118,14 @@ investdaytip --workers 20            # More parallelism
 
 investdaytip --help
 
+investdaytip --help
+
+investdaytip backtest -n 10 -r us       # Backtest stock scoring on US market (stocks only)
+investdaytip backtest -t AAPL MSFT VOO  # Backtest on custom ticker list
+investdaytip backtest --export-html     # Export backtest results to HTML
+investdaytip backtest --no-cache        # Bypass cache in backtest
+investdaytip backtest --cache-clear     # Purge cache before backtest
+
 ./preview.sh                         # Serve generated HTML files on localhost:8000
 ```
 
@@ -139,6 +147,31 @@ investdaytip --help
 | `--cache-clear` | Purge the SQLite cache before running | disabled |
 | `--workers N` | Parallel fetch threads | `10` |
 | `-h, --help` | Show the CLI help message and exit | n/a |
+
+### Backtest subcommand
+
+Historical validation of the stock scoring model:
+
+```bash
+investdaytip backtest                          # Backtest US stocks (default)
+investdaytip backtest -n 10                    # Top 10 picks per snapshot
+investdaytip backtest -r us                    # US stocks
+investdaytip backtest -r eu                    # European stocks
+investdaytip backtest -r asia                  # Asian stocks
+investdaytip backtest -r superinvestor         # Superinvestor consensus stocks
+investdaytip backtest -t AAPL MSFT             # Custom ticker list
+investdaytip backtest --benchmark SPY          # Custom benchmark
+investdaytip backtest --interval-months 6      # Semi-annual snapshots
+investdaytip backtest --lag-days 90            # Reporting lag (default: 60)
+investdaytip backtest --period 3y              # Shorter price history
+investdaytip backtest --export-html            # Export to HTML
+investdaytip backtest --no-cache               # Bypass SQLite cache
+investdaytip backtest --cache-clear            # Purge cache before run
+```
+
+**Note:** Backtest only supports stocks (no ETFs). It simulates quarterly snapshots
+with a configurable reporting lag, scores each stock, and measures forward returns
+against a benchmark.
 
 ### Advisor subcommand
 
@@ -369,9 +402,11 @@ InvestDayTip includes an **SQLite cache** (`~/.investdaytip/cache.db`) created a
 |------|-----|
 | Prices & history | 15 minutes |
 | Fundamentals (info dict) | 1 day |
+| Financial statements (balance sheet, income, cash flow) | 7 days |
+| Dividends | 7 days |
 | Superinvestor holdings | 7 days |
 
-The cache uses per-thread SQLite connections with a write lock to support concurrent fetches safely. Use `--no-cache` to bypass the cache for a single run, or `--cache-clear` to purge all entries. Caching is automatically disabled when running tests.
+The cache uses per-thread SQLite connections with a write lock to support concurrent fetches safely. Use `--no-cache` to bypass the cache for a single run, or `--cache-clear` to purge all entries. Both flags work on the main and `backtest` subcommands. Caching is automatically disabled when running tests.
 
 ---
 
@@ -383,12 +418,14 @@ src/investdaytip/
 ├── __init__.py            # Public API: get_recommendations
 ├── main.py                # CLI entry point + rich table rendering
 ├── advisor.py             # Interactive advisor: market pulse (VIX + macro), portfolio review, buy recs
+├── backtest.py            # Historical stock scoring validation (stocks only)
 ├── dataroma.py            # DataRoma superinvestor holdings scraper
 ├── html_export.py         # Self-contained HTML report exporter
 ├── recommender.py         # Concurrent orchestration
 ├── cache.py               # SQLite caching layer (per-thread connections, WAL mode)
 ├── data_source.py         # yfinance wrapper + dataclasses (StockData / EtfData)
 ├── scoring.py             # Pure scoring functions (score_stock, score_etf)
+├── sentiment.py           # CNN Fear & Greed Index fetch
 ├── universe.py            # US stock universe
 ├── etf_universe.py        # US ETF universe
 ├── superinvestor_universe.py  # Superinvestor consensus universe (DataRoma 13F)
@@ -401,6 +438,7 @@ advisor_recommendations/   # Advisor-generated HTML reports (git-ignored)
 tests/
 ├── test_integration.py    # End-to-end integration tests (sorting, filters, CLI, export)
 ├── test_advisor.py        # Advisor tests (VIX, macro regime, bubble risk)
+├── test_backtest.py       # Backtest engine tests (fetch, snapshots, scoring, cache, interpret)
 ├── test_recommender.py    # Recommendation orchestration tests
 ├── test_main.py           # CLI helper tests
 ├── test_html_export.py    # HTML export tests
@@ -446,7 +484,7 @@ ruff check src tests      # lint
 mypy                      # type-check
 ```
 
-**122 tests** across 11 test files. The scoring engine is purely functional
+**176 tests** across 12 test files. The scoring engine is purely functional
 and tested without network calls; an autouse guard in `tests/conftest.py` fails
 fast if a test reaches yfinance unmocked. Integration tests mock the full
 `recommend()` → `main()` → export pipeline.

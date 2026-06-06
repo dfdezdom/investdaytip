@@ -23,7 +23,7 @@ the convention is `Optional[...]` for dataclass fields, not `X | None`.
 ## Architecture — Key Structural Facts
 
 | Layer | Path | Role |
-|---|---|---|---|
+|---|---|---|---|---|
 | CLI + public API | `main.py` | argparse + `get_recommendations()` re-exported from `__init__.py` |
 | Advisor | `advisor.py` | interactive market pulse, portfolio review, buy recs, CLI subcommand |
 | Orchestration | `recommender.py` | builds universe, ThreadPoolExecutor fetches, scores, filters, sorts |
@@ -31,9 +31,10 @@ the convention is `Optional[...]` for dataclass fields, not `X | None`.
 | Caching | `cache.py` | SQLite cache with per-thread connections, WAL mode, write lock |
 | Scoring | `scoring.py` | pure functions only — no I/O, no side effects |
 | HTML export | `html_export.py` | self-contained report with inline CSS/JS |
+| Backtest | `backtest.py` | historical scoring validation (stocks only) |
 | Sentiment | `sentiment.py` | CNN Fear & Greed Index, no yfinance (uses `urllib`) |
 | Universes | `*_universe.py` (7 modules) | curated ticker lists wired in `recommender._build_universe()` (deduplicated case-insensitively) |
-| Tests | `tests/` | 8 files, no live network calls (autouse network guard in `conftest.py`) |
+| Tests | `tests/` | 9 files, no live network calls (autouse network guard in `conftest.py`) |
 | OpenCode agent | `.opencode/agents/advisor.md` | advisor subagent: permissions, interactive flow, execution methods, and interpretation guide |
 
 Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_export / Rich table`
@@ -54,14 +55,17 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 
 ### Caching
 - `CacheDB` in `cache.py`: SQLite with `threading.local()` per-thread connections, WAL mode, write lock via `threading.Lock`
-- Four cache entry types:
+- Six cache entry types:
   - `{ticker}:info` (fundamentals, TTL 1d)
   - `{ticker}:history` (prices, TTL 15min)
+  - `{ticker}:balance_sheet` / `{ticker}:income_stmt` / `{ticker}:cash_flow` (financials, TTL 7d)
+  - `{ticker}:dividends` (dividends, TTL 7d)
   - `_global:fear_greed` (CNN Fear & Greed Index, TTL 1h)
   - `superinvestor:holdings` (DataRoma aggregated data, TTL 7 days)
 - `fetch_asset()` defers cache-write until both info and history are fetched (atomic snapshot); partial results cached on history failure
+- Backtest uses **per-component cache** with **all-or-nothing restore**: `_try_fetch_from_cache()` reads all 6 components (info, history, balance_sheet, income_stmt, cash_flow, dividends); if any is missing/expired it refetches everything from yfinance
 - Connections are tracked so `CacheDB.close_all()` / module-level `close_db()` can release **worker-thread** connections; `recommend()` calls `close_db()` in a `finally` after the pool tears down
-- `--no-cache` flag disables cache read/write; `--cache-clear` drops all entries
+- `--no-cache` flag disables cache read/write; `--cache-clear` drops all entries. Both flags work on `backtest` subcommand too
 - `--superinvestor` flag enables the DataRoma superinvestor cache warm-up (~80 HTTP requests) and the "Superinvestors" column in both HTML and CLI output; disabled by default
 - Tests auto-disable cache via `conftest.py::disable_cache` (autouse); an autouse `no_network` guard fails fast on unmocked `yf.Ticker`; `enabled_temp_cache` fixture backs cache tests with a `tmp_path` DB (never the real `~/.investdaytip`)
 
@@ -79,6 +83,14 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - `-s`/`--sector` accepts a single string; prefix match case-insensitive (e.g. `Financial` matches Financial Services). Applied inside `recommend()` before the `top_n` truncation, so it filters the full universe rather than just the top results.
 - `--superinvestor` controls DataRoma scraping (~80 HTTP requests) and the "Superinvestors" column; the curated `SUPERINVESTOR_UNIVERSE` tickers are **always** included in the stock pool (they are quality stocks), but the manager-count data and column are only fetched/displayed when the flag is present
 - **Tab completion**: `argcomplete>=3.0` is a dependency; `argcomplete.autocomplete(parser)` is called before `parse_args()` so `investdaytip -<TAB>` and `investdaytip --region <TAB>` work after running `eval "$(register-python-argcomplete investdaytip)"`
+
+### Backtest Module
+- Stocks only (no ETF support); banner says `(stocks only)` at runtime
+- Uses **annual fiscal-year** financial data via `t.income_stmt`, `t.balance_sheet`, `t.cashflow` (yearly properties) — quarterly data (`get_income_stmt(freq="quarterly")`) only returns 5 quarters which is insufficient
+- Internal dict key is `cash_flow` (underscore), matching the cache key; yfinance property is `t.cashflow` (no underscore) — cache read uses `"cash_flow"` to match the write
+- Per-component all-or-nothing cache: if any of the 6 components (info, history, 3 financial statements, dividends) is missing/expired, everything is refetched
+- `--cache-clear` and `--no-cache` flags are supported on the backtest subcommand
+- Progress bar uses `TimeElapsedColumn` (not default `TimeRemainingColumn`) so elapsed time counts up and never resets to 0
 
 ### Advisor Module
 - `market_regime()` fetches `^VIX` and `^VXN` via yfinance; thresholds: ≤15 bullish, ≤25 neutral, ≤35 bearish, >35 crash

@@ -6,6 +6,9 @@ All network access is mocked; ``fetch_asset``, ``recommend``, and
 
 from __future__ import annotations
 
+from datetime import datetime
+
+from investdaytip.backtest import BacktestResult, BacktestSnapshot
 from investdaytip.data_source import EtfData, StockData
 from investdaytip.main import main
 from investdaytip.recommender import _build_universe, recommend
@@ -236,3 +239,50 @@ class TestBuildUniverseExtended:
         u = _build_universe(None, "stocks", "all", "USD")
         assert set(SUPERINVESTOR_UNIVERSE).issubset(set(u))
         assert set(DEFAULT_UNIVERSE).issubset(set(u))
+
+
+# =========================================================================
+# backtest CLI subcommand
+# =========================================================================
+
+
+class TestBacktestCLI:
+    def test_backtest_subcommand_dispatches(self, mocker):
+        result = BacktestResult(
+            snapshots=[BacktestSnapshot(
+                date=datetime(2024, 6, 1), picks=[_scored("AAPL")],
+                avg_return_6m=0.05, avg_return_12m=0.15,
+                benchmark_return_6m=0.03, benchmark_return_12m=0.10,
+            )],
+            total_snapshots=1, cumulative_return=0.05,
+            benchmark_cumulative_return=0.03, sharpe=1.2,
+            alpha=0.02, max_drawdown=0.01,
+        )
+        mocker.patch("investdaytip.backtest.run_backtest", return_value=result)
+        mocker.patch("investdaytip.main.export_backtest_html")
+        rc = main(["backtest", "-t", "AAPL", "-n", "3", "--export-html"])
+        assert rc == 0
+
+    def test_backtest_html_export(self, mocker, tmp_path):
+        result = BacktestResult(snapshots=[], total_snapshots=0)
+        mocker.patch("investdaytip.backtest.run_backtest", return_value=result)
+        export_mock = mocker.patch("investdaytip.main.export_backtest_html")
+        report = tmp_path / "bt.html"
+        rc = main(["backtest", "-t", "AAPL", "--export-html", str(report)])
+        assert rc == 0
+        export_mock.assert_called_once()
+
+    def test_backtest_with_region_and_period(self, mocker):
+        result = BacktestResult(snapshots=[], total_snapshots=0)
+        mocker.patch("investdaytip.backtest.run_backtest", return_value=result)
+        mocker.patch("investdaytip.main.export_backtest_html")
+        rc = main(["backtest", "-r", "eu", "--period", "10y", "-t", "AAPL"])
+        assert rc == 0
+
+    def test_backtest_export_html_error_returns_1(self, mocker):
+        result = BacktestResult(snapshots=[], total_snapshots=0)
+        mocker.patch("investdaytip.backtest.run_backtest", return_value=result)
+        mocker.patch("investdaytip.main.export_backtest_html",
+                      side_effect=OSError("write error"))
+        rc = main(["backtest", "-t", "AAPL", "--export-html", "/x/y/z.html"])
+        assert rc == 1

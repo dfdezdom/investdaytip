@@ -91,3 +91,56 @@ class TestCacheHelpers:
         # A fresh connection is lazily recreated on next access.
         assert db.get("k") == "v"
         db.close_all()
+
+
+# =========================================================================
+# Financial statement cache round-trip
+# =========================================================================
+
+
+class TestFinancialCache:
+    def test_dataframe_round_trip(self):
+        df = pd.DataFrame(
+            {"Net Income": [100, 80], "Total Revenue": [1000, 850]},
+            index=pd.DatetimeIndex(["2024-12-31", "2023-12-31"]),
+        )
+        json_str = df.to_json(date_format="iso")
+        restored = pd.read_json(StringIO(json_str))
+        assert df.equals(restored)
+
+    def test_dividends_series_round_trip(self):
+        s = pd.Series(
+            [0.25, 0.25, 0.25],
+            index=pd.DatetimeIndex(["2024-09-01", "2024-06-01", "2024-03-01"]),
+        )
+        json_str = s.to_json(date_format="iso")
+        restored = pd.read_json(StringIO(json_str), typ="series")
+        assert s.equals(restored)
+
+    def test_financial_set_get(self, enabled_temp_cache):
+        from investdaytip.cache import cache_financial_get, cache_financial_set
+
+        df = pd.DataFrame(
+            {"Net Income": [100]},
+            index=pd.DatetimeIndex(["2024-12-31"]),
+        )
+        cache_financial_set("TEST", "income_stmt", df.to_json(date_format="iso"))
+        raw = cache_financial_get("TEST", "income_stmt")
+        assert raw is not None
+        restored = pd.read_json(StringIO(raw))
+        assert df.equals(restored)
+
+    def test_dividends_set_get(self, enabled_temp_cache):
+        from investdaytip.cache import cache_dividends_get, cache_dividends_set
+
+        s = pd.Series([0.25], index=pd.DatetimeIndex(["2024-12-01"]))
+        cache_dividends_set("TEST", s.to_json(date_format="iso"))
+        raw = cache_dividends_get("TEST")
+        assert raw is not None
+        restored = pd.read_json(StringIO(raw), typ="series")
+        assert s.equals(restored)
+
+    def test_financial_missing_returns_none(self):
+        from investdaytip.cache import cache_financial_get
+
+        assert cache_financial_get("NONEXISTENT", "income_stmt") is None

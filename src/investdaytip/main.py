@@ -17,8 +17,9 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
+from investdaytip.backtest import BacktestResult
 from investdaytip.dataroma import fetch_superinvestor_universe, get_superinvestor_data
-from investdaytip.html_export import export_recommendations_html
+from investdaytip.html_export import export_backtest_html, export_recommendations_html
 from investdaytip.recommender import recommend
 from investdaytip.scoring import ScoredAsset
 
@@ -195,6 +196,162 @@ def _render(results: list[ScoredAsset], console: Console, include_superinvestor:
     )
 
 
+def _default_backtest_html_filename(now: datetime | None = None) -> str:
+    ts = (now or datetime.now()).strftime("%Y%m%d-%H%M")
+    return f"backtest-{ts}.html"
+
+
+def _run_backtest_cli(args: argparse.Namespace) -> int:
+    """Execute the ``backtest`` subcommand."""
+    from investdaytip.backtest import run_backtest
+    from investdaytip.recommender import _build_universe
+
+    console = Console()
+    region_str = ", ".join(args.region) if isinstance(args.region, list) else args.region
+    console.print(
+        f"[bold cyan]InvestDayTip Backtest[/bold cyan] — "
+        f"region [italic]{region_str}[/italic], "
+        f"top [italic]{args.top}[/italic], "
+        f"period [italic]{args.period}[/italic] "
+        f"([italic]stocks only[/italic])...\n"
+    )
+
+    from investdaytip.cache import clear_cache
+    if args.cache_clear:
+        clear_cache()
+    if args.no_cache:
+        from investdaytip.cache import set_enabled
+        set_enabled(False)
+
+    # Resolve universe for progress bar count
+    region = args.region[0] if isinstance(args.region, list) else args.region
+    currency = args.currency[0] if isinstance(args.currency, list) else args.currency
+    if args.tickers:
+        all_tickers = list(set(args.tickers))
+    else:
+        universe = _build_universe(None, "stocks", region, currency)
+        all_tickers = list(universe)
+    benchmark_hint = args.benchmark or (
+        {"us": "SPY", "eu": "VGK", "asia": "AAXJ"}.get(region, "SPY")
+    )
+    total_tickers = len(set(all_tickers + [benchmark_hint]))
+
+    with Progress(
+        SpinnerColumn(),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total}"),
+        TimeElapsedColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("[cyan]Fetching data...", total=total_tickers)
+
+        def on_progress(ticker: str, done: int, _total: int) -> None:
+            progress.update(task, completed=done, description=f"[cyan]{ticker}")
+
+        result = run_backtest(
+            tickers=args.tickers,
+            top_n=args.top,
+            period=args.period,
+            interval_months=args.interval_months,
+            benchmark=args.benchmark,
+            region=region,
+            currency=currency,
+            min_market_cap=args.min_market_cap,
+            reporting_lag_days=args.lag_days,
+            max_workers=args.max_workers,
+            on_progress=on_progress,
+        )
+
+    # ── Console summary ──
+    _render_backtest_result(console, result)
+
+    # ── HTML export ──
+    if args.export_html is not None:
+        try:
+            destination = args.export_html or _default_backtest_html_filename()
+            export_backtest_html(
+                result,
+                destination,
+                tickers=args.tickers,
+                top_n=args.top,
+                region=region_str,
+                interval_months=args.interval_months,
+            )
+            console.print(f"[green]HTML report exported:[/green] {destination}")
+        except Exception as exc:
+            console.print(f"[red]Failed to export HTML report: {exc}[/red]")
+            return 1
+
+    return 0
+
+
+def _render_backtest_result(console: Console, result: BacktestResult) -> None:
+    """Print a compact backtest result summary."""
+    from rich.table import Table
+
+    from investdaytip.backtest import _benchmark_label, _interpret_backtest
+
+    if result.errors:
+        console.print("[yellow]Warnings:[/yellow]")
+        for e in result.errors:
+            console.print(f"  [dim]{e}[/dim]")
+
+    if result.total_snapshots == 0:
+        console.print("[red]No snapshots were generated.[/red]")
+        return
+
+    table = Table(title="Backtest Summary", show_lines=True, title_style="bold cyan")
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+    table.add_column("Explanation", style="dim")
+
+    table.add_row("Snapshots", f"{result.total_snapshots}", "Evaluation periods")
+    table.add_row(
+        "Cumulative Return",
+        f"{result.cumulative_return * 100:.2f}%",
+        "Total compounded return of the strategy",
+    )
+    table.add_row(
+        "Benchmark Return",
+        f"{result.benchmark_cumulative_return * 100:.2f}%",
+        f"Total return of {_benchmark_label(result.benchmark_ticker) if result.benchmark_ticker else 'benchmark'}",
+    )
+    table.add_row(
+        "Alpha",
+        f"{result.alpha * 100:.2f}%",
+        "Excess return vs benchmark (annualized)",
+    )
+    table.add_row(
+        "Sharpe",
+        f"{result.sharpe:.2f}",
+        "Risk-adjusted return of the strategy",
+    )
+    table.add_row(
+        "Benchmark Sharpe",
+        f"{result.benchmark_sharpe:.2f}",
+        "Risk-adjusted return of the benchmark",
+    )
+    table.add_row(
+        "Win Rate 6M",
+        f"{result.win_rate_6m * 100:.1f}%",
+        "% of periods strategy beat benchmark at 6 months",
+    )
+    table.add_row(
+        "Win Rate 12M",
+        f"{result.win_rate_12m * 100:.1f}%",
+        "% of periods strategy beat benchmark at 12 months",
+    )
+    table.add_row(
+        "Max Drawdown",
+        f"{result.max_drawdown * 100:.2f}%",
+        "Largest peak-to-trough decline",
+    )
+    console.print(table)
+
+    console.print(f"\n[italic]{_interpret_backtest(result)}[/italic]")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="investdaytip",
@@ -206,6 +363,7 @@ def main(argv: list[str] | None = None) -> int:
         version=f"investdaytip v{importlib.metadata.version('investdaytip')}",
     )
     sub = parser.add_subparsers(dest="command", required=False)
+
     adv = sub.add_parser("advisor", help="Market analysis and portfolio advice.")
     adv.add_argument(
         "--risk",
@@ -238,6 +396,38 @@ def main(argv: list[str] | None = None) -> int:
                      help="Bypass SQLite cache.")
     adv.add_argument("--cache-clear", action="store_true",
                      help="Clear all cached data.")
+
+    bt = sub.add_parser("backtest", help="Historical backtest of the scoring model (stocks only).")
+    bt.add_argument("-n", "--top", type=int, default=5,
+                    help="Top N picks per snapshot (default: 5).")
+    bt.add_argument("-t", "--tickers", nargs="+", default=None,
+                    help="Custom ticker list.")
+    bt.add_argument("-r", "--region", metavar="REG", nargs="+",
+                    choices=["all", "us", "eu", "asia", "superinvestor"], default="us",
+                    help="Region (default: us).")
+    bt.add_argument("-c", "--currency", metavar="CUR", nargs="+",
+                    choices=["all", "USD", "EUR", "GBP", "CHF", "JPY", "HKD", "INR",
+                             "KRW", "TWD", "SGD", "AUD", "DKK", "SEK", "NOK", "GBp"],
+                    default="USD",
+                    help="Currency (default: USD).")
+    bt.add_argument("--period", default="5y",
+                    help="Yfinance lookback period (default: 5y).")
+    bt.add_argument("--interval-months", type=int, default=3,
+                    help="Months between snapshots (default: 3).")
+    bt.add_argument("--lag-days", type=int, default=60,
+                    help="Reporting lag in days (default: 60).")
+    bt.add_argument("--min-market-cap", metavar="CAP", type=_parse_min_market_cap, default=2_000_000_000,
+                    help="Minimum market cap (default: 2B).")
+    bt.add_argument("--benchmark", default=None,
+                    help="Benchmark ticker (default: auto from region).")
+    bt.add_argument("--export-html", nargs="?", const="", default=None,
+                    help="Export to self-contained HTML file.")
+    bt.add_argument("--no-cache", action="store_true",
+                    help="Bypass SQLite cache.")
+    bt.add_argument("--cache-clear", action="store_true",
+                    help="Clear all cached data.")
+    bt.add_argument("--max-workers", type=int, default=10,
+                    help="Parallel fetch workers (default: 10).")
 
     main_grp = parser.add_argument_group("Main options")
     main_grp.add_argument("-n", "--top", type=int, default=5,
@@ -295,6 +485,9 @@ def main(argv: list[str] | None = None) -> int:
         from investdaytip.advisor import advisor_main
         remaining = argv[1:] if argv else sys.argv[2:]
         return advisor_main(remaining)
+
+    if args.command == "backtest":
+        return _run_backtest_cli(args)
 
     file_tickers: list[str] = []
     if args.tickers_file:
