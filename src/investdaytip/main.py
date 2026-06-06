@@ -206,87 +206,83 @@ def main(argv: list[str] | None = None) -> int:
         version=f"investdaytip v{importlib.metadata.version('investdaytip')}",
     )
     sub = parser.add_subparsers(dest="command", required=False)
-    adv = sub.add_parser("advisor", help="Market analysis and portfolio advice. Run 'investdaytip advisor --help' for options.")
+    adv = sub.add_parser("advisor", help="Market analysis and portfolio advice.")
     adv.add_argument(
         "--risk",
         choices=["conservative", "moderate", "aggressive"],
-        help="Risk profile (if omitted, asked interactively)",
+        help="Risk profile (interactive if omitted)",
     )
     adv.add_argument(
         "--portfolio",
         default="portfolios/portfolio.txt",
-        help="Path to portfolio ticker file (default: portfolios/portfolio.txt)",
+        help="Portfolio ticker file (default: portfolios/portfolio.txt)",
     )
-    adv.add_argument("-a", "--asset-class", choices=["all", "stocks", "etfs"], default=None,
-                     help="Asset class (all/stocks/etfs). If omitted, asked interactively.")
-    adv.add_argument("-r", "--region", nargs="+",
+    adv.add_argument("-a", "--asset-class", metavar="TYPE",
+                     choices=["all", "stocks", "etfs"], default=None,
+                     help="Asset class: all, stocks, etfs (interactive if omitted).")
+    adv.add_argument("-r", "--region", metavar="REG", nargs="+",
                      choices=["all", "us", "eu", "asia", "superinvestor"], default=None,
-                     help="Region(s) — e.g. -r us eu. If omitted, asked interactively.")
+                     help="Region(s): all, us, eu, asia, superinvestor (interactive if omitted).")
     adv.add_argument(
-        "-c", "--currency", nargs="+",
+        "-c", "--currency", metavar="CUR", nargs="+",
         choices=["all", "USD", "EUR", "GBP", "CHF", "JPY", "HKD", "INR",
                  "KRW", "TWD", "SGD", "AUD", "DKK", "SEK", "NOK", "GBp"],
         default=None,
-        help="Currency filter(s) — e.g. -c USD EUR. If omitted, asked interactively.",
+        help="Currency: all, USD, EUR, GBP, CHF, JPY, HKD, INR, KRW, TWD, SGD, AUD, DKK, SEK, NOK, GBp (interactive if omitted).",
     )
-    adv.add_argument("--min-market-cap", type=_parse_min_market_cap, default=2_000_000_000,
-                     help="Min. market cap (e.g. 1B, 500M). 0 to disable (default: 2B).")
+    adv.add_argument("--min-market-cap", metavar="CAP", type=_parse_min_market_cap, default=2_000_000_000,
+                     help="Minimum market cap (default: 2B).")
     adv.add_argument("--superinvestor", action="store_true",
-                     help="Include superinvestor ownership data from DataRoma.")
+                     help="Include superinvestor ownership data.")
     adv.add_argument("--no-cache", action="store_true",
-                     help="Skip cache and fetch fresh data from yfinance.")
+                     help="Bypass SQLite cache.")
     adv.add_argument("--cache-clear", action="store_true",
-                     help="Purge all cached data before running.")
+                     help="Clear all cached data.")
 
     main_grp = parser.add_argument_group("Main options")
     main_grp.add_argument("-n", "--top", type=int, default=5,
-                          help="Number of recommendations to return (default: 5).")
+                          help="Number of recommendations (default: 5).")
     main_grp.add_argument("-t", "--tickers", nargs="+", default=None,
-                          help="Custom ticker list. Defaults to a curated universe.")
+                          help="Custom ticker list.")
     main_grp.add_argument(
         "--tickers-file",
         default=None,
-        help=(
-            "Path to a text file with custom tickers (supports lines, spaces, commas; "
-            "'#' for comments). Merged with --tickers if both are provided."
-        ),
+        help="Text file with custom tickers (lines/spaces/commas; # comments).",
     )
     main_grp.add_argument(
         "--export-html",
         nargs="?",
         const="",
         default=None,
-        help=(
-            "Export recommendations to a self-contained HTML file with client-side filters. "
-            "If PATH is omitted, defaults to investDayTip-aaaammdd-hhmm.html."
-        ),
+        help="Export to self-contained HTML file (auto-generated name if PATH omitted).",
     )
 
     filter_grp = parser.add_argument_group("Filtering")
-    filter_grp.add_argument("-a", "--asset-class", choices=["all", "stocks", "etfs"], default="all",
-                            help="Which asset class to analyze when no -t is given (default: all).")
-    filter_grp.add_argument("-r", "--region", nargs="+",
+    filter_grp.add_argument("-a", "--asset-class", metavar="TYPE",
+                            choices=["all", "stocks", "etfs"], default="all",
+                            help="Asset class: all, stocks, etfs (default: all).")
+    filter_grp.add_argument("-r", "--region", metavar="REG", nargs="+",
                             choices=["all", "us", "eu", "asia", "superinvestor"], default="all",
-                            help="Region(s) — e.g. -r us eu (default: all).")
+                            help="Region(s): all, us, eu, asia, superinvestor (default: all).")
     filter_grp.add_argument(
-        "-c", "--currency", nargs="+",
+        "-c", "--currency", metavar="CUR", nargs="+",
         choices=["all", "USD", "EUR", "GBP", "CHF", "JPY", "HKD", "INR",
                  "KRW", "TWD", "SGD", "AUD", "DKK", "SEK", "NOK", "GBp"],
         default="all",
-        help="Currency filter(s) — e.g. -c USD EUR (default: all).",
+        help="Currency: all, USD, EUR, GBP, CHF, JPY, HKD, INR, KRW, TWD, SGD, AUD, DKK, SEK, NOK, GBp (default: all).",
     )
-    filter_grp.add_argument("--min-market-cap", type=_parse_min_market_cap, default=2_000_000_000,
-                            help="Min. market cap (e.g. 1B, 500M). 0 to disable (default: 2B).")
+    filter_grp.add_argument("--min-market-cap", metavar="CAP", type=_parse_min_market_cap, default=2_000_000_000,
+                            help="Minimum market cap (default: 2B).")
     filter_grp.add_argument("-s", "--sector", type=str, default=None,
-                            help="Filter by sector prefix, case-insensitive (e.g. \"Financial\" matches Financial Services).")
+                            help="Filter by sector prefix (case-insensitive).")
 
     data_grp = parser.add_argument_group("Data")
     data_grp.add_argument("--superinvestor", action="store_true",
-                          help="Include superinvestor ownership data from DataRoma.")
+                          help="Include superinvestor ownership data.")
     data_grp.add_argument("--no-cache", action="store_true",
-                          help="Skip cache and fetch fresh data from yfinance.")
+                          help="Bypass SQLite cache.")
     data_grp.add_argument("--cache-clear", action="store_true",
-                          help="Purge all cached data before running.")
+                          help="Clear all cached data.")
 
     perf_grp = parser.add_argument_group("Performance")
     perf_grp.add_argument("--workers", type=int, default=10,
