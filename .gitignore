@@ -35,6 +35,7 @@ Thumbs.db
 
 # Generated reports (workspace root)
 /investDayTip-*
+/backtest-*
 
 # Build system debris (project uses hatchling, not Poetry)
 poetry.lock
