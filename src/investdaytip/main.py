@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import re
 import sys
 from datetime import datetime
@@ -198,6 +199,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="investdaytip",
         description="Suggests long-term stock & ETF buy recommendations using multi-factor analysis.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"investdaytip v{importlib.metadata.version('investdaytip')}",
     )
     sub = parser.add_subparsers(dest="command", required=False)
     adv = sub.add_parser("advisor", help="Market analysis and portfolio advice. Run 'investdaytip advisor --help' for options.")
