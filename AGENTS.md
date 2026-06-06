@@ -126,7 +126,6 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 ### Scoring Weights
 - **Stocks**: Quality 35%, Value 25%, Health 20%, Trend 20%
 - **ETFs**: Returns 40%, RiskAdj 25%, Size 15%, Cost/Yield 20%
-- **Dynamic weights** (`--dynamic-weights`): uses `macro_regime()` (VIX + yield curve + MOVE + DXY + Fear & Greed), not just VIX. Maps `healthy` → bullish (risk-on), `warning`/`danger` → bearish (defensive), `neutral` → default weights.
 
 ## OpenCode Agent
 
@@ -149,20 +148,20 @@ The `advisor` subagent is configured in `.opencode/agents/advisor.md`. It define
 Every scoring change must be validated with a **before/after backtest comparison**
 on the same ticker universe and configuration.  This keeps improvements objective.
 
-### Baseline (Phase 1 — ROIC enrichment)
+### Baseline example
 
 Config: `AAPL MSFT GOOGL`, top 2, US, 5y, 3-month intervals, min-market-cap 0
 
 | Metric | Value |
 |---|---|
 | Snapshots | 15 |
-| Cumulative Return | **248.57%** |
+| Cumulative Return | 248.57% |
 | Benchmark Return | 124.54% (SPY) |
-| Alpha | **6.04%** |
-| Sharpe | **0.52** |
+| Alpha | 6.04% |
+| Sharpe | 0.52 |
 | Benchmark Sharpe | 0.43 |
 | Win Rate 6M | 53.3% |
-| Win Rate 12M | **66.7%** |
+| Win Rate 12M | 66.7% |
 | Max Drawdown | 41.47% |
 
 ### Validation workflow
@@ -202,7 +201,7 @@ python scripts/scoring_baseline.py compare baseline-before.json baseline-after.j
 - Use `--no-cache` to avoid stale cached financials skewing the comparison.
 - Run on a representative subset (e.g. 3-5 well-known US large-caps) for speed; run on the full US universe only for final validation.
 - The script stores config + all metrics in a JSON file so comparisons are fully reproducible.
-- **Always verify data completeness**: yfinance annual financial statements may return `NaN` for the oldest fiscal year (e.g., FY2021 data is often incomplete). This means metrics computed from financial statements (like ROIC) will be `None` → neutral 50 for early snapshots, diluting the measured impact of the scoring change. Prefer shorter periods (e.g., `2y` or `3y`) when validating financial-statement-driven scoring changes to ensure all snapshots have complete data.
+- **Always verify data completeness**: yfinance annual financial statements may return `NaN` for the oldest fiscal year (e.g., FY2021 data is often incomplete). Prefer shorter periods (e.g., `2y` or `3y`) when validating financial-statement-driven scoring changes to ensure all snapshots have complete data.
 
 ## `get_recommendations()` — Programmatic API
 ```python

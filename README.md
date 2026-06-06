@@ -27,9 +27,7 @@
 - 🧪 **Pure scoring functions** — testable without network
 - 🧠 **Interactive advisor** — market pulse, portfolio review, and tailored buy recommendations via the `advisor` subcommand
 - 🤖 **AI-powered advisor** — chat with an intelligent investment advisor that analyzes markets, reviews portfolios, and recommends buys — powered by [OpenCode](https://opencode.ai) agents
-- 📊 **ROIC-enhanced Health scoring** — Return on Invested Capital integrated into stock health assessment
-- ⚖️ **Dynamic weights** — automatically adjust scoring weights based on macro regime (VIX + yield curve + bond vol + DXY + Fear & Greed)
-- 🏭 **Sector-relative ETF valuation** — compare ETF returns against category peers
+- 📊 **Backtest validation** — historical backtesting with automated before/after comparison script
 
 ---
 
@@ -114,10 +112,6 @@ investdaytip --export-html             # Uses investDayTip-aaaammdd-hhmm.html
 investdaytip --superinvestor         # Fetch DataRoma superinvestor data and display column
 investdaytip --min-market-cap 1B     # Raise min market cap to $1B
 investdaytip --min-market-cap 0      # Disable market-cap filter
-investdaytip --dynamic-weights       # Adjust stock weights based on macro regime
-investdaytip --dynamic-weights --regime bullish  # Force bullish (risk-on) weights
-investdaytip --dynamic-weights --regime bearish  # Force bearish (defensive) weights
-investdaytip --etf-sector-relative   # Compare ETF returns to category average
 
 investdaytip --no-cache              # Bypass SQLite cache, fetch fresh data
 investdaytip --cache-clear           # Purge all cached data before running
@@ -149,9 +143,6 @@ investdaytip backtest --cache-clear     # Purge cache before backtest
 | `-s, --sector TEXT` | Sector/category prefix filter, case-insensitive (e.g. `Financial` matches Financial Services) | disabled |
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
 | `--superinvestor` | Include superinvestor ownership data from DataRoma (adds ~80 HTTP requests, shows column in HTML and CLI) | disabled |
-| `--dynamic-weights` | Adjust stock scoring weights based on macro regime (uses VIX + yield curve + MOVE + DXY + Fear & Greed) | disabled |
-| `--regime {bullish,bearish,neutral,crash,risk_on,risk_off}` | Override market regime for `--dynamic-weights` | auto-detected |
-| `--etf-sector-relative` | Compare ETF returns to category average in scoring | disabled |
 | `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable) | `2B` |
 | `--no-cache` | Skip SQLite cache, fetch all data live from Yahoo Finance | disabled |
 | `--cache-clear` | Purge the SQLite cache before running | disabled |
@@ -344,28 +335,17 @@ Each metric is normalized to **0-100** via piecewise-linear functions over empir
 |---|---|---|
 | **Quality** | 35% | ROE, profit margin, earnings & revenue growth |
 | **Value** | 25% | trailing P/E, P/B, PEG |
-| **Health** | 20% | Debt/Equity, current ratio, free cash flow, **ROIC** |
+| **Health** | 20% | Debt/Equity, current ratio, free cash flow |
 | **Trend** | 20% | price vs SMA200, 12-month return, SMA200 slope |
-
-#### Dynamic Weights (optional, `--dynamic-weights`)
-
-When enabled, weights shift based on macro regime detected from VIX + yield curve + MOVE bond volatility + DXY dollar strength + CNN Fear & Greed:
-
-| Regime | Quality | Value | Health | Trend | Trigger |
-|---|---|---|---|---|---|
-| **Default** | 35% | 25% | 20% | 20% | No `--dynamic-weights` |
-| **Bullish / Risk-on** | 30% | 20% | 15% | **35%** | `macro_regime()` ≥70 (healthy) |
-| **Bearish / Defensive** | 30% | **30%** | **25%** | 15% | `macro_regime()` <45 (warning/danger) |
 
 ### ETFs
 
 | Pillar | Weight | Metrics |
 |---|---|---|
-| **Returns** | 40% (35% with `--etf-sector-relative`) | 3y avg, 5y avg, 12m return |
+| **Returns** | 40% | 3y avg, 5y avg, 12m return |
 | **RiskAdj** | 25% | Sharpe proxy `(r12 - rf) / σ`, annualized volatility |
 | **Size** | 15% | AUM (log scale) |
 | **Cost/Yield** | 20% | expense ratio (lower=better), dividend yield |
-| **Sector** | 5% (only with `--etf-sector-relative`) | 12m return vs category average |
 
 ---
 
@@ -524,8 +504,6 @@ tickers-files-examples/
 - Some European tickers change Yahoo symbols over time; if a ticker is delisted in Yahoo it's silently skipped
 - ETF expense ratios are sometimes missing in `yfinance` — the scorer falls back to a slightly optimistic default (60) in that case
 - **Long-term, fundamental-driven model**: not suitable for short-term/day trading signals
-- **Dynamic weights** (`--dynamic-weights`) use current macro conditions; backtesting them requires historical macro data which is not yet implemented
-- **Backtest validation**: yfinance annual financial statements may return `NaN` for the oldest fiscal year, causing some early snapshots to use neutral defaults for financial-statement-driven metrics (like ROIC)
 
 ---
 
@@ -538,7 +516,7 @@ ruff check src tests      # lint
 mypy                      # type-check
 ```
 
-**188 tests** across 12 test files. The scoring engine is purely functional
+**176 tests** across 12 test files. The scoring engine is purely functional
 and tested without network calls; an autouse guard in `tests/conftest.py` fails
 fast if a test reaches yfinance unmocked. Integration tests mock the full
 `recommend()` → `main()` → export pipeline.

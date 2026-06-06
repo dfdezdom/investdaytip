@@ -55,7 +55,6 @@ class StockData:
     debt_to_equity: Optional[float] = None
     current_ratio: Optional[float] = None
     free_cashflow: Optional[float] = None
-    roic: Optional[float] = None
     # Income
     dividend_yield: Optional[float] = None
     payout_ratio: Optional[float] = None
@@ -97,8 +96,6 @@ class EtfData:
     volatility_1y: Optional[float] = None  # annualized
     sharpe_proxy: Optional[float] = None  # (return_12m - rf) / volatility_1y
     daily_change: Optional[float] = None
-    # Sector-relative valuation (populated by recommender after universe fetch)
-    category_avg_return: Optional[float] = None
 
     errors: list[str] = field(default_factory=list)
 
@@ -210,7 +207,6 @@ def _fetch_stock(ticker: str, info: dict, history: pd.DataFrame) -> StockData:
     data.debt_to_equity = _safe_get(info, "debtToEquity")
     data.current_ratio = _safe_get(info, "currentRatio")
     data.free_cashflow = _safe_get(info, "freeCashflow")
-    data.roic = _safe_get(info, "returnOnInvestedCapital")
     data.dividend_yield = _safe_get(info, "dividendYield")
     data.payout_ratio = _safe_get(info, "payoutRatio")
     data.market_cap = _safe_get(info, "marketCap")

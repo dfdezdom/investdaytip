@@ -443,11 +443,6 @@ def _build_historical_stock_data(
         (ttm_div / eps) if (ttm_div and eps and eps != 0) else None
     )
 
-    # ROIC approximation: Net Income / (equity + total_debt)
-    roic = (
-        ni / (equity + total_debt) if (ni and equity is not None and total_debt is not None and (equity + total_debt) != 0) else None
-    )
-
     return StockData(
         ticker=ticker,
         name=info.get("shortName") or info.get("longName"),
@@ -464,8 +459,7 @@ def _build_historical_stock_data(
         revenue_growth=revenue_growth,
         debt_to_equity=debt_to_equity,
         current_ratio=current_ratio,
-        free_cashflow=fcf,
-        roic=roic,
+            free_cashflow=fcf,
         dividend_yield=dividend_yield,
         payout_ratio=payout_ratio,
         market_cap=market_cap,
@@ -661,8 +655,6 @@ def run_backtest(
     reporting_lag_days: int = 60,
     max_workers: int = 10,
     on_progress: Callable[[str, int, int], None] | None = None,
-    dynamic_weights: bool = False,
-    regime: str | None = None,
 ) -> BacktestResult:
     """Run a historical backtest of the stock scoring model.
 
@@ -787,7 +779,7 @@ def run_backtest(
             ):
                 continue
 
-            scored.append(score_stock(sd_obj, dynamic_weights=dynamic_weights, regime=regime))
+            scored.append(score_stock(sd_obj))
 
         scored.sort(key=lambda s: s.total, reverse=True)
         picks = scored[:top_n]
