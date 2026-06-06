@@ -151,7 +151,7 @@ investdaytip advisor --risk aggressive -r us -a stocks    # US stocks, aggressiv
 investdaytip advisor --risk moderate --portfolio portfolios/portfolio.txt  # Custom portfolio
 ```
 
-The advisor now displays a **composite macro health score** (0-100) alongside VIX:
+The advisor now displays a **composite macro health score** (0-100):
 - 🟢 **≥70** — Macro healthy
 - 🟡 **≥45** — Mixed signals
 - 🟠 **≥25** — Macro warning
