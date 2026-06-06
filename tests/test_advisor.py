@@ -11,7 +11,7 @@ import pytest
 
 from investdaytip import advisor
 from investdaytip.data_source import StockData
-from investdaytip.scoring import score_stock
+from investdaytip.scoring import ScoredAsset, score_stock
 
 
 class TestMarketRegime:
@@ -213,3 +213,73 @@ class TestPortfolioReview:
         assert [s.data.ticker for s in r["moderate_positions"]] == ["BBB"]
         assert [s.data.ticker for s in r["strong_positions"]] == ["CCC"]
         assert r["sectors"] == ["Health", "Tech"]
+
+
+class TestAdvisorMain:
+    """Full CLI flow: ``advisor_main()`` with mocked market data + portfolio."""
+
+    def test_runs_end_to_end_with_mocked_data(self, mocker, tmp_path):
+        p = tmp_path / "portfolio.txt"
+        p.write_text("AAPL\nMSFT\n")
+
+        mocker.patch("investdaytip.advisor.macro_regime", return_value={
+            "vix": {"vix": 15.0, "vxn": 18.0, "regime": "bullish"},
+            "yield": {"y10": 4.5, "y2": 4.0, "spread": 0.5},
+            "move": 80.0, "dxy": 100.0,
+            "fear_greed": {"score": 50.0, "rating": "neutral"},
+            "regime": "healthy", "label": "Healthy", "score": 75,
+            "action": "buy", "description": "Favorable conditions.",
+        })
+        mocker.patch("investdaytip.advisor.bubble_risk", return_value={
+            "level": "low", "pct_rank": 45.0, "note": "Normal volatility.",
+        })
+
+        def _scored(ticker, total, sector):
+            data = StockData(ticker=ticker, sector=sector)
+            s = score_stock(data)
+            s.total = total
+            return s
+
+        port_mock = mocker.patch("investdaytip.advisor.portfolio_review", return_value={
+            "count": 2,
+            "results": [
+                _scored("AAPL", 75.0, "Technology"),
+                _scored("MSFT", 65.0, "Technology"),
+            ],
+            "weak_positions": [],
+            "moderate_positions": [],
+            "strong_positions": [_scored("AAPL", 75.0, "Technology")],
+            "sectors": ["Technology"],
+        })
+
+        rec_mock = mocker.patch("investdaytip.advisor.recommend", return_value=[
+            ScoredAsset(
+                data=StockData(ticker="NVDA", sector="Technology", currency="USD"),
+                asset_type="STOCK", total=80.0,
+                breakdown={"Q": 80, "V": 60, "H": 70, "T": 90},
+                rationale=["Strong momentum"],
+            )
+        ])
+
+        html_mock = mocker.patch(
+            "investdaytip.advisor.export_recommendations_html",
+            return_value=str(tmp_path / "report.html"),
+        )
+        mocker.patch("investdaytip.advisor.Path.mkdir")
+
+        rc = advisor.advisor_main([
+            "--portfolio", str(p),
+            "--risk", "moderate",
+            "-a", "stocks",
+            "-r", "us",
+            "-c", "USD",
+        ])
+
+        assert rc == 0
+        port_mock.assert_called_once_with(str(p), 2_000_000_000)
+        rec_mock.assert_called_once_with(
+            asset_class="stocks", region=["us"], top_n=10,
+            currency=["USD"], min_market_cap=2_000_000_000,
+            sector=None,
+        )
+        html_mock.assert_called_once()
