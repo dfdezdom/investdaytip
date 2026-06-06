@@ -148,31 +148,6 @@ investdaytip backtest --cache-clear     # Purge cache before backtest
 | `--workers N` | Parallel fetch threads | `10` |
 | `-h, --help` | Show the CLI help message and exit | n/a |
 
-### Backtest subcommand
-
-Historical validation of the stock scoring model:
-
-```bash
-investdaytip backtest                          # Backtest US stocks (default)
-investdaytip backtest -n 10                    # Top 10 picks per snapshot
-investdaytip backtest -r us                    # US stocks
-investdaytip backtest -r eu                    # European stocks
-investdaytip backtest -r asia                  # Asian stocks
-investdaytip backtest -r superinvestor         # Superinvestor consensus stocks
-investdaytip backtest -t AAPL MSFT             # Custom ticker list
-investdaytip backtest --benchmark SPY          # Custom benchmark
-investdaytip backtest --interval-months 6      # Semi-annual snapshots
-investdaytip backtest --lag-days 90            # Reporting lag (default: 60)
-investdaytip backtest --period 3y              # Shorter price history
-investdaytip backtest --export-html            # Export to HTML
-investdaytip backtest --no-cache               # Bypass SQLite cache
-investdaytip backtest --cache-clear            # Purge cache before run
-```
-
-**Note:** Backtest only supports stocks (no ETFs). It simulates quarterly snapshots
-with a configurable reporting lag, scores each stock, and measures forward returns
-against a benchmark.
-
 ### Advisor subcommand
 
 Interactive market analysis with **multi-indicator macro pulse** (VIX, 10Y-2Y yield curve, MOVE bond volatility, DXY dollar strength), portfolio review, and buy recommendations:
@@ -213,6 +188,31 @@ The score starts at a neutral **50** and each indicator adjusts it up or down ba
 - 🔴 **<25** — Macro danger → **sell**
 
 All indicators are shown live in the `📈 Market Analysis` table when running `investdaytip advisor`.
+
+### Backtest subcommand
+
+Historical validation of the stock scoring model:
+
+```bash
+investdaytip backtest                          # Backtest US stocks (default)
+investdaytip backtest -n 10                    # Top 10 picks per snapshot
+investdaytip backtest -r us                    # US stocks
+investdaytip backtest -r eu                    # European stocks
+investdaytip backtest -r asia                  # Asian stocks
+investdaytip backtest -r superinvestor         # Superinvestor consensus stocks
+investdaytip backtest -t AAPL MSFT             # Custom ticker list
+investdaytip backtest --benchmark SPY          # Custom benchmark
+investdaytip backtest --interval-months 6      # Semi-annual snapshots
+investdaytip backtest --lag-days 90            # Reporting lag (default: 60)
+investdaytip backtest --period 3y              # Shorter price history
+investdaytip backtest --export-html            # Export to HTML
+investdaytip backtest --no-cache               # Bypass SQLite cache
+investdaytip backtest --cache-clear            # Purge cache before run
+```
+
+**Note:** Backtest only supports stocks (no ETFs). It simulates quarterly snapshots
+with a configurable reporting lag, scores each stock, and measures forward returns
+against a benchmark.
 
 ### OpenCode AI Agent
 
