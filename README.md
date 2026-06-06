@@ -298,6 +298,20 @@ Then open the generated report from:
 http://localhost:8000/<generated-file-name>.html
 ```
 
+### Shell tab completion
+
+Autocomplete flags, subcommands, and option values with `TAB`:
+
+```bash
+# Enable for the current session:
+eval "$(register-python-argcomplete investdaytip)"
+
+# Make it permanent (add to ~/.zshrc or ~/.bashrc):
+echo 'eval "$(register-python-argcomplete investdaytip)"' >> ~/.zshrc
+```
+
+Once enabled, try `investdaytip -<TAB>` or `investdaytip --region <TAB>`.
+
 ---
 
 ## Data Source

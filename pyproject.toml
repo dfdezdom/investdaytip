@@ -31,6 +31,7 @@ dependencies = [
     "pandas>=2.0,<3.0",
     "numpy>=1.24,<3.0",
     "rich>=13.0,<15.0",
+    "argcomplete>=3.0",
 ]
 
 [project.optional-dependencies]

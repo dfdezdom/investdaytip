@@ -8,6 +8,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import argcomplete
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
@@ -272,6 +273,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="Skip cache and fetch fresh data from yfinance.")
     parser.add_argument("--cache-clear", action="store_true",
                         help="Purge all cached data before running.")
+    argcomplete.autocomplete(parser)
     args = parser.parse_args(argv)
 
     if args.command == "advisor":

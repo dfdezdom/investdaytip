@@ -77,6 +77,7 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - Currency filter keeps assets whose `currency` is `None` (a missing field shouldn't silently drop an otherwise-valid candidate)
 - `-r`/`--region` and `-c`/`--currency` use `nargs="+"` — pass multiple values: `-r us eu`, `-c USD EUR`. Both `str` and `list[str]` accepted programmatically.
 - `--superinvestor` controls DataRoma scraping (~80 HTTP requests) and the "Superinvestors" column; the curated `SUPERINVESTOR_UNIVERSE` tickers are **always** included in the stock pool (they are quality stocks), but the manager-count data and column are only fetched/displayed when the flag is present
+- **Tab completion**: `argcomplete>=3.0` is a dependency; `argcomplete.autocomplete(parser)` is called before `parse_args()` so `investdaytip -<TAB>` and `investdaytip --region <TAB>` work after running `eval "$(register-python-argcomplete investdaytip)"`
 
 ### Advisor Module
 - `market_regime()` fetches `^VIX` and `^VXN` via yfinance; thresholds: ≤15 bullish, ≤25 neutral, ≤35 bearish, >35 crash
