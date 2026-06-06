@@ -5,7 +5,7 @@ from pathlib import Path
 
 from investdaytip.data_source import EtfData, StockData
 from investdaytip.html_export import (
-    _TABLE_COLUMN_COUNT,
+    _TABLE_BASE_COLUMN_COUNT,
     _google_finance_url,
     _tradingview_url,
     export_recommendations_html,
@@ -26,9 +26,9 @@ def test_colspan_matches_header_column_count(tmp_path):
     html = out.read_text(encoding="utf-8")
     # <th matches both real <th> cells and the <thead> tag; subtract that one.
     th_count = html.count("<th") - html.count("<thead")
-    assert th_count == _TABLE_COLUMN_COUNT
+    assert th_count == _TABLE_BASE_COLUMN_COUNT
     colspans = {int(c) for c in re.findall(r'colspan="(\d+)"', html)}
-    assert colspans == {_TABLE_COLUMN_COUNT}
+    assert colspans == {_TABLE_BASE_COLUMN_COUNT}
 
 
 def test_export_html_contains_filters_and_rows(tmp_path: Path):

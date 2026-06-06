@@ -133,7 +133,7 @@ def _parse_min_market_cap(raw: str) -> float:
     return float(raw)
 
 
-def _render(results: list[ScoredAsset], console: Console) -> None:
+def _render(results: list[ScoredAsset], console: Console, include_superinvestor: bool = False) -> None:
     if not results:
         console.print("[red]No recommendations could be generated.[/red]")
         return
@@ -153,6 +153,8 @@ def _render(results: list[ScoredAsset], console: Console) -> None:
     table.add_column("P/E", justify="right")
     table.add_column("1M Δ", justify="right")
     table.add_column("1Y Δ", justify="right")
+    if include_superinvestor:
+        table.add_column("Sup.", justify="right", style="bold")
     table.add_column("Score", justify="right", style="bold green")
     table.add_column("Breakdown", justify="right", style="cyan")
     table.add_column("Why", style="white")
@@ -160,7 +162,7 @@ def _render(results: list[ScoredAsset], console: Console) -> None:
     for i, s in enumerate(results, start=1):
         d = s.data
         why = "; ".join(s.rationale[:3]) if s.rationale else "—"
-        table.add_row(
+        row = [
             str(i),
             s.asset_type,
             d.ticker,
@@ -171,10 +173,15 @@ def _render(results: list[ScoredAsset], console: Console) -> None:
             _fmt_pe(getattr(d, "trailing_pe", None)),
             _fmt_pct(d.return_1m),
             _fmt_pct(d.return_12m),
+        ]
+        if include_superinvestor:
+            row.append(f"{s.superinvestor_count}" if s.superinvestor_count is not None else "—")
+        row.extend([
             f"{s.total:.1f}",
             _format_breakdown(s),
             why,
-        )
+        ])
+        table.add_row(*row)
 
     console.print(table)
     console.print(f"\n[dim]Breakdown legend — {_breakdown_legend(results)}[/dim]")
@@ -214,6 +221,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     adv.add_argument("--min-market-cap", type=_parse_min_market_cap, default=2_000_000_000,
                      help="Min. market cap (e.g. 1B, 500M). 0 to disable (default: 2B).")
+    adv.add_argument("--superinvestor", action="store_true",
+                     help="Include superinvestor ownership data from DataRoma.")
     adv.add_argument("--no-cache", action="store_true",
                      help="Skip cache and fetch fresh data from yfinance.")
     adv.add_argument("--cache-clear", action="store_true",
@@ -257,6 +266,8 @@ def main(argv: list[str] | None = None) -> int:
             "If PATH is omitted, defaults to investDayTip-aaaammdd-hhmm.html."
         ),
     )
+    parser.add_argument("--superinvestor", action="store_true",
+                        help="Include superinvestor ownership data from DataRoma.")
     parser.add_argument("--no-cache", action="store_true",
                         help="Skip cache and fetch fresh data from yfinance.")
     parser.add_argument("--cache-clear", action="store_true",
@@ -294,9 +305,10 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     # Warm-up superinvestor cache before the main scoring loop so that
-    # the HTML Superinvestors column gets real data.  Only when the
-    # user is requesting stocks (or all) and the cache is not disabled.
-    if args.asset_class in ("stocks", "all") and not args.no_cache:
+    # the HTML Superinvestors column gets real data.  Only when the user
+    # opted into it with --superinvestor and is requesting stocks (or all)
+    # and the cache is not disabled.
+    if args.superinvestor and args.asset_class in ("stocks", "all") and not args.no_cache:
         if not get_superinvestor_data():
             with Progress(
                 SpinnerColumn(),
@@ -344,7 +356,7 @@ def main(argv: list[str] | None = None) -> int:
             console.print(f"[red]Error during analysis: {exc}[/red]")
             return 1
 
-    _render(results, console)
+    _render(results, console, include_superinvestor=args.superinvestor)
 
     if args.export_html is not None:
         try:
@@ -371,6 +383,7 @@ def main(argv: list[str] | None = None) -> int:
                 currency=meta_currency,
                 tickers=effective_tickers,
                 tickers_file=args.tickers_file,
+                include_superinvestor=args.superinvestor,
             )
             console.print(f"[green]HTML report exported:[/green] {out_path}")
         except Exception as exc:

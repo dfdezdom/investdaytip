@@ -444,6 +444,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--min-market-cap", type=_parse_min_market_cap, default=2_000_000_000,
                         help="Min. market cap (e.g. 1B, 500M). 0 to disable (default: 2B).")
+    parser.add_argument("--superinvestor", action="store_true",
+                        help="Include superinvestor ownership data from DataRoma.")
     parser.add_argument("--no-cache", action="store_true",
                         help="Skip cache and fetch fresh data from yfinance.")
     parser.add_argument("--cache-clear", action="store_true",
@@ -466,7 +468,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
     console = Console()
 
     # ── Warm-up superinvestor cache ────────────────────────
-    if not args.no_cache:
+    if args.superinvestor and not args.no_cache:
         if not get_superinvestor_data():
             with Progress(
                 SpinnerColumn(),
@@ -744,7 +746,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 console.print(f"[yellow]No {label} picks found — showing all.[/yellow]")
 
     if new_results:
-        _render(new_results, console)
+        _render(new_results, console, include_superinvestor=args.superinvestor)
         Path("advisor_recommendations").mkdir(parents=True, exist_ok=True)
         dest = f"advisor_recommendations/recommendations_advisor_{datetime.now():%Y%m%d-%H%M}.html"
         try:
@@ -752,6 +754,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 new_results, dest, top_n=10,
                 asset_class=ac, region=reg,
                 currency=ccy, tickers=None,
+                include_superinvestor=args.superinvestor,
             )
             console.print(f"\n[green]📄 HTML report:[/green] {out}")
         except Exception as exc:

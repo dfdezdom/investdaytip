@@ -12,10 +12,9 @@ from urllib.parse import quote, quote_plus
 from investdaytip.scoring import ScoredAsset
 from investdaytip.sentiment import fear_greed_index
 
-# Number of <th> columns in the results table header (keep in sync with the
-# <thead> block below); used for the empty-state row colspan server- and
-# client-side.
-_TABLE_COLUMN_COUNT = 17
+# Base number of <th> columns excluding the optional Superinvestors column.
+# Used for the empty-state row colspan server- and client-side.
+_TABLE_BASE_COLUMN_COUNT = 16
 
 
 def _is_finite_number(v: Any) -> TypeGuard[float]:
@@ -206,10 +205,10 @@ def _as_row(index: int, s: ScoredAsset) -> dict[str, Any]:
   }
 
 
-def _render_initial_rows(rows: list[dict[str, Any]]) -> str:
+def _render_initial_rows(rows: list[dict[str, Any]], include_superinvestor: bool = False, column_count: int = 16) -> str:
   if not rows:
     return (
-      f'<tr><td colspan="{_TABLE_COLUMN_COUNT}" class="muted">'
+      f'<tr><td colspan="{column_count}" class="muted">'
       'No recommendations were generated for this run.</td></tr>'
     )
 
@@ -220,8 +219,8 @@ def _render_initial_rows(rows: list[dict[str, Any]]) -> str:
     daily_class = _pct_class(r["daily_change"])
     score = r.get("score")
     score_txt = f"{float(score):.1f}" if _is_finite_number(score) else "-"
-    out.append(
-      "<tr>"
+
+    cells = (
       f"<td>{int(r['rank'])}</td>"
       f"<td class=\"type-col\">{escape(str(r['asset_type']).upper())}</td>"
       f"<td><strong><a href=\"{escape(str(r['ticker_url']))}\" target=\"_blank\" rel=\"noopener noreferrer\">{escape(str(r['ticker']))}</a></strong></td>"
@@ -235,12 +234,15 @@ def _render_initial_rows(rows: list[dict[str, Any]]) -> str:
       f"<td class=\"num\">{escape(str(r['pe_text']))}</td>"
       f"<td class=\"num {one_m_class}\">{escape(str(r['return_1m_text']))}</td>"
       f"<td class=\"num {one_y_class}\">{escape(str(r['return_12m_text']))}</td>"
-      f"<td class=\"num\">{escape(str(r['superinvestor_count_text']))}</td>"
+    )
+    if include_superinvestor:
+      cells += f"<td class=\"num\">{escape(str(r['superinvestor_count_text']))}</td>"
+    cells += (
       f"<td class=\"num\"><strong>{escape(score_txt)}</strong></td>"
       f"<td class=\"desktop-only breakdown-col\">{escape(str(r['breakdown']))}</td>"
       f"<td class=\"desktop-only why-col\">{escape(str(r['why']))}</td>"
-      "</tr>"
     )
+    out.append(f"<tr>{cells}</tr>")
   return "".join(out)
 
 
@@ -254,8 +256,10 @@ def export_recommendations_html(
     currency: str | list[str] = "all",
     tickers: list[str] | None,
   tickers_file: str | None = None,
+  include_superinvestor: bool = False,
 ) -> str:
     """Write a self-contained, filterable HTML report to ``destination``."""
+    col_count = _TABLE_BASE_COLUMN_COUNT + (1 if include_superinvestor else 0)
     rows = [_as_row(i, s) for i, s in enumerate(results, start=1)]
     metadata = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -271,7 +275,15 @@ def export_recommendations_html(
 
     rows_json = json.dumps(rows, ensure_ascii=True)
     metadata_json = json.dumps(metadata, ensure_ascii=True)
-    initial_rows_html = _render_initial_rows(rows)
+    initial_rows_html = _render_initial_rows(rows, include_superinvestor=include_superinvestor, column_count=col_count)
+
+    # Build optional column sections
+    if include_superinvestor:
+        superinvestor_th = '<th class="num sortable" data-sort-key="superinvestor_count" data-sort-type="number" tabindex="0" aria-sort="none">Superinvestors<span class="sort-indicator">↕</span></th>\n          '
+        superinvestor_td = '<td class="num">${r.superinvestor_count_text}</td>\n            '
+    else:
+        superinvestor_th = ""
+        superinvestor_td = ""
 
     html = f"""<!doctype html>
 <html lang=\"en\">
@@ -503,8 +515,7 @@ def export_recommendations_html(
           <th class="num sortable" data-sort-key="pe" data-sort-type="number" tabindex="0" aria-sort="none">P/E<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="return_1m" data-sort-type="number" tabindex="0" aria-sort="none">1M<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="return_12m" data-sort-type="number" tabindex="0" aria-sort="none">1Y<span class="sort-indicator">↕</span></th>
-          <th class="num sortable" data-sort-key="superinvestor_count" data-sort-type="number" tabindex="0" aria-sort="none">Superinvestors<span class="sort-indicator">↕</span></th>
-          <th class="num sortable" data-sort-key="score" data-sort-type="number" tabindex="0" aria-sort="none">Score<span class="sort-indicator">↕</span></th>
+          {superinvestor_th}<th class="num sortable" data-sort-key="score" data-sort-type="number" tabindex="0" aria-sort="none">Score<span class="sort-indicator">↕</span></th>
           <th class="desktop-only sortable breakdown-col" data-sort-key="breakdown" data-sort-type="text" tabindex="0" aria-sort="none">Breakdown<span class="sort-indicator">↕</span></th>
           <th class="desktop-only sortable why-col" data-sort-key="why" data-sort-type="text" tabindex="0" aria-sort="none">Why<span class="sort-indicator">↕</span></th>
         </tr>
@@ -646,14 +657,13 @@ def export_recommendations_html(
             <td class=\"num\">${{r.pe_text}}</td>
             <td class=\"num ${{oneMClass}}\">${{r.return_1m_text}}</td>
             <td class="num ${{oneYClass}}">${{r.return_12m_text}}</td>
-            <td class="num">${{r.superinvestor_count_text}}</td>
-            <td class="num"><strong>${{scoreText}}</strong></td>
+            {superinvestor_td}<td class="num"><strong>${{scoreText}}</strong></td>
             <td class="desktop-only breakdown-col">${{r.breakdown}}</td>
             <td class="desktop-only why-col">${{r.why}}</td>
           </tr>
         `;
       }}).join("");
-      $("tbody").innerHTML = body || '<tr><td colspan="{_TABLE_COLUMN_COUNT}" class="muted">No rows match the selected filters.</td></tr>';
+      $("tbody").innerHTML = body || '<tr><td colspan="' + {col_count} + '" class="muted">No rows match the selected filters.</td></tr>';
     }}
 
     function rerender() {{

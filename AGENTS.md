@@ -62,6 +62,7 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - `fetch_asset()` defers cache-write until both info and history are fetched (atomic snapshot); partial results cached on history failure
 - Connections are tracked so `CacheDB.close_all()` / module-level `close_db()` can release **worker-thread** connections; `recommend()` calls `close_db()` in a `finally` after the pool tears down
 - `--no-cache` flag disables cache read/write; `--cache-clear` drops all entries
+- `--superinvestor` flag enables the DataRoma superinvestor cache warm-up (~80 HTTP requests) and the "Superinvestors" column in both HTML and CLI output; disabled by default
 - Tests auto-disable cache via `conftest.py::disable_cache` (autouse); an autouse `no_network` guard fails fast on unmocked `yf.Ticker`; `enabled_temp_cache` fixture backs cache tests with a `tmp_path` DB (never the real `~/.investdaytip`)
 
 ### Rate Limits & Error Handling
@@ -75,6 +76,7 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - `--min-market-cap` filter: $2B default (e.g. `1B`, `500M`, `0` to disable); applied against native-currency figures, approximate for non-USD. When the filter is active, assets with **missing** market cap are excluded (a missing figure can't satisfy the filter), and history fetch is skipped for them
 - Currency filter keeps assets whose `currency` is `None` (a missing field shouldn't silently drop an otherwise-valid candidate)
 - `-r`/`--region` and `-c`/`--currency` use `nargs="+"` — pass multiple values: `-r us eu`, `-c USD EUR`. Both `str` and `list[str]` accepted programmatically.
+- `--superinvestor` controls DataRoma scraping (~80 HTTP requests) and the "Superinvestors" column; the curated `SUPERINVESTOR_UNIVERSE` tickers are **always** included in the stock pool (they are quality stocks), but the manager-count data and column are only fetched/displayed when the flag is present
 
 ### Advisor Module
 - `market_regime()` fetches `^VIX` and `^VXN` via yfinance; thresholds: ≤15 bullish, ≤25 neutral, ≤35 bearish, >35 crash
@@ -99,10 +101,13 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 
 ### DataRoma / Superinvestor Specifics
 - DataRoma data is quarterly (45-day lag), US-only (13F), no official API → scraping-based with caching
+- Control via `--superinvestor` CLI flag: disabled by default, avoids ~80 HTTP requests when not needed
 - `fetch_superinvestor_universe()` warms the cache via ~80 HTTP requests (one per manager); shown with a Rich progress bar
 - `score_stock()` looks up `get_superinvestor_data()` to populate `superinvestor_count` on `ScoredAsset`
-- HTML export renders a sortable "Superinvestors" column between 1Y and Score; `-` when the ticker is not in the DataRoma universe
-- `SUPERINVESTOR_UNIVERSE` is used as a curated region (stocks-only); no ETF universe exists for it
+- HTML export renders a sortable "Superinvestors" column between 1Y and Score only when `--superinvestor` is active; `-` when the ticker is not in the DataRoma universe
+- CLI (Rich table) also shows a "Sup." column only when `--superinvestor` is active
+- `SUPERINVESTOR_UNIVERSE` tickers are **always** included in the stock pool (quality stocks); the DataRoma manager-count and column are controlled by `--superinvestor`
+- No ETF universe exists for superinvestor
 
 ### Scoring Weights
 - **Stocks**: Quality 35%, Value 25%, Health 20%, Trend 20%

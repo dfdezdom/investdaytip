@@ -98,6 +98,7 @@ investdaytip --export-html             # Uses investDayTip-aaaammdd-hhmm.html
 investdaytip --workers 20            # More parallelism
 investdaytip --min-market-cap 1B     # Raise min market cap to $1B
 investdaytip --min-market-cap 0      # Disable market-cap filter
+investdaytip --superinvestor         # Fetch DataRoma superinvestor data and display column
 investdaytip --no-cache              # Bypass SQLite cache, fetch fresh data
 investdaytip --cache-clear           # Purge all cached data before running
 investdaytip --help
@@ -116,6 +117,7 @@ investdaytip --help
 | `-r, --region {all,us,eu,asia,superinvestor}` `nargs="+"` | Region filter(s) — e.g. `-r us eu` | `all` |
 | `-c, --currency {all,USD,EUR,GBP,…}` `nargs="+"` | Currency filter(s); narrows universe to matching regions when no `-r` is given | `all` |
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
+| `--superinvestor` | Include superinvestor ownership data from DataRoma (adds ~80 HTTP requests, shows column in HTML and CLI) | disabled |
 | `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable) | `2B` |
 | `--no-cache` | Skip SQLite cache, fetch all data live from Yahoo Finance | disabled |
 | `--cache-clear` | Purge the SQLite cache before running | disabled |
@@ -167,6 +169,8 @@ The generated report includes filters for:
 - Minimum score
 - Minimum 1M return (%)
 - Minimum 1Y return (%)
+
+When `--superinvestor` is enabled, an additional **"Superinvestors"** sortable column appears between 1Y and Score showing the number of tracked managers holding each ticker.
 
 It also includes:
 
@@ -300,7 +304,7 @@ http://localhost:8000/<generated-file-name>.html
 
 All market data is fetched live from **Yahoo Finance** via the [`yfinance`](https://github.com/ranaroussi/yfinance) library. Fundamentals come from `Ticker.info`, prices and trend metrics from `Ticker.history(period="2y")`.
 
-**Superinvestor data** is scraped from **DataRoma** (https://www.dataroma.com) — 13F filings from ~82 legendary investors. The data is fetched once and cached for 7 days.
+**Superinvestor data** is scraped from **DataRoma** (https://www.dataroma.com) — 13F filings from ~82 legendary investors. The data is fetched once and cached for 7 days. Use `--superinvestor` to enable this data and display the "Superinvestors" column in both the HTML report and the CLI table (disabled by default to avoid the ~80 HTTP requests).
 
 ### Local Cache
 
