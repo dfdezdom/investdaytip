@@ -67,7 +67,6 @@ pip install -e ".[dev]"
 ## Quick start
 
 ```bash
-pip install investdaytip
 investdaytip
 ```
 
