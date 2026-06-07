@@ -79,14 +79,27 @@ def _build_universe(
     # Deduplicate across pools (overlapping universes, e.g. VXUS/IEMG appear
     # in both US-ETF and Asia-ETF lists) case-insensitively, preserving the
     # first-occurrence casing. Avoids fetching/scoring the same ticker twice.
+    #
+    # Also handles ticker aliases: same company listed on different exchanges
+    # with different tickers (e.g. TSM = 2330.TW for Taiwan Semiconductor).
+    # Aliases are only applied when multiple pools are merged (region=all), not
+    # when a single region is requested, so the original ticker format is preserved.
+    _TICKER_ALIASES: dict[str, str] = {
+        "2330.TW": "TSM",    # Taiwan Semiconductor
+        "9988.HK": "BABA",   # Alibaba
+        "RACE.MI": "RACE",   # Ferrari
+    }
     seen: set[str] = set()
     merged: list[str] = []
+    use_aliases = len(pools) > 1  # Only dedupe aliases when multiple universes are merged
     for pool in pools:
         for t in pool:
-            key = t.upper()
+            # Normalize via alias if applicable (only when multiple pools merged)
+            canonical = _TICKER_ALIASES.get(t.upper(), t) if use_aliases else t
+            key = canonical.upper()
             if key not in seen:
                 seen.add(key)
-                merged.append(t)
+                merged.append(canonical)
     return merged
 
 

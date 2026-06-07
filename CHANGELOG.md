@@ -49,6 +49,13 @@
 - `superinvestor_universe.py`: removed 12 mid-cap tickers (<$10B market cap) to align with large-cap quality criteria
   - Removed: ABM ($2.5B), ACHC ($2.3B), CROX ($5.9B), HCC ($5.3B), LAD ($6.6B), NCLH ($8.6B), NVST ($3.8B), OMF ($6.4B), OSK ($8.1B), PPLI ($3.1B), SLM ($4.2B), TDS ($4.5B)
   - Verified all 102 remaining tickers have market cap >=$10B
+- `recommender.py`: added ticker alias mapping for cross-universe deduplication
+  - `2330.TW` (Asia) -> `TSM` (Superinvestor) — Taiwan Semiconductor
+  - `9988.HK` (Asia) -> `BABA` (Superinvestor) — Alibaba
+  - `RACE.MI` (EU) -> `RACE` (Superinvestor) — Ferrari
+  - Aliases only applied when multiple universes are merged (e.g., `region=all`), not when a single region is requested
+  - Prevents duplicate fetching/scoring of the same company listed on different exchanges
+  - Integration tests updated to reflect alias mapping behavior
 
 ---
 

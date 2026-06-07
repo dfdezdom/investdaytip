@@ -207,6 +207,8 @@ class TestBuildUniverseExtended:
 
         u = _build_universe(None, "stocks", ["us", "eu"], "all")
         expected = set(DEFAULT_UNIVERSE) | set(DEFAULT_EU_UNIVERSE)
+        # Aliases applied when multiple regions merged: RACE.MI -> RACE
+        expected = (expected - {"RACE.MI"}) | {"RACE"}
         assert set(u) == expected
         assert len(u) == len(expected)
 
@@ -225,9 +227,10 @@ class TestBuildUniverseExtended:
         from investdaytip.universe import DEFAULT_UNIVERSE
 
         u = _build_universe(None, "stocks", "all", ["USD", "EUR"])
-        assert set(DEFAULT_UNIVERSE).issubset(set(u))
-        assert set(DEFAULT_EU_UNIVERSE).issubset(set(u))
-        assert set(SUPERINVESTOR_UNIVERSE).issubset(set(u))
+        expected = set(DEFAULT_UNIVERSE) | set(DEFAULT_EU_UNIVERSE) | set(SUPERINVESTOR_UNIVERSE)
+        # Aliases applied when multiple regions merged: RACE.MI -> RACE
+        expected = (expected - {"RACE.MI"}) | {"RACE"}
+        assert set(u) == expected
         from investdaytip.asia_universe import ASIA_UNIVERSE
 
         assert not (set(ASIA_UNIVERSE) & set(u))
