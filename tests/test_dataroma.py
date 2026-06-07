@@ -8,15 +8,10 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from investdaytip.dataroma import (
-    CACHE_KEY,
-    TTL_SUPERINVESTOR,
     fetch_superinvestor_universe,
     get_superinvestor_data,
 )
-
 
 # ---------------------------------------------------------------------------
 # GOOG -> GOOGL merge

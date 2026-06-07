@@ -699,143 +699,155 @@ def run_backtest(
     -------
     BacktestResult with per-snapshot picks and aggregate metrics.
     """
+    # Backtest requires consistent, up-to-date data across all tickers.
+    # Stale cached history can shift the latest-common date and produce
+    # different snapshot counts. We therefore disable the cache for the
+    # duration of the run and restore it afterwards.
+    from investdaytip.cache import enabled as cache_enabled
+    from investdaytip.cache import set_enabled as cache_set_enabled
+    original_cache_state = cache_enabled
+    cache_set_enabled(False)
+
     errors: list[str] = []
 
-    # Resolve universe
-    universe = (
-        list(tickers)
-        if tickers
-        else _build_universe(None, asset_class, region, currency)
-    )
-    if not universe:
-        return BacktestResult(snapshots=[], errors=["Empty universe"])
-
-    # Resolve benchmark
-    if benchmark is None:
-        reg = region if isinstance(region, str) else (region[0] if region else "us")
-        benchmark = _DEFAULT_BENCHMARKS.get(reg, "SPY")
-
-    # Fetch all data
-    all_tickers = list(set(universe + [benchmark]))
-    data = _fetch_all_data(all_tickers, period, max_workers, on_progress=on_progress)
-
-    if benchmark not in data or "history" not in data.get(benchmark, {}):
-        return BacktestResult(
-            snapshots=[], errors=[f"Could not fetch benchmark {benchmark}"]
+    try:
+        # Resolve universe
+        universe = (
+            list(tickers)
+            if tickers
+            else _build_universe(None, asset_class, region, currency)
         )
+        if not universe:
+            return BacktestResult(snapshots=[], errors=["Empty universe"])
 
-    benchmark_history = data[benchmark]["history"]
+        # Resolve benchmark
+        if benchmark is None:
+            reg = region if isinstance(region, str) else (region[0] if region else "us")
+            benchmark = _DEFAULT_BENCHMARKS.get(reg, "SPY")
 
-    # Determine date range
-    latest_common = _latest_common_end(data)
-    if latest_common is None:
-        return BacktestResult(snapshots=[], errors=["No historical data available"])
+        # Fetch all data
+        all_tickers = list(set(universe + [benchmark]))
+        data = _fetch_all_data(all_tickers, period, max_workers, on_progress=on_progress)
 
-    end_date = latest_common - timedelta(days=reporting_lag_days)
-    # Need at least 12 months of history before first snapshot (for trend)
-    # and at least 12 months after last snapshot (for forward return)
-    start_date = end_date - timedelta(days=int(365.25 * 4.5))
-    snap_dates = _generate_snapshot_dates(
-        end_date, start_date, interval_months
-    )
-
-    # Filter snapshots that are too close to the end (need forward-return room)
-    snap_dates = [
-        d
-        for d in snap_dates
-        if d + timedelta(days=int(30.5 * 12)) <= latest_common
-    ]
-
-    if not snap_dates:
-        return BacktestResult(
-            snapshots=[], errors=["Not enough history for any snapshot"]
-        )
-
-    snapshots: list[BacktestSnapshot] = []
-
-    for sd in snap_dates:
-        quarter_date = _latest_available_quarter(sd, reporting_lag_days)
-        if quarter_date is None:
-            continue
-
-        scored: list[ScoredAsset] = []
-        for t in universe:
-            td = data.get(t)
-            if td is None or "error" in td:
-                continue
-            hist = td.get("history")
-            if hist is None or hist.empty:
-                continue
-            info = td.get("info", {})
-            bs = td.get("balance_sheet", pd.DataFrame())
-            inc = td.get("income_stmt", pd.DataFrame())
-            cf = td.get("cash_flow", pd.DataFrame())
-            divs = td.get("dividends", pd.Series(dtype=float))
-
-            sd_obj = _build_historical_stock_data(
-                ticker=t,
-                info=info,
-                price_history=hist,
-                snapshot_date=sd,
-                balance_sheet=bs,
-                income_stmt=inc,
-                cash_flow=cf,
-                dividends=divs,
-                quarter_date=quarter_date,
+        if benchmark not in data or "history" not in data.get(benchmark, {}):
+            return BacktestResult(
+                snapshots=[], errors=[f"Could not fetch benchmark {benchmark}"]
             )
 
-            # Apply min market cap filter
-            if min_market_cap > 0 and (
-                sd_obj.market_cap is None or sd_obj.market_cap < min_market_cap
-            ):
-                continue
+        benchmark_history = data[benchmark]["history"]
 
-            scored.append(score_stock(sd_obj, include_technical=include_technical))
+        # Determine date range
+        latest_common = _latest_common_end(data)
+        if latest_common is None:
+            return BacktestResult(snapshots=[], errors=["No historical data available"])
 
-        scored.sort(key=lambda s: s.total, reverse=True)
-        picks = scored[:top_n]
-
-        if not picks:
-            continue
-
-        # Forward returns
-        r6_list = [
-            _forward_return(data[p.data.ticker].get("history"), sd, 6)
-            for p in picks
-            if p.data.ticker in data
-        ]
-        r12_list = [
-            _forward_return(data[p.data.ticker].get("history"), sd, 12)
-            for p in picks
-            if p.data.ticker in data
-        ]
-
-        r6_valid = [r for r in r6_list if r is not None]
-        r12_valid = [r for r in r12_list if r is not None]
-
-        b6 = _forward_return(benchmark_history, sd, 6)
-        b12 = _forward_return(benchmark_history, sd, 12)
-
-        snapshots.append(
-            BacktestSnapshot(
-                date=sd,
-                picks=picks,
-                avg_return_6m=float(np.mean(r6_valid)) if r6_valid else None,
-                avg_return_12m=float(np.mean(r12_valid)) if r12_valid else None,
-                benchmark_return_6m=b6,
-                benchmark_return_12m=b12,
-            )
+        end_date = latest_common - timedelta(days=reporting_lag_days)
+        # Need at least 12 months of history before first snapshot (for trend)
+        # and at least 12 months after last snapshot (for forward return)
+        start_date = end_date - timedelta(days=int(365.25 * 4.5))
+        snap_dates = _generate_snapshot_dates(
+            end_date, start_date, interval_months
         )
 
-    metrics = _compute_metrics(snapshots)
+        # Filter snapshots that are too close to the end (need forward-return room)
+        snap_dates = [
+            d
+            for d in snap_dates
+            if d + timedelta(days=int(30.5 * 12)) <= latest_common
+        ]
 
-    return BacktestResult(
-        snapshots=snapshots,
-        total_snapshots=len(snapshots),
-        errors=errors,
-        benchmark_ticker=str(benchmark),
-        **metrics,
-    )
+        if not snap_dates:
+            return BacktestResult(
+                snapshots=[], errors=["Not enough history for any snapshot"]
+            )
+
+        snapshots: list[BacktestSnapshot] = []
+
+        for sd in snap_dates:
+            quarter_date = _latest_available_quarter(sd, reporting_lag_days)
+            if quarter_date is None:
+                continue
+
+            scored: list[ScoredAsset] = []
+            for t in universe:
+                td = data.get(t)
+                if td is None or "error" in td:
+                    continue
+                hist = td.get("history")
+                if hist is None or hist.empty:
+                    continue
+                info = td.get("info", {})
+                bs = td.get("balance_sheet", pd.DataFrame())
+                inc = td.get("income_stmt", pd.DataFrame())
+                cf = td.get("cash_flow", pd.DataFrame())
+                divs = td.get("dividends", pd.Series(dtype=float))
+
+                sd_obj = _build_historical_stock_data(
+                    ticker=t,
+                    info=info,
+                    price_history=hist,
+                    snapshot_date=sd,
+                    balance_sheet=bs,
+                    income_stmt=inc,
+                    cash_flow=cf,
+                    dividends=divs,
+                    quarter_date=quarter_date,
+                )
+
+                # Apply min market cap filter
+                if min_market_cap > 0 and (
+                    sd_obj.market_cap is None or sd_obj.market_cap < min_market_cap
+                ):
+                    continue
+
+                scored.append(score_stock(sd_obj, include_technical=include_technical))
+
+            scored.sort(key=lambda s: s.total, reverse=True)
+            picks = scored[:top_n]
+
+            if not picks:
+                continue
+
+            # Forward returns
+            r6_list = [
+                _forward_return(data[p.data.ticker].get("history"), sd, 6)
+                for p in picks
+                if p.data.ticker in data
+            ]
+            r12_list = [
+                _forward_return(data[p.data.ticker].get("history"), sd, 12)
+                for p in picks
+                if p.data.ticker in data
+            ]
+
+            r6_valid = [r for r in r6_list if r is not None]
+            r12_valid = [r for r in r12_list if r is not None]
+
+            b6 = _forward_return(benchmark_history, sd, 6)
+            b12 = _forward_return(benchmark_history, sd, 12)
+
+            snapshots.append(
+                BacktestSnapshot(
+                    date=sd,
+                    picks=picks,
+                    avg_return_6m=float(np.mean(r6_valid)) if r6_valid else None,
+                    avg_return_12m=float(np.mean(r12_valid)) if r12_valid else None,
+                    benchmark_return_6m=b6,
+                    benchmark_return_12m=b12,
+                )
+            )
+
+        metrics = _compute_metrics(snapshots)
+
+        return BacktestResult(
+            snapshots=snapshots,
+            total_snapshots=len(snapshots),
+            errors=errors,
+            benchmark_ticker=str(benchmark),
+            **metrics,
+        )
+    finally:
+        cache_set_enabled(original_cache_state)
 
 
 def _latest_common_end(data: dict[str, _TickerData]) -> Optional[datetime]:

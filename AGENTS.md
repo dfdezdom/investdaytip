@@ -63,7 +63,7 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
   - `_global:fear_greed` (CNN Fear & Greed Index, TTL 1h)
   - `superinvestor:holdings` (DataRoma aggregated data, TTL 7 days)
 - `fetch_asset()` defers cache-write until both info and history are fetched (atomic snapshot); partial results cached on history failure
-- Backtest uses **per-component cache** with **all-or-nothing restore**: `_try_fetch_from_cache()` reads all 6 components (info, history, balance_sheet, income_stmt, cash_flow, dividends); if any is missing/expired it refetches everything from yfinance
+- Backtest **disables cache entirely** to ensure reproducible results — stale history cache can shift `_latest_common_end()` and produce different snapshot counts; cache state is saved and restored via `try/finally`
 - Connections are tracked so `CacheDB.close_all()` / module-level `close_db()` can release **worker-thread** connections; `recommend()` calls `close_db()` in a `finally` after the pool tears down
 - `--no-cache` flag disables cache read/write; `--cache-clear` drops all entries. Both flags work on `backtest` subcommand too
 - `--superinvestor` flag enables the DataRoma superinvestor cache warm-up (~80 HTTP requests) and the "Superinvestors" column in both HTML and CLI output; disabled by default
@@ -88,8 +88,7 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - Stocks only (no ETF support); banner says `(stocks only)` at runtime
 - Uses **annual fiscal-year** financial data via `t.income_stmt`, `t.balance_sheet`, `t.cashflow` (yearly properties) — quarterly data (`get_income_stmt(freq="quarterly")`) only returns 5 quarters which is insufficient
 - Internal dict key is `cash_flow` (underscore), matching the cache key; yfinance property is `t.cashflow` (no underscore) — cache read uses `"cash_flow"` to match the write
-- Per-component all-or-nothing cache: if any of the 6 components (info, history, 3 financial statements, dividends) is missing/expired, everything is refetched
-- `--cache-clear` and `--no-cache` flags are supported on the backtest subcommand
+- `--cache-clear` and `--no-cache` flags are supported on the backtest subcommand (cache is disabled by default during backtest for reproducibility)
 - Progress bar uses `TimeElapsedColumn` (not default `TimeRemainingColumn`) so elapsed time counts up and never resets to 0
 
 ### Advisor Module
