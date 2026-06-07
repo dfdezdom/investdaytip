@@ -68,10 +68,10 @@ def _linear(value: Optional[float], best: float, worst: float, *, default: float
     direction is implied by the arguments: for "higher is better" metrics pass
     ``best > worst``; for "lower is better" metrics (e.g. debt, expense ratio)
     pass ``best < worst`` and the negative denominator flips the slope
-    correctly. Missing data (``None``) or a degenerate ``best == worst`` range
-    falls back to the neutral ``default``.
+    correctly. Missing data (``None``), non-finite values (``NaN``/``inf``),
+    or a degenerate ``best == worst`` range falls back to the neutral ``default``.
     """
-    if value is None:
+    if value is None or not math.isfinite(value):
         return default
     if best == worst:
         return default
@@ -128,10 +128,11 @@ def _health_score(d: StockData) -> tuple[float, list[str]]:
 
 
 def _technical_score(d: StockData | EtfData) -> tuple[float, list[str]]:
-    """Score technical indicators (RSI + MACD) as a sub-component of Trend.
+    """Score technical indicators (RSI + MACD) as a 0-100 sub-component of Trend.
 
     RSI is inverted (lower = better entry) with a floor at 20 to avoid
     rewarding stocks in free-fall.  MACD histogram rewards positive momentum.
+    Returns a normalized 0-100 score; caller multiplies by the trend weight (0.40).
     """
     notes: list[str] = []
     rsi_raw = d.rsi_14
@@ -143,7 +144,7 @@ def _technical_score(d: StockData | EtfData) -> tuple[float, list[str]]:
         notes.append(f"RSI {d.rsi_14:.1f} suggests oversold")
     if d.macd_histogram is not None and d.macd_histogram > 0.0:
         notes.append("MACD histogram positive")
-    return (rsi * 0.15) + (macd * 0.25), notes
+    return (rsi * 0.375) + (macd * 0.625), notes
 
 
 def _trend_score(d: StockData, *, include_technical: bool = False) -> tuple[float, list[str]]:
@@ -161,11 +162,16 @@ def _trend_score(d: StockData, *, include_technical: bool = False) -> tuple[floa
     if d.return_12m is not None and d.return_12m > 0.10:
         notes.append(f"12-month return of {d.return_12m * 100:.1f}%")
     if include_technical:
-        return (pvs * 0.20) + (r12 * 0.20) + (slope * 0.20) + tech, notes
+        return (pvs * 0.20) + (r12 * 0.20) + (slope * 0.20) + (tech * 0.40), notes
     return (pvs * 0.35) + (r12 * 0.30) + (slope * 0.35), notes
 
 
-def score_stock(data: StockData, *, include_technical: bool = False) -> ScoredAsset:
+def score_stock(
+    data: StockData,
+    *,
+    include_technical: bool = False,
+    si_data: dict | None = None,
+) -> ScoredAsset:
     quality, q_notes = _quality_score(data)
     value, v_notes = _value_score(data)
     health, h_notes = _health_score(data)
@@ -181,7 +187,8 @@ def score_stock(data: StockData, *, include_technical: bool = False) -> ScoredAs
     if not rationale:
         rationale.append("Limited data available; score based on neutral defaults.")
 
-    si_data = get_superinvestor_data()
+    if si_data is None:
+        si_data = get_superinvestor_data()
     si_count = si_data.get(data.ticker, {}).get("manager_count")
 
     return ScoredAsset(
@@ -275,8 +282,13 @@ def score_etf(data: EtfData) -> ScoredAsset:
 # Dispatch
 # ---------------------------------------------------------------------------
 
-def score_asset(data: AssetData, *, include_technical: bool = False) -> ScoredAsset:
+def score_asset(
+    data: AssetData,
+    *,
+    include_technical: bool = False,
+    si_data: dict | None = None,
+) -> ScoredAsset:
     if isinstance(data, EtfData):
         return score_etf(data)
-    return score_stock(data, include_technical=include_technical)
+    return score_stock(data, include_technical=include_technical, si_data=si_data)
 

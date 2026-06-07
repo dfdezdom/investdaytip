@@ -10,6 +10,7 @@ from investdaytip.asia_etf_universe import ASIA_ETF_UNIVERSE
 from investdaytip.asia_universe import ASIA_UNIVERSE
 from investdaytip.cache import close_db
 from investdaytip.data_source import fetch_asset
+from investdaytip.dataroma import get_superinvestor_data
 from investdaytip.etf_universe import DEFAULT_ETF_UNIVERSE
 from investdaytip.eu_etf_universe import DEFAULT_EU_ETF_UNIVERSE
 from investdaytip.eu_universe import DEFAULT_EU_UNIVERSE
@@ -135,6 +136,8 @@ def recommend(
     total = len(universe)
     scored: list[ScoredAsset] = []
 
+    si_data = get_superinvestor_data()
+
     if progress_cb:
         progress_cb(0, total, "")
 
@@ -145,7 +148,7 @@ def recommend(
                 ticker = futures[fut]
                 try:
                     data = fut.result()
-                    scored.append(score_asset(data, include_technical=include_technical))
+                    scored.append(score_asset(data, include_technical=include_technical, si_data=si_data))
                 except Exception:
                     logger.warning("Failed to fetch/score %s", ticker, exc_info=True)
                 if progress_cb:

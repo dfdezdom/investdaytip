@@ -117,8 +117,15 @@ def fetch_superinvestor_universe(
     """
     cached = get_db().get(CACHE_KEY)
     if cached:
-        data = json.loads(cached)
+        try:
+            data = json.loads(cached)
+        except (json.JSONDecodeError, ValueError) as exc:
+            logger.warning("Corrupt superinvestor cache, refetching: %s", exc)
+            data = None
     else:
+        data = None
+
+    if data is None:
         logger.info("Fetching superinvestor list from DataRoma ...")
         managers = fetch_manager_list()
         aggregate: dict[str, int] = {}
@@ -175,7 +182,11 @@ def get_superinvestor_data() -> dict[str, dict[str, Any]]:
     cached = get_db().get(CACHE_KEY)
     if not cached:
         return {}
-    data = json.loads(cached)
+    try:
+        data = json.loads(cached)
+    except (json.JSONDecodeError, ValueError) as exc:
+        logger.warning("Corrupt superinvestor cache: %s", exc)
+        return {}
     agg = data.get("aggregate", {})
     wgt = data.get("weights", {})
     # Normalizar: GOOG -> GOOGL (defensa contra cache v1 o corrupta)

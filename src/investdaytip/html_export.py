@@ -68,7 +68,7 @@ def _fmt_price(price: Any, currency: Any) -> str:
 
 
 def _fmt_pct(value: Any) -> str:
-    if value is None:
+    if not _is_finite_number(value):
         return "-"
     return f"{float(value) * 100:.2f}%"
 
@@ -747,11 +747,6 @@ def export_recommendations_html(
 # ── Backtest HTML export ──────────────────────────────────────────────────────
 
 
-def _fmt_pct_str(value: Any) -> str:
-    if not _is_finite_number(value):
-        return "-"
-    return f"{float(value) * 100:.2f}%"
-
 
 def _fmt_num(value: Any, decimals: int = 2) -> str:
     if not _is_finite_number(value):
@@ -773,10 +768,10 @@ def _render_backtest_rows(result: BacktestResult) -> str:
         picks_str = ", ".join(
             f"{p.data.ticker} ({p.total:.1f})" for p in snap.picks
         )
-        r6 = _fmt_pct_str(snap.avg_return_6m)
-        r12 = _fmt_pct_str(snap.avg_return_12m)
-        b6 = _fmt_pct_str(snap.benchmark_return_6m)
-        b12 = _fmt_pct_str(snap.benchmark_return_12m)
+        r6 = _fmt_pct(snap.avg_return_6m)
+        r12 = _fmt_pct(snap.avg_return_12m)
+        b6 = _fmt_pct(snap.benchmark_return_6m)
+        b12 = _fmt_pct(snap.benchmark_return_12m)
 
         r6_cls = _pct_class(snap.avg_return_6m)
         r12_cls = _pct_class(snap.avg_return_12m)
@@ -808,14 +803,14 @@ def export_backtest_html(
     """Write a self-contained HTML backtest report."""
     summary_metrics = [
         ("Snapshots", str(result.total_snapshots), ""),
-        ("Cumulative Return", _fmt_pct_str(result.cumulative_return), _pct_class(result.cumulative_return)),
-        ("Benchmark Return", _fmt_pct_str(result.benchmark_cumulative_return), _pct_class(result.benchmark_cumulative_return)),
-        ("Alpha", _fmt_pct_str(result.alpha), _pct_class(result.alpha)),
+        ("Cumulative Return", _fmt_pct(result.cumulative_return), _pct_class(result.cumulative_return)),
+        ("Benchmark Return", _fmt_pct(result.benchmark_cumulative_return), _pct_class(result.benchmark_cumulative_return)),
+        ("Alpha", _fmt_pct(result.alpha), _pct_class(result.alpha)),
         ("Sharpe Ratio", _fmt_num(result.sharpe), ""),
         ("Benchmark Sharpe", _fmt_num(result.benchmark_sharpe), ""),
-        ("Win Rate 6M", _fmt_pct_str(result.win_rate_6m), "pos"),
-        ("Win Rate 12M", _fmt_pct_str(result.win_rate_12m), "pos"),
-        ("Max Drawdown", _fmt_pct_str(result.max_drawdown), "neg"),
+        ("Win Rate 6M", _fmt_pct(result.win_rate_6m), "pos"),
+        ("Win Rate 12M", _fmt_pct(result.win_rate_12m), "pos"),
+        ("Max Drawdown", _fmt_pct(result.max_drawdown), "neg"),
     ]
     meta_rows = (
         f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} · "

@@ -24,6 +24,11 @@
 - **Backtest rate-limit retries bounded** — `_fetch_ticker_data()` now retries max 3 times with delays [10, 30, 60]s instead of recursing infinitely, preventing `RecursionError` on persistent rate limits
 - **Advisor `-s/--sector` flag now works** via CLI — previously only worked when calling `advisor_main()` directly; the flag was missing from the advisor subparser in `main.py`
 - **XSS vulnerability fixed** in HTML export — client-side JS `renderTable()` now escapes all dynamic values via `escapeHtml()` helper before `innerHTML` assignment
+- **`_technical_score` normalized to 0-100** — previously returned a 0-40 value with implicit coupling to `_trend_score`; now returns a proper 0-100 score that `_trend_score` multiplies by 0.40, matching the pattern of all other sub-scorers
+- **Superinvestor data cached once per run** — `get_superinvestor_data()` is now called once in `recommend()` and passed to each `score_asset()` call, eliminating 200+ redundant SQLite reads and JSON parses per recommendation run
+- **`_linear()` guards against NaN/inf** — scoring normalization now rejects non-finite values (NaN, +inf, -inf) via `math.isfinite()`, falling back to neutral default instead of propagating invalid values through the scoring pipeline
+- **DataRoma cache corruption handled** — `json.loads()` in `dataroma.py` now wrapped in `try/except (JSONDecodeError, ValueError)` to gracefully handle corrupt cache data and trigger a fresh fetch instead of crashing
+- **Unified `_fmt_pct` in HTML export** — merged `_fmt_pct` and `_fmt_pct_str` into a single function that uses `_is_finite_number()` guard, preventing crashes on NaN/inf values and eliminating code duplication
 - **Universe corrections** (validated with live yfinance data):
   - `asia_universe.py`: Fixed 5 incorrect comments (e.g., `0001.HK` is CKH Holdings not HSBC, `8802.T` is Mitsubishi Estate not Astellas Pharma)
   - `asia_universe.py`: Replaced 3 delisted/low-quality tickers: `1918.HK` (Sunac, penny stock) → `0388.HK` (HKEX), `DXN.AX` (penny stock) → `CSL.AX` (CSL), `C61U.SI` (delisted) → `BN4.SI` (Keppel), `5491.T` (JUKI) → `4503.T` (Astellas Pharma)
