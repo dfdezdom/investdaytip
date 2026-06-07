@@ -33,6 +33,10 @@
 - **Cross-universe aliases expanded** — added `RIO.AX`→`RIO.L` (Rio Tinto) and `ASML.AS`→`ASML` (ASML) to prevent duplicate fetches when multiple regions are merged
 - **42 new tests** covering: `get_recommendations()` public API (3 tests), `_safe_get()` NaN/inf rejection (9 tests), `_first()` fallback chain (4 tests), `_linear()` and `_clamp()` scoring primitives (16 tests), ETF fetch path including expense ratio fallback and Sharpe proxy (3 tests), HTML export with superinvestor/technical columns (2 tests), cross-universe aliases (5 tests)
 - **Removed duplicated currency filter test** from `test_integration.py` (already covered in `test_recommender.py`)
+- **Backtest snapshot date generation fixed** — `_generate_snapshot_dates()` now uses `divmod` to correctly handle any `interval_months` value (previously crashed with `interval_months >= 13`), and preserves end-of-month semantics using `calendar.monthrange` instead of drifting to day 28
+- **Python 3.10 ISO-8601 timestamp parsing fixed** — `sentiment.py` now normalizes "Z" suffix to "+00:00" before calling `datetime.fromisoformat()`, which doesn't support "Z" in Python 3.10
+- **`run_comprehensive()` no longer aborts on missing portfolio** — portfolio review errors are logged to `result["errors"]` but recommendations are still generated, making the function more resilient
+- **Advisor superinvestor warm-up skipped for ETFs** — when `--asset-class etfs` is specified, the ~80 HTTP requests for superinvestor data are now skipped since superinvestor data is only relevant for stocks
 - **Universe corrections** (validated with live yfinance data):
   - `asia_universe.py`: Fixed 5 incorrect comments (e.g., `0001.HK` is CKH Holdings not HSBC, `8802.T` is Mitsubishi Estate not Astellas Pharma)
   - `asia_universe.py`: Replaced 3 delisted/low-quality tickers: `1918.HK` (Sunac, penny stock) → `0388.HK` (HKEX), `DXN.AX` (penny stock) → `CSL.AX` (CSL), `C61U.SI` (delisted) → `BN4.SI` (Keppel), `5491.T` (JUKI) → `4503.T` (Astellas Pharma)

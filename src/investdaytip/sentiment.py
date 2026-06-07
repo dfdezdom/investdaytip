@@ -106,10 +106,12 @@ def fear_greed_index() -> dict[str, Any] | None:
         if isinstance(ts, (int, float)):
             timestamp = int(ts)
         elif isinstance(ts, str):
-            # Handle ISO-8601 string: 2026-06-05T19:59:59+00:00
+            # Handle ISO-8601 string: 2026-06-05T19:59:59+00:00 or 2026-06-05T19:59:59Z
             try:
                 from datetime import datetime as _dt
-                timestamp = int(_dt.fromisoformat(ts).timestamp() * 1000)
+                # Python 3.10 fromisoformat doesn't support "Z" suffix
+                ts_normalized = ts.replace("Z", "+00:00")
+                timestamp = int(_dt.fromisoformat(ts_normalized).timestamp() * 1000)
             except Exception:
                 pass
 

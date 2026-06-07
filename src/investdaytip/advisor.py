@@ -352,8 +352,9 @@ def run_comprehensive(
         "html_reports": [],
     }
 
+    # Portfolio errors should not prevent generating recommendations
     if "error" in result["portfolio"]:
-        return result
+        result["errors"].append(f"Portfolio review failed: {result['portfolio']['error']}")
 
     currency_map = (
         dict(currencies)
@@ -477,7 +478,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
     console = Console()
 
     # ── Warm-up superinvestor cache ────────────────────────
-    if args.superinvestor and not args.no_cache:
+    # Superinvestor data is only relevant for stocks, not ETFs
+    if args.superinvestor and not args.no_cache and args.asset_class != "etfs":
         if not get_superinvestor_data():
             with Progress(
                 SpinnerColumn(),

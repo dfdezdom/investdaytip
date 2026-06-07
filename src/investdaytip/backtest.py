@@ -10,6 +10,7 @@ Only stocks are supported (no ETFs).
 
 from __future__ import annotations
 
+import calendar
 import logging
 import math
 import time
@@ -127,15 +128,15 @@ def _generate_snapshot_dates(
     d = end
     while d >= start:
         dates.append(d)
-        m = d.month - interval_months
-        y = d.year
-        if m <= 0:
-            m += 12
-            y -= 1
-        try:
-            d = d.replace(year=y, month=m)
-        except ValueError:
-            d = datetime(y, m, 1) + timedelta(days=27)
+        # Use divmod to handle any interval_months value correctly
+        year_offset, month_offset = divmod(d.month - interval_months - 1, 12)
+        m = month_offset + 1
+        y = d.year + year_offset
+        # Preserve end-of-month semantics: if original day exceeds target month's
+        # days, use the last day of the target month
+        max_day = calendar.monthrange(y, m)[1]
+        day = min(d.day, max_day)
+        d = d.replace(year=y, month=m, day=day)
     return list(reversed(dates))
 
 
