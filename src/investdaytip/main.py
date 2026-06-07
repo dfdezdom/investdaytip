@@ -440,7 +440,7 @@ def main(argv: list[str] | None = None) -> int:
     bt.add_argument("--lag-days", type=int, default=60,
                     help="Reporting lag in days (default: 60).")
     bt.add_argument("--min-market-cap", metavar="CAP", type=_parse_min_market_cap, default=2_000_000_000,
-                    help="Minimum market cap (default: 2B).")
+                    help="Minimum market cap (default: 2B). See Market Cap Classification in README for reference ranges.")
     bt.add_argument("--benchmark", default=None,
                     help="Benchmark ticker (default: auto from region).")
     bt.add_argument("--export-html", nargs="?", const="", default=None,
@@ -487,7 +487,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Currency: all, USD, EUR, GBP, CHF, JPY, HKD, INR, KRW, TWD, SGD, AUD, DKK, SEK, NOK, GBp (default: all).",
     )
     filter_grp.add_argument("--min-market-cap", metavar="CAP", type=_parse_min_market_cap, default=2_000_000_000,
-                            help="Minimum market cap (default: 2B).")
+                            help="Minimum market cap (default: 2B). See Market Cap Classification in README for reference ranges.")
     filter_grp.add_argument("-s", "--sector", type=str, default=None,
                             help="Filter by sector prefix (case-insensitive).")
 

@@ -32,6 +32,7 @@
 - README updated with `--include-technical` flag, RSI/MACD output columns, and Trend pillar description
 - README added "When to use technical indicators" section with backtest-driven guidelines
 - README added "Market Cap Classification" section explaining the $2B default and size categories
+- CLI `--min-market-cap` help text updated to reference the Market Cap Classification section in README
 - AGENTS.md updated with `--include-technical` validation note
 - Backtest examples and `scoring_baseline.py` docs updated to reflect new default `top_n=10`
 
