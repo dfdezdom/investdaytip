@@ -41,6 +41,9 @@
 - README "OpenCode AI Agent" section enriched and moved to a prominent position under Usage with prerequisites, capabilities, quick example, and comparison table vs CLI advisor
 - AGENTS.md updated with `--include-technical` validation note
 - Backtest examples and `scoring_baseline.py` docs updated to reflect new default `top_n=10`
+- DataRoma pipeline: GOOG holdings merged into GOOGL to avoid duplicate counting of Alphabet positions
+- Invalidated superinvestor cache (key v2) to force re-fetch with unified tickers
+- `superinvestor_universe.py`: removed duplicate GOOG, kept only GOOGL
 
 ---
 

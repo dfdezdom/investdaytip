@@ -11,7 +11,7 @@ SUPERINVESTOR_UNIVERSE: list[str] = [
     "BRK-B", "C", "CBRE", "CNI", "COF", "CP", "CPNG", "CRM",
     "CROX", "CRS", "CSGP", "CVNA", "CVS", "CVX", "DE", "DHR", "DIS",
     "ELV", "ET", "FDX", "FERG", "FICO", "FIVE", "FWONK", "GE", "GEHC",
-    "GOOG", "GOOGL", "HCC", "IBKR", "ICE", "IFF", "INTU", "JNJ", "JPM",
+    "GOOGL", "HCC", "IBKR", "ICE", "IFF", "INTU", "JNJ", "JPM",
     "KHC", "KKR", "KOF", "LAD", "LEN", "LLY", "LYV", "MA", "MCO",
     "MDLN", "META", "MGM", "MKL", "MRK", "MSFT", "NCLH", "NFLX", "NU",
     "NVDA", "NVST", "OMF", "OSK", "OXY", "PDD", "PEP", "PFE", "PM",

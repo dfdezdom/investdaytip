@@ -62,3 +62,8 @@ def test_asia_known_corrections_applied():
 def test_asia_etf_invalid_symbols_removed():
     for bad in ("EUNL", "EOKH", "ASDX", "VTIAX"):
         assert bad not in ASIA_ETF_UNIVERSE, f"{bad} should have been removed"
+
+
+def test_no_duplicate_alphabet_in_superinvestor():
+    assert "GOOG" not in SUPERINVESTOR_UNIVERSE, "GOOG should be merged into GOOGL"
+    assert "GOOGL" in SUPERINVESTOR_UNIVERSE

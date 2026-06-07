@@ -26,7 +26,7 @@ MANAGERS_URL = "https://www.dataroma.com/m/managers.php"
 HOLDINGS_URL = "https://www.dataroma.com/m/holdings.php?m={code}"
 
 TTL_SUPERINVESTOR = 86400 * 7  # 7 days (quarterly data)
-CACHE_KEY = "superinvestor:holdings"
+CACHE_KEY = "superinvestor:holdings:v2"  # v2: GOOG merged into GOOGL
 
 
 def _fetch(url: str) -> str:
@@ -138,6 +138,14 @@ def fetch_superinvestor_universe(
                     logger.warning("Failed %s (%s): %s", name, code, exc)
                     if attempt < max_retries - 1:
                         time.sleep(5)
+        # Normalizar tickers duplicados: GOOG → GOOGL
+        if "GOOG" in aggregate:
+            aggregate["GOOGL"] = aggregate.get("GOOGL", 0) + aggregate["GOOG"]
+            weights["GOOGL"] = weights.get("GOOGL", 0.0) + weights.get("GOOG", 0.0)
+            del aggregate["GOOG"]
+            del weights["GOOG"]
+            logger.debug("Merged GOOG into GOOGL: total managers=%d", aggregate["GOOGL"])
+
         data = {
             "aggregate": aggregate,
             "weights": weights,
