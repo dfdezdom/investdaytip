@@ -42,8 +42,13 @@
 - AGENTS.md updated with `--include-technical` validation note
 - Backtest examples and `scoring_baseline.py` docs updated to reflect new default `top_n=10`
 - DataRoma pipeline: GOOG holdings merged into GOOGL to avoid duplicate counting of Alphabet positions
-- Invalidated superinvestor cache (key v2) to force re-fetch with unified tickers
-- `superinvestor_universe.py`: removed duplicate GOOG, kept only GOOGL
+  - Merge logic applied in both `fetch_superinvestor_universe()` and `get_superinvestor_data()` for defense against stale/corrupted cache
+  - Invalidated superinvestor cache (key v2) to force re-fetch with unified tickers
+  - `superinvestor_universe.py`: removed duplicate GOOG, kept only GOOGL
+  - Added `tests/test_dataroma.py` with 9 mocked tests covering GOOG merge, min_overlap filtering, sorting, and malformed ticker filtering
+- `superinvestor_universe.py`: removed 12 mid-cap tickers (<$10B market cap) to align with large-cap quality criteria
+  - Removed: ABM ($2.5B), ACHC ($2.3B), CROX ($5.9B), HCC ($5.3B), LAD ($6.6B), NCLH ($8.6B), NVST ($3.8B), OMF ($6.4B), OSK ($8.1B), PPLI ($3.1B), SLM ($4.2B), TDS ($4.5B)
+  - Verified all 102 remaining tickers have market cap >=$10B
 
 ---
 

@@ -6,17 +6,17 @@ independent manager positions are included.
 """
 
 SUPERINVESTOR_UNIVERSE: list[str] = [
-    "AAPL", "ABM", "ACHC", "ADI", "AMAT", "AMZN", "AON", "APG", "APP",
+    "AAPL", "ADI", "AMAT", "AMZN", "AON", "APG", "APP",
     "ASML", "AVGO", "AXP", "BABA", "BAC", "BAX", "BDX", "BKNG", "BN",
     "BRK-B", "C", "CBRE", "CNI", "COF", "CP", "CPNG", "CRM",
-    "CROX", "CRS", "CSGP", "CVNA", "CVS", "CVX", "DE", "DHR", "DIS",
+    "CRS", "CSGP", "CVNA", "CVS", "CVX", "DE", "DHR", "DIS",
     "ELV", "ET", "FDX", "FERG", "FICO", "FIVE", "FWONK", "GE", "GEHC",
-    "GOOGL", "HCC", "IBKR", "ICE", "IFF", "INTU", "JNJ", "JPM",
-    "KHC", "KKR", "KOF", "LAD", "LEN", "LLY", "LYV", "MA", "MCO",
-    "MDLN", "META", "MGM", "MKL", "MRK", "MSFT", "NCLH", "NFLX", "NU",
-    "NVDA", "NVST", "OMF", "OSK", "OXY", "PDD", "PEP", "PFE", "PM",
-    "PPLI", "PYPL", "QSR", "RACE", "REGN", "RKT", "RPRX", "RTX", "SCHW",
-    "SGI", "SGOV", "SHW", "SLB", "SLM", "SNX", "SPGI", "SUNB", "SYK",
-    "TDG", "TDS", "TMO", "TRU", "TSLA", "TSM", "TSN",     "UBER", "UHAL",
+    "GOOGL", "IBKR", "ICE", "IFF", "INTU", "JNJ", "JPM",
+    "KHC", "KKR", "KOF", "LEN", "LLY", "LYV", "MA", "MCO",
+    "MDLN", "META", "MGM", "MKL", "MRK", "MSFT", "NFLX", "NU",
+    "NVDA", "OXY", "PDD", "PEP", "PFE", "PM",
+    "PYPL", "QSR", "RACE", "REGN", "RKT", "RPRX", "RTX", "SCHW",
+    "SGI", "SGOV", "SHW", "SLB", "SNX", "SPGI", "SUNB", "SYK",
+    "TDG", "TMO", "TRU", "TSLA", "TSM", "TSN",     "UBER", "UHAL",
     "UNH", "USB", "V", "VMC", "VST", "WAT", "WTW", "ZBH",
 ]

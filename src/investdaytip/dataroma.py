@@ -138,13 +138,6 @@ def fetch_superinvestor_universe(
                     logger.warning("Failed %s (%s): %s", name, code, exc)
                     if attempt < max_retries - 1:
                         time.sleep(5)
-        # Normalizar tickers duplicados: GOOG → GOOGL
-        if "GOOG" in aggregate:
-            aggregate["GOOGL"] = aggregate.get("GOOGL", 0) + aggregate["GOOG"]
-            weights["GOOGL"] = weights.get("GOOGL", 0.0) + weights.get("GOOG", 0.0)
-            del aggregate["GOOG"]
-            del weights["GOOG"]
-            logger.debug("Merged GOOG into GOOGL: total managers=%d", aggregate["GOOGL"])
 
         data = {
             "aggregate": aggregate,
@@ -152,6 +145,18 @@ def fetch_superinvestor_universe(
             "manager_count": len(managers),
         }
         get_db().set(CACHE_KEY, json.dumps(data), TTL_SUPERINVESTOR)
+
+    # Normalizar tickers duplicados: GOOG → GOOGL (defensa contra cache v1 o corrupta)
+    aggregate = data.get("aggregate", {})
+    weights = data.get("weights", {})
+    if "GOOG" in aggregate:
+        aggregate["GOOGL"] = aggregate.get("GOOGL", 0) + aggregate["GOOG"]
+        weights["GOOGL"] = weights.get("GOOGL", 0.0) + weights.get("GOOG", 0.0)
+        del aggregate["GOOG"]
+        del weights["GOOG"]
+        logger.debug("Merged GOOG into GOOGL: total managers=%d", aggregate["GOOGL"])
+        data["aggregate"] = aggregate
+        data["weights"] = weights
 
     tickers = [
         t for t, count in data["aggregate"].items()
@@ -165,7 +170,7 @@ def get_superinvestor_data() -> dict[str, dict[str, Any]]:
     """Return per-ticker superinvestor metadata for scoring.
 
     Returns::
-        {"AAPL": {"manager_count": 12, "total_weight": 34.5, "buys": 3}, ...}
+        {"AAPL": {"manager_count": 12, "total_weight": 34.5}, ...}
     """
     cached = get_db().get(CACHE_KEY)
     if not cached:
@@ -173,6 +178,12 @@ def get_superinvestor_data() -> dict[str, dict[str, Any]]:
     data = json.loads(cached)
     agg = data.get("aggregate", {})
     wgt = data.get("weights", {})
+    # Normalizar: GOOG -> GOOGL (defensa contra cache v1 o corrupta)
+    if "GOOG" in agg:
+        agg["GOOGL"] = agg.get("GOOGL", 0) + agg["GOOG"]
+        wgt["GOOGL"] = wgt.get("GOOGL", 0.0) + wgt.get("GOOG", 0.0)
+        del agg["GOOG"]
+        del wgt["GOOG"]
     result: dict[str, dict[str, Any]] = {}
     for ticker, count in agg.items():
         result[ticker] = {
