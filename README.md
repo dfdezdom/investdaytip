@@ -149,6 +149,69 @@ investdaytip --help
 | `--workers N` | Parallel fetch threads | `10` |
 | `-h, --help` | Show the CLI help message and exit | n/a |
 
+---
+
+## 🤖 OpenCode AI Agent
+
+InvestDayTip includes an **AI-powered investment advisor** that lets you chat with an intelligent market analyst directly from your terminal — no memorizing CLI flags.
+
+### Prerequisites
+
+```bash
+pip install opencode
+```
+
+More info: [https://opencode.ai](https://opencode.ai)
+
+### What it can do
+
+1. **Market pulse** — Full macro analysis (VIX + yield curve + bond volatility + DXY) in ~30 seconds
+2. **Portfolio review** — Score your holdings, identify weaknesses, and get actionable signals
+3. **Buy recommendations** — Best picks filtered by region, asset class, and risk profile
+4. **Full analysis** — All of the above combined into a single comprehensive report
+
+### Quick example
+
+```text
+@advisor what's the market pulse?
+```
+
+**Expected output:**
+
+```markdown
+📊 Market Pulse
+
+Macro Score: 58/100 (Neutral)
+- VIX: 14.2 (calm)
+- 10Y-2Y Spread: +0.85% (healthy)
+- MOVE: 78 (normal)
+- DXY: 102.3 (strong)
+- Fear & Greed: 67/Greed
+
+Signal: 🟡 HOLD — selective buying
+```
+
+### AI Agent vs CLI advisor
+
+| | OpenCode AI Agent | `investdaytip advisor` CLI |
+|---|---|---|
+| **Interface** | Natural language chat | Interactive menu prompts |
+| **Flexibility** | Ad-hoc questions, follow-ups | Predefined flow |
+| **Speed** | ~30s for market pulse | ~1–2 min for full analysis |
+| **Output** | Clean markdown tables | Rich colored tables (terminal) |
+| **Best for** | Quick questions, exploration | Deep structured analysis |
+
+### Full documentation
+
+See [`.opencode/agents/advisor.md`](.opencode/agents/advisor.md) for:
+- VIX / macro regime interpretation rules
+- Fear & Greed Index signals
+- Bubble burst historical indicators (dot-com 2000, railroads 1845)
+- Portfolio scoring thresholds and presentation format
+- Execution methods (market pulse, portfolio review, full analysis)
+
+---
+
 ### Advisor subcommand
 
 Interactive market analysis with **multi-indicator macro pulse** (VIX, 10Y-2Y yield curve, MOVE bond volatility, DXY dollar strength), portfolio review, and buy recommendations:
@@ -279,16 +342,6 @@ The model is designed for long-term fundamental investing. Below $2B (small/micr
 - Lower liquidity, making technical indicators less meaningful
 
 The $2B threshold strikes a balance: it includes mid-caps and above (where fundamentals are reliable) while filtering out the noisiest small/micro-caps. Use `--min-market-cap 0` to include all tickers, or raise it to `10B`/`50B` for a pure large/mega-cap focus.
-
-### OpenCode AI Agent
-
-> 🤖 Chat with an AI investment advisor that checks VIX, reviews portfolios, and recommends buys — see [`.opencode/agents/advisor.md`](.opencode/agents/advisor.md).
-
-No memorizing flags. From the project root:
-
-```text
-@advisor  what's the market pulse?
-```
 
 ### HTML export
 

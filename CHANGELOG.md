@@ -33,6 +33,7 @@
 - README added "When to use technical indicators" section with backtest-driven guidelines
 - README added "Market Cap Classification" section explaining the $2B default and size categories
 - CLI `--min-market-cap` help text updated to reference the Market Cap Classification section in README
+- README "OpenCode AI Agent" section enriched and moved to a prominent position under Usage with prerequisites, capabilities, quick example, and comparison table vs CLI advisor
 - AGENTS.md updated with `--include-technical` validation note
 - Backtest examples and `scoring_baseline.py` docs updated to reflect new default `top_n=10`
 
