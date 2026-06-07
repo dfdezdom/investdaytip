@@ -73,7 +73,7 @@ investdaytip
 That's it. You'll see the top 5 buys scored across 300+ stocks & ETFs.
 
 <p align="center">
-  <img src="docs/screenshot-cli.svg" alt="InvestDayTip CLI output" width="90%">
+  <img src="docs/screenshot-CLI.png" alt="InvestDayTip CLI output" width="90%">
 </p>
 
 ---
