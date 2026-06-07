@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.1 (2026-06-07)
+
+### Docs
+
+- Backtest validation re-run after alpha formula and snapshot date fixes; all numbers updated in "When to use technical indicators" section
+- Baseline JSON files saved to `baseline-results/` for reproducibility
+
 ## v0.4.0 (2026-06-07)
 
 ### Features
