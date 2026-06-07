@@ -18,6 +18,11 @@
 ### Fixes
 
 - Backtest default `top_n` raised from 5 to 10 based on validation: with the full US universe, top 5 produced negative alpha (-3%) while top 10 delivers positive alpha (+1.1%), better Sharpe (0.45 vs 0.24), and lower max drawdown
+- **Universe corrections** (validated with live yfinance data):
+  - `asia_universe.py`: Fixed 5 incorrect comments (e.g., `0001.HK` is CKH Holdings not HSBC, `8802.T` is Mitsubishi Estate not Astellas Pharma)
+  - `asia_universe.py`: Replaced 3 delisted/low-quality tickers: `1918.HK` (Sunac, penny stock) → `0388.HK` (HKEX), `DXN.AX` (penny stock) → `CSL.AX` (CSL), `C61U.SI` (delisted) → `BN4.SI` (Keppel), `5491.T` (JUKI) → `4503.T` (Astellas Pharma)
+  - `asia_etf_universe.py`: Removed 2 delisted ETFs: `YEN`, `EWJD`
+  - `superinvestor_universe.py`: Fixed `UHAL.B` (delisted) → `UHAL` (U-Haul Holding)
 
 ### Validation
 

@@ -13,10 +13,8 @@ ASIA_ETF_UNIVERSE: list[str] = [
     
     # Japan-specific
     "EWJ",     # iShares MSCI Japan ETF
-    "EWJD",    # iShares MSCI Japan Dividend ETF
     "HEWJ",    # iShares Currency Hedged MSCI Japan ETF
     "DXJ",     # WisdomTree Japan Hedged Equity Fund
-    "YEN",     # Invesco CurrencyShares Japanese Yen Trust
     
     # India-specific
     "INDA",    # iShares MSCI India ETF

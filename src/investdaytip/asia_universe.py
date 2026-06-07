@@ -14,16 +14,16 @@ ASIA_UNIVERSE: list[str] = [
     "8306.T",  # Sumitomo Mitsui Financial
     "6861.T",  # Keyence
     "6701.T",  # NEC
-    "5491.T",  # JUKI
+    "4503.T",  # Astellas Pharma
     "6762.T",  # TDK
-    "8802.T",  # Astellas Pharma
+    "8802.T",  # Mitsubishi Estate
     "4502.T",  # Takeda Pharmaceutical
     "8031.T",  # Mitsui Fudosan
     "8725.T",  # Tokyu Land
     "9432.T",  # Nippon Telegraph & Telephone
     
     # Hong Kong (.HK)
-    "0001.HK",  # HSBC Holdings
+    "0001.HK",  # CKH Holdings
     "3690.HK",  # Meituan
     "0700.HK",  # Tencent Holdings
     "0941.HK",  # China Mobile
@@ -35,15 +35,15 @@ ASIA_UNIVERSE: list[str] = [
     "1288.HK",  # Agricultural Bank of China
     "9618.HK",  # JD.com
     "9901.HK",  # New Oriental Education
-    "1918.HK",  # Sunac China
+    "0388.HK",  # HKEX
     
     # Singapore (.SI)
     "D05.SI",  # DBS Group Holdings
     "O39.SI",  # OCBC Bank
     "U11.SI",  # United Overseas Bank
-    "C61U.SI",  # Keppel Corporation
-    "S63.SI",  # Singapore Telecommunications
-    "Z74.SI",  # ST Engineering
+    "BN4.SI",  # Keppel Corporation
+    "S63.SI",  # ST Engineering
+    "Z74.SI",  # Singtel
     "BS6.SI",  # Genting Singapore
     "M44U.SI",  # Mapletree Logistics Trust
     
@@ -71,7 +71,7 @@ ASIA_UNIVERSE: list[str] = [
     "035720.KS",  # Kakao Corp
     "088980.KS",  # Celltrion
     "207940.KS",  # SamsungBio
-    "316140.KS",  # SK Telecom
+    "316140.KS",  # Woori Financial Group
     
     # Taiwan (.TW)
     "2330.TW",  # Taiwan Semiconductor Manufacturing Company
@@ -91,7 +91,7 @@ ASIA_UNIVERSE: list[str] = [
     "BHP.AX",  # BHP Group
     "RIO.AX",  # Rio Tinto
     "CPU.AX",  # Computershare
-    "DXN.AX",  # Dexus
+    "CSL.AX",  # CSL
     "IAG.AX",  # Insurance Australia Group
     "MQG.AX",  # Macquarie Group
 ]
