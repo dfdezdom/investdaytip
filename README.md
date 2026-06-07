@@ -142,7 +142,7 @@ investdaytip --help
 | `-s, --sector TEXT` | Sector/category prefix filter, case-insensitive (e.g. `Financial` matches Financial Services) | disabled |
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
 | `--superinvestor` | Include superinvestor ownership data from DataRoma (adds ~80 HTTP requests, shows column in HTML and CLI) | disabled |
-| `--include-technical` | Include RSI + MACD technical indicators in the Trend pillar scoring | disabled |
+| `--include-technical` | Include RSI + MACD technical indicators in the Trend pillar scoring (see [When to use technical indicators](#when-to-use-technical-indicators)) | disabled |
 | `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable) | `2B` |
 | `--no-cache` | Skip SQLite cache, fetch all data live from Yahoo Finance | disabled |
 | `--cache-clear` | Purge the SQLite cache before running | disabled |
@@ -242,6 +242,22 @@ Decision rules:
 - **Ship it**: Alpha ↑ AND Sharpe ↑ AND 12M win rate ↑
 - **Consider**: Alpha ↑ OR Sharpe ↑ (mixed, review drawdown)
 - **Reject / iterate**: Alpha ↓ AND Sharpe ↓
+
+### When to use technical indicators
+
+The `--include-technical` flag adds RSI-14 and MACD histogram to the Trend pillar (20% weight). Backtest validation across four scenarios shows **mixed results** — the flag helps in some contexts but hurts in others:
+
+| Scenario | Without `--include-technical` | With `--include-technical` | Verdict |
+|---|---|---|---|
+| **US full universe** (~52 tickers) | Alpha 1.09%, Sharpe 0.45 | Alpha 0.94%, Sharpe 0.47 | ⚠️ Neutral — slightly lower alpha, marginally better Sharpe |
+| **US mega-caps** (12 tickers) | Alpha 4.19%, Sharpe 0.50 | Alpha **7.12%**, Sharpe **0.61** | ✅ **Improved** — strong gains in alpha, Sharpe, and win rate |
+| **US with $2B filter** (~59 tickers) | Alpha **5.04%**, Sharpe **1.20** | Alpha 1.49%, Sharpe 1.06 | ❌ **Worse** — fundamentals filter already captures quality; technicals add noise |
+| **EU full universe** (~65 tickers) | Alpha 4.13%, Sharpe 0.50 | Alpha **5.18%**, Sharpe **0.64** | ⚠️ Mixed — higher alpha and Sharpe, but lower win-rate consistency |
+
+**Guidelines:**
+- ✅ **Use it** when analyzing a small, concentrated list of highly liquid tickers (e.g., custom `-t` list with 5–15 mega-caps)
+- ❌ **Avoid it** when running broad-screen scans with quality filters (`--min-market-cap`) — the fundamental filter already selects the best candidates, and technicals dilute the signal
+- ⚠️ **Test it** for EU or Asia universes — results are region-dependent and may require different parameter calibration
 
 ### OpenCode AI Agent
 
