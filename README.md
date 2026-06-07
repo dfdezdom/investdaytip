@@ -158,10 +158,11 @@ InvestDayTip includes an **AI-powered investment advisor** that lets you chat wi
 ### Prerequisites
 
 ```bash
-pip install opencode
-```
+# Install via the official installer (macOS / Linux)
+curl -fsSL https://opencode.ai/install | bash
 
-More info: [https://opencode.ai](https://opencode.ai)
+# Also available via npm, brew, bun, and more — see https://opencode.ai
+```
 
 ### What it can do
 
