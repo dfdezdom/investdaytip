@@ -165,6 +165,12 @@ def recommend(
     else:
         filtered = scored
 
+    if min_market_cap > 0:
+        filtered = [
+            s for s in filtered
+            if s.data.market_cap is not None and s.data.market_cap >= min_market_cap
+        ]
+
     if sector:
         sector_lower = sector.lower()
         filtered = [

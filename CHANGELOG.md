@@ -19,6 +19,11 @@
 
 - Backtest default `top_n` raised from 5 to 10 based on validation: with the full US universe, top 5 produced negative alpha (-3%) while top 10 delivers positive alpha (+1.1%), better Sharpe (0.45 vs 0.24), and lower max drawdown
 - Backtest now **disables cache by default** and restores it afterwards to ensure reproducible results — stale history cache can shift `_latest_common_end()` and produce different snapshot counts
+- **`--min-market-cap` filter now works** in the main recommendation flow — previously the parameter was accepted but never applied; assets with missing market cap are excluded when the filter is active
+- **Backtest alpha formula corrected** — annualization now uses actual `interval_months` instead of hardcoded 6-month assumption, producing accurate alpha values for quarterly (default) and other intervals
+- **Backtest rate-limit retries bounded** — `_fetch_ticker_data()` now retries max 3 times with delays [10, 30, 60]s instead of recursing infinitely, preventing `RecursionError` on persistent rate limits
+- **Advisor `-s/--sector` flag now works** via CLI — previously only worked when calling `advisor_main()` directly; the flag was missing from the advisor subparser in `main.py`
+- **XSS vulnerability fixed** in HTML export — client-side JS `renderTable()` now escapes all dynamic values via `escapeHtml()` helper before `innerHTML` assignment
 - **Universe corrections** (validated with live yfinance data):
   - `asia_universe.py`: Fixed 5 incorrect comments (e.g., `0001.HK` is CKH Holdings not HSBC, `8802.T` is Mitsubishi Estate not Astellas Pharma)
   - `asia_universe.py`: Replaced 3 delisted/low-quality tickers: `1918.HK` (Sunac, penny stock) → `0388.HK` (HKEX), `DXN.AX` (penny stock) → `CSL.AX` (CSL), `C61U.SI` (delisted) → `BN4.SI` (Keppel), `5491.T` (JUKI) → `4503.T` (Astellas Pharma)

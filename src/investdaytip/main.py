@@ -413,6 +413,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     adv.add_argument("--min-market-cap", metavar="CAP", type=_parse_min_market_cap, default=2_000_000_000,
                      help="Minimum market cap (default: 2B).")
+    adv.add_argument("-s", "--sector", metavar="SECTOR", default=None,
+                     help="Sector/category prefix filter (case-insensitive).")
     adv.add_argument("--superinvestor", action="store_true",
                      help="Include superinvestor ownership data.")
     adv.add_argument("--no-cache", action="store_true",

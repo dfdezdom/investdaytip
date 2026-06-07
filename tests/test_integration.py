@@ -53,7 +53,7 @@ class TestRecommendFullFlow:
     def test_sorts_by_score_desc(self, mocker):
         mocker.patch("investdaytip.recommender.fetch_asset", side_effect=self._mock_fetch)
         mocker.patch("investdaytip.recommender.close_db")
-        out = recommend(tickers=["AAA", "BBB", "CCC"], top_n=10)
+        out = recommend(tickers=["AAA", "BBB", "CCC"], top_n=10, min_market_cap=0)
         assert out[0].data.ticker == "BBB"
         assert out[1].data.ticker == "AAA"
         assert out[2].data.ticker == "CCC"

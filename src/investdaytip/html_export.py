@@ -605,6 +605,13 @@ def export_recommendations_html(
       return Number.isFinite(n) ? n : null;
     }}
 
+    function escapeHtml(s) {{
+      if (s == null) return "";
+      const d = document.createElement("div");
+      d.textContent = String(s);
+      return d.innerHTML;
+    }}
+
     function applyFilters() {{
       const q = $("q").value.trim().toLowerCase();
       const asset = $("assetClass").value;
@@ -666,21 +673,21 @@ def export_recommendations_html(
         return `
           <tr>
             <td>${{r.rank}}</td>
-            <td class="type-col">${{r.asset_type.toUpperCase()}}</td>
-            <td><strong><a href="${{googleUrl}}" target="_blank" rel="noopener noreferrer">${{r.ticker}}</a></strong></td>
+            <td class="type-col">${{escapeHtml(r.asset_type.toUpperCase())}}</td>
+            <td><strong><a href="${{googleUrl}}" target="_blank" rel="noopener noreferrer">${{escapeHtml(r.ticker)}}</a></strong></td>
             <td class="link-col"><a href="${{tvUrl}}" target="_blank" rel="noopener noreferrer" title="TradingView"><span class="link-icon icon-tv">TV</span></a></td>
             <td class="link-col"><a href="${{yahooUrl}}" target="_blank" rel="noopener noreferrer" title="Yahoo Finance"><span class="link-icon icon-yahoo">Y</span></a></td>
-            <td>${{r.name}}</td>
-            <td class=\"desktop-only region-col\">${{r.region.toUpperCase()}}</td>
-            <td class=\"desktop-only\">${{r.sector}}</td>
-            <td class=\"num\">${{r.price_text}}</td>
-            <td class=\"num ${{dailyClass}}\">${{r.daily_change_text}}</td>
-            <td class=\"num\">${{r.pe_text}}</td>
-            <td class=\"num ${{oneMClass}}\">${{r.return_1m_text}}</td>
+            <td>${{escapeHtml(r.name)}}</td>
+            <td class="desktop-only region-col">${{escapeHtml(r.region.toUpperCase())}}</td>
+            <td class="desktop-only">${{escapeHtml(r.sector)}}</td>
+            <td class="num">${{r.price_text}}</td>
+            <td class="num ${{dailyClass}}">${{r.daily_change_text}}</td>
+            <td class="num">${{r.pe_text}}</td>
+            <td class="num ${{oneMClass}}">${{r.return_1m_text}}</td>
             <td class="num ${{oneYClass}}">${{r.return_12m_text}}</td>
             {superinvestor_td}{technical_td}<td class="num"><strong>${{scoreText}}</strong></td>
-            <td class="desktop-only breakdown-col">${{r.breakdown}}</td>
-            <td class="desktop-only why-col">${{r.why}}</td>
+            <td class="desktop-only breakdown-col">${{escapeHtml(r.breakdown)}}</td>
+            <td class="desktop-only why-col">${{escapeHtml(r.why)}}</td>
           </tr>
         `;
       }}).join("");

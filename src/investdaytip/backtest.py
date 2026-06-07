@@ -258,7 +258,9 @@ def _forward_return(
 # ── Aggregated metrics ──────────────────────────────────────────────────────
 
 
-def _compute_metrics(snapshots: list[BacktestSnapshot]) -> dict[str, float]:
+def _compute_metrics(
+    snapshots: list[BacktestSnapshot], interval_months: int = 3
+) -> dict[str, float]:
     """Compute aggregate metrics from a list of snapshots."""
     if not snapshots:
         return {
@@ -319,7 +321,8 @@ def _compute_metrics(snapshots: list[BacktestSnapshot]) -> dict[str, float]:
     dd = _max_drawdown(cum_values)
 
     # Alpha (annualized excess return)
-    alpha = ((cum / bench_cum) ** (1.0 / max(len(snapshots) * 0.5, 1.0)) - 1.0) if bench_cum > 0 else 0.0
+    years = max(len(snapshots) * interval_months / 12.0, 1.0)
+    alpha = ((cum / bench_cum) ** (1.0 / years) - 1.0) if bench_cum > 0 else 0.0
 
     return {
         "cumulative_return": cum - 1.0,
@@ -567,7 +570,9 @@ def _store_fetch_in_cache(ticker: str, data: _TickerData) -> None:
         cache_dividends_set(ticker, divs.to_json(date_format="iso"))
 
 
-def _fetch_ticker_data(ticker: str, period: str = "5y") -> _TickerData:
+def _fetch_ticker_data(
+    ticker: str, period: str = "5y", _retries: int = 0
+) -> _TickerData:
     """Fetch all data needed for backtesting a single ticker.
 
     Financial statements are fetched as **annual** (fiscal-year) data to
@@ -612,8 +617,13 @@ def _fetch_ticker_data(ticker: str, period: str = "5y") -> _TickerData:
                 divs.index = divs.index.tz_localize(None)
                 result["dividends"] = divs
     except YFRateLimitError:
-        time.sleep(10)
-        return _fetch_ticker_data(ticker, period)
+        if _retries >= 3:
+            logger.warning("Rate limit persisted for %s after 3 retries", ticker)
+            result["error"] = "Rate limit exceeded"
+        else:
+            delays = [10, 30, 60]
+            time.sleep(delays[min(_retries, len(delays) - 1)])
+            return _fetch_ticker_data(ticker, period, _retries + 1)
     except Exception as exc:
         logger.warning("Failed to fetch data for %s: %s", ticker, exc)
         result["error"] = str(exc)
@@ -837,7 +847,7 @@ def run_backtest(
                 )
             )
 
-        metrics = _compute_metrics(snapshots)
+        metrics = _compute_metrics(snapshots, interval_months)
 
         return BacktestResult(
             snapshots=snapshots,
