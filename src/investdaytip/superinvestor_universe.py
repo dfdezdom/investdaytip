@@ -8,7 +8,7 @@ independent manager positions are included.
 SUPERINVESTOR_UNIVERSE: list[str] = [
     "AAPL", "ABM", "ACHC", "ADI", "AMAT", "AMZN", "AON", "APG", "APP",
     "ASML", "AVGO", "AXP", "BABA", "BAC", "BAX", "BDX", "BKNG", "BN",
-    "BRK.A", "BRK.B", "C", "CBRE", "CNI", "COF", "CP", "CPNG", "CRM",
+    "BRK-B", "C", "CBRE", "CNI", "COF", "CP", "CPNG", "CRM",
     "CROX", "CRS", "CSGP", "CVNA", "CVS", "CVX", "DE", "DHR", "DIS",
     "ELV", "ET", "FDX", "FERG", "FICO", "FIVE", "FWONK", "GE", "GEHC",
     "GOOG", "GOOGL", "HCC", "IBKR", "ICE", "IFF", "INTU", "JNJ", "JPM",
