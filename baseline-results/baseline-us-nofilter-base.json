@@ -1,0 +1,24 @@
+{
+  "tag": "us-nofilter-base",
+  "timestamp": "2026-06-07T16:42:29.663253",
+  "config": {
+    "tickers": null,
+    "region": "us",
+    "top_n": 10,
+    "period": "5y",
+    "interval_months": 3,
+    "min_market_cap": 0.0,
+    "dynamic_weights": false,
+    "regime": null
+  },
+  "html_file": "/var/folders/3j/qxzd04k92zs5t0nkxp2qrbdr0000gn/T/tmp5xita3qi/backtest-20260607-1642.html",
+  "snapshots": 15,
+  "cumulative_return": 1.4349,
+  "benchmark_return": 1.2454,
+  "alpha": 0.0218,
+  "sharpe": 0.45,
+  "benchmark_sharpe": 0.43,
+  "win_rate_6m": 0.6,
+  "win_rate_12m": 0.4,
+  "max_drawdown": 0.32270000000000004
+}

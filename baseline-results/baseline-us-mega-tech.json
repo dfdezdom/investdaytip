@@ -1,0 +1,24 @@
+{
+  "tag": "us-mega-tech",
+  "timestamp": "2026-06-07T16:40:45.763275",
+  "config": {
+    "tickers": null,
+    "region": "us",
+    "top_n": 2,
+    "period": "5y",
+    "interval_months": 3,
+    "min_market_cap": 200000000000.0,
+    "dynamic_weights": false,
+    "regime": null
+  },
+  "html_file": "/var/folders/3j/qxzd04k92zs5t0nkxp2qrbdr0000gn/T/tmp5e_iq546/backtest-20260607-1640.html",
+  "snapshots": 11,
+  "cumulative_return": 1.6597,
+  "benchmark_return": 2.0694,
+  "alpha": -0.0508,
+  "sharpe": 0.89,
+  "benchmark_sharpe": 1.12,
+  "win_rate_6m": 0.455,
+  "win_rate_12m": 0.545,
+  "max_drawdown": 0.0728
+}

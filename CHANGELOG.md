@@ -52,11 +52,11 @@
 
 ### Validation
 
-- Backtest comparison of `--include-technical` across 4 scenarios (US full, US mega-caps, US filtered $2B, EU full):
-  - ✅ **Helps** with concentrated mega-cap lists (12 tickers: alpha 4.19% → 7.12%, Sharpe 0.50 → 0.61)
-  - ❌ **Hurts** with broad + quality-filtered universes (US $2B filter: alpha 5.04% → 1.49%, Sharpe 1.20 → 1.06)
-  - ⚠️ **Neutral/mixed** for broad US and EU universes
-  - Recommendation: use `--include-technical` only for small, liquid custom ticker lists; avoid with broad screens
+- Backtest comparison of `--include-technical` across 4 scenarios (US $2B+, US no-filter, US mega-caps $200B+, EU $2B+) — re-run after alpha formula and snapshot date fixes:
+  - ✅ **Helps** with concentrated mega-cap lists (US $200B+: alpha -11.50% → -5.08%, Sharpe 0.69 → 0.89, drawdown 15.94% → 7.28%)
+  - ❌ **Hurts** with broad + quality-filtered universes (US $2B+: alpha 10.32% → 3.01%, Sharpe 1.20 → 1.06; EU $2B+: alpha 4.59% → -1.20%, Sharpe 0.98 → 0.75)
+  - ⚠️ **Neutral** for US no-filter (alpha 2.18% → 1.89%, Sharpe 0.45 → 0.47)
+  - Recommendation: use `--include-technical` only for concentrated mega-cap lists; avoid with broad screens
 
 ### Docs
 

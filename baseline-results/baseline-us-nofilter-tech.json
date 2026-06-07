@@ -1,0 +1,24 @@
+{
+  "tag": "us-nofilter-tech",
+  "timestamp": "2026-06-07T16:44:47.825129",
+  "config": {
+    "tickers": null,
+    "region": "us",
+    "top_n": 10,
+    "period": "5y",
+    "interval_months": 3,
+    "min_market_cap": 0.0,
+    "dynamic_weights": false,
+    "regime": null
+  },
+  "html_file": "/var/folders/3j/qxzd04k92zs5t0nkxp2qrbdr0000gn/T/tmpyipg7esl/backtest-20260607-1644.html",
+  "snapshots": 15,
+  "cumulative_return": 1.4087,
+  "benchmark_return": 1.2454,
+  "alpha": 0.0189,
+  "sharpe": 0.47,
+  "benchmark_sharpe": 0.43,
+  "win_rate_6m": 0.5329999999999999,
+  "win_rate_12m": 0.467,
+  "max_drawdown": 0.29460000000000003
+}

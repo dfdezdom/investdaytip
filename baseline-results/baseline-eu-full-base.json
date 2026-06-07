@@ -1,0 +1,24 @@
+{
+  "tag": "eu-full-base",
+  "timestamp": "2026-06-07T16:41:30.502430",
+  "config": {
+    "tickers": null,
+    "region": "eu",
+    "top_n": 10,
+    "period": "5y",
+    "interval_months": 3,
+    "min_market_cap": 2000000000.0,
+    "dynamic_weights": false,
+    "regime": null
+  },
+  "html_file": "/var/folders/3j/qxzd04k92zs5t0nkxp2qrbdr0000gn/T/tmpz1ds5fzs/backtest-20260607-1641.html",
+  "snapshots": 11,
+  "cumulative_return": 1.6100999999999999,
+  "benchmark_return": 1.3068,
+  "alpha": 0.045899999999999996,
+  "sharpe": 0.98,
+  "benchmark_sharpe": 1.03,
+  "win_rate_6m": 0.636,
+  "win_rate_12m": 0.545,
+  "max_drawdown": 0.1084
+}
