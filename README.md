@@ -119,16 +119,13 @@ investdaytip --no-cache              # Bypass SQLite cache, fetch fresh data
 investdaytip --cache-clear           # Purge all cached data before running
 investdaytip --workers 20            # More parallelism
 
-investdaytip --help
-
-investdaytip --help
-
 investdaytip backtest -n 10 -r us       # Backtest stock scoring on US market (stocks only)
 investdaytip backtest -t AAPL MSFT VOO  # Backtest on custom ticker list
 investdaytip backtest --export-html     # Export backtest results to HTML
 investdaytip backtest --no-cache        # Bypass cache in backtest
 investdaytip backtest --cache-clear     # Purge cache before backtest
 
+investdaytip --help
 ./preview.sh                         # Serve generated HTML files on localhost:8000
 ```
 
