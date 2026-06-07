@@ -143,7 +143,7 @@ investdaytip --help
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
 | `--superinvestor` | Include superinvestor ownership data from DataRoma (adds ~80 HTTP requests, shows column in HTML and CLI) | disabled |
 | `--include-technical` | Include RSI + MACD technical indicators in the Trend pillar scoring (see [When to use technical indicators](#when-to-use-technical-indicators)) | disabled |
-| `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable) | `2B` |
+| `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable; see [Market Cap Classification](#market-cap-classification)) | `2B` |
 | `--no-cache` | Skip SQLite cache, fetch all data live from Yahoo Finance | disabled |
 | `--cache-clear` | Purge the SQLite cache before running | disabled |
 | `--workers N` | Parallel fetch threads | `10` |
@@ -258,6 +258,27 @@ The `--include-technical` flag adds RSI-14 and MACD histogram to the Trend pilla
 - ✅ **Use it** when analyzing a small, concentrated list of highly liquid tickers (e.g., custom `-t` list with 5–15 mega-caps)
 - ❌ **Avoid it** when running broad-screen scans with quality filters (`--min-market-cap`) — the fundamental filter already selects the best candidates, and technicals dilute the signal
 - ⚠️ **Test it** for EU or Asia universes — results are region-dependent and may require different parameter calibration
+
+### Market Cap Classification
+
+The `--min-market-cap` filter controls the size of companies included in the analysis. Standard classification for reference:
+
+| Category | Market Cap | Typical characteristics |
+|---|---|---|
+| **Mega-cap** | > $200B | Largest global companies (Apple, Microsoft, Google). Highest liquidity, most followed by analysts, technical indicators most reliable. |
+| **Large-cap** | $10B – $200B | Established companies with stable fundamentals. Good balance of growth and stability. |
+| **Mid-cap** | $2B – $10B | Growing companies, regional leaders. More volatile than large-caps but higher growth potential. |
+| **Small-cap** | $300M – $2B | Niche players or regional companies. Higher volatility, less analyst coverage, fundamentals less reliable. |
+| **Micro-cap** | < $300M | Early-stage or distressed companies. Very high risk, low liquidity. |
+
+**Why the default is $2B (mid-cap threshold):**
+
+The model is designed for long-term fundamental investing. Below $2B (small/micro-caps), companies tend to have:
+- Incomplete or unreliable financial data in yfinance
+- Higher volatility that overwhelms fundamental signals
+- Lower liquidity, making technical indicators less meaningful
+
+The $2B threshold strikes a balance: it includes mid-caps and above (where fundamentals are reliable) while filtering out the noisiest small/micro-caps. Use `--min-market-cap 0` to include all tickers, or raise it to `10B`/`50B` for a pure large/mega-cap focus.
 
 ### OpenCode AI Agent
 
