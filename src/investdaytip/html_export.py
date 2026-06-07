@@ -11,7 +11,6 @@ from urllib.parse import quote, quote_plus
 
 from investdaytip.backtest import BacktestResult, _interpret_backtest
 from investdaytip.scoring import ScoredAsset
-from investdaytip.sentiment import fear_greed_index
 
 # Base number of <th> columns excluding the optional Superinvestors column.
 # Used for the empty-state row colspan server- and client-side.
@@ -267,12 +266,17 @@ def export_recommendations_html(
     region: str | list[str] = "all",
     currency: str | list[str] = "all",
     tickers: list[str] | None,
-  tickers_file: str | None = None,
-  include_superinvestor: bool = False,
-  include_technical: bool = False,
-  sector: str | None = None,
+    tickers_file: str | None = None,
+    include_superinvestor: bool = False,
+    include_technical: bool = False,
+    sector: str | None = None,
+    fear_greed: dict[str, Any] | None = None,
 ) -> str:
-    """Write a self-contained, filterable HTML report to ``destination``."""
+    """Write a self-contained, filterable HTML report to ``destination``.
+
+    ``fear_greed`` should be fetched by the caller and passed in to avoid a
+    side-effect network call inside the rendering function.
+    """
     col_count = _TABLE_BASE_COLUMN_COUNT + (1 if include_superinvestor else 0) + (2 if include_technical else 0)
     rows = [_as_row(i, s) for i, s in enumerate(results, start=1)]
     metadata = {
@@ -285,7 +289,7 @@ def export_recommendations_html(
         "tickers_file": tickers_file,
         "row_count": len(rows),
         "sector": sector,
-        "fear_greed": fear_greed_index(),
+        "fear_greed": fear_greed if fear_greed is not None else {},
     }
 
     rows_json = json.dumps(rows, ensure_ascii=True)

@@ -23,6 +23,22 @@ logger = logging.getLogger(__name__)
 
 AssetClass = Literal["all", "stocks", "etfs"]
 
+_CURRENCY_TO_REGION: dict[str, str] = {
+    "USD": "us",
+    "EUR": "eu", "GBP": "eu", "CHF": "eu",
+    "DKK": "eu", "SEK": "eu", "NOK": "eu", "GBp": "eu",
+    "JPY": "asia", "HKD": "asia", "INR": "asia",
+    "KRW": "asia", "TWD": "asia", "SGD": "asia", "AUD": "asia",
+}
+
+_TICKER_ALIASES: dict[str, str] = {
+    "2330.TW": "TSM",    # Taiwan Semiconductor
+    "9988.HK": "BABA",   # Alibaba
+    "RACE.MI": "RACE",   # Ferrari
+    "RIO.AX": "RIO.L",   # Rio Tinto (ASX → LSE)
+    "ASML.AS": "ASML",   # ASML (Euronext → NASDAQ ADR)
+}
+
 
 def _build_universe(
     tickers: Iterable[str] | None,
@@ -39,13 +55,6 @@ def _build_universe(
     # Narrow region based on currency filter to avoid fetching tickers
     # that will be filtered out anyway — reduces yfinance API pressure.
     if "all" in regions and "all" not in currencies:
-        _CURRENCY_TO_REGION: dict[str, str] = {
-            "USD": "us",
-            "EUR": "eu", "GBP": "eu", "CHF": "eu",
-            "DKK": "eu", "SEK": "eu", "NOK": "eu", "GBp": "eu",
-            "JPY": "asia", "HKD": "asia", "INR": "asia",
-            "KRW": "asia", "TWD": "asia", "SGD": "asia", "AUD": "asia",
-        }
         derived: set[str] = set()
         for c in currencies:
             mapped = _CURRENCY_TO_REGION.get(c)
@@ -85,13 +94,6 @@ def _build_universe(
     # with different tickers (e.g. TSM = 2330.TW for Taiwan Semiconductor).
     # Aliases are only applied when multiple pools are merged (region=all), not
     # when a single region is requested, so the original ticker format is preserved.
-    _TICKER_ALIASES: dict[str, str] = {
-        "2330.TW": "TSM",    # Taiwan Semiconductor
-        "9988.HK": "BABA",   # Alibaba
-        "RACE.MI": "RACE",   # Ferrari
-        "RIO.AX": "RIO.L",   # Rio Tinto (ASX → LSE)
-        "ASML.AS": "ASML",   # ASML (Euronext → NASDAQ ADR)
-    }
     seen: set[str] = set()
     merged: list[str] = []
     use_aliases = len(pools) > 1  # Only dedupe aliases when multiple universes are merged
@@ -150,9 +152,13 @@ def recommend(
                 ticker = futures[fut]
                 try:
                     data = fut.result()
+                except Exception:
+                    logger.warning("Failed to fetch %s", ticker, exc_info=True)
+                    continue
+                try:
                     scored.append(score_asset(data, include_technical=include_technical, si_data=si_data))
                 except Exception:
-                    logger.warning("Failed to fetch/score %s", ticker, exc_info=True)
+                    logger.warning("Failed to score %s", ticker, exc_info=True)
                 if progress_cb:
                     progress_cb(i, total, ticker)
     finally:

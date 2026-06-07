@@ -145,6 +145,10 @@ def fetch_superinvestor_universe(
                     logger.warning("Failed %s (%s): %s", name, code, exc)
                     if attempt < max_retries - 1:
                         time.sleep(5)
+                    else:
+                        logger.warning("Exhausted retries for %s", name)
+                # Polite delay between successful requests
+                time.sleep(0.5)
 
         data = {
             "aggregate": aggregate,

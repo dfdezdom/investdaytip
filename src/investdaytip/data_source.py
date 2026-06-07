@@ -150,18 +150,22 @@ def _first(*values: Optional[float]) -> Optional[float]:
 def _trend_metrics(
     history: pd.DataFrame,
 ) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float], Optional[float], Optional[float]]:
-    """Return (price_vs_sma200, return_1m, return_12m, sma200_slope, annualized_vol, daily_change)."""
+    """Return (price_vs_sma200, return_1m, return_12m, sma200_slope, annualized_vol, daily_change).
+
+    Degrades gracefully for short histories: daily_change and 1m return only
+    need 2 and 22 bars respectively, while SMA200-dependent metrics require
+    200+ bars.
+    """
     if history is None or history.empty or "Close" not in history:
         return None, None, None, None, None, None
 
     close = history["Close"].dropna()
-    if len(close) < 200:
+    if len(close) < 2:
         return None, None, None, None, None, None
 
-    sma200 = close.rolling(window=200).mean()
     price = float(close.iloc[-1])
-    sma_now = float(sma200.iloc[-1])
-    price_vs = (price / sma_now) - 1.0 if sma_now > 0 else None
+    prev_close = float(close.iloc[-2])
+    daily_change = (price / prev_close) - 1.0 if prev_close > 0 else None
 
     return_1m = None
     if len(close) >= 22:
@@ -169,29 +173,30 @@ def _trend_metrics(
         if past_1m > 0:
             return_1m = (price / past_1m) - 1.0
 
+    # SMA200-dependent metrics
+    price_vs = None
     return_12m = None
     vol = None
-    if len(close) >= 252:
-        past = float(close.iloc[-252])
-        if past > 0:
-            return_12m = (price / past) - 1.0
-        daily_ret = close.iloc[-252:].pct_change().dropna()
-        if len(daily_ret) > 30:
-            vol = float(daily_ret.std() * math.sqrt(252))
-
     slope = None
-    sma_clean = sma200.dropna()
-    if len(sma_clean) >= 126:
-        recent = sma_clean.iloc[-126:]
-        start, end = float(recent.iloc[0]), float(recent.iloc[-1])
-        if start > 0:
-            slope = (end / start) - 1.0
+    if len(close) >= 200:
+        sma200 = close.rolling(window=200).mean()
+        sma_now = float(sma200.iloc[-1])
+        price_vs = (price / sma_now) - 1.0 if sma_now > 0 else None
 
-    daily_change = None
-    if len(close) >= 2:
-        prev_close = float(close.iloc[-2])
-        if prev_close > 0:
-            daily_change = (price / prev_close) - 1.0
+        if len(close) >= 252:
+            past = float(close.iloc[-252])
+            if past > 0:
+                return_12m = (price / past) - 1.0
+            daily_ret = close.iloc[-252:].pct_change().dropna()
+            if len(daily_ret) > 30:
+                vol = float(daily_ret.std() * math.sqrt(252))
+
+        sma_clean = sma200.dropna()
+        if len(sma_clean) >= 126:
+            recent = sma_clean.iloc[-126:]
+            start, end = float(recent.iloc[0]), float(recent.iloc[-1])
+            if start > 0:
+                slope = (end / start) - 1.0
 
     return price_vs, return_1m, return_12m, slope, vol, daily_change
 
@@ -238,6 +243,36 @@ def _technical_indicators(
     return rsi, hist_pct
 
 
+def _apply_history_common(
+    data: StockData | EtfData,
+    history: pd.DataFrame,
+    *,
+    include_volatility: bool = False,
+) -> None:
+    """Apply trend metrics, technical indicators, and price fallback to data.
+
+    Extracts the common history-processing logic shared between stock and
+    ETF fetching to avoid duplication.
+    """
+    pvs, r1m, r12, slope, vol, daily = _trend_metrics(history)
+    data.price_vs_sma200 = pvs
+    data.return_1m = r1m
+    data.return_12m = r12
+    data.sma200_slope = slope
+    data.daily_change = daily
+    if include_volatility and isinstance(data, EtfData):
+        data.volatility_1y = vol
+        if r12 is not None and vol is not None and vol > 0:
+            data.sharpe_proxy = (r12 - RISK_FREE_RATE) / vol
+    if history is not None and not history.empty:
+        close = history["Close"].dropna()
+        rsi, macd = _technical_indicators(close)
+        data.rsi_14 = rsi
+        data.macd_histogram = macd
+    if data.current_price is None and history is not None and not history.empty:
+        data.current_price = float(history["Close"].iloc[-1])
+
+
 def _fetch_stock(ticker: str, info: dict, history: pd.DataFrame) -> StockData:
     data = StockData(ticker=ticker)
     data.name = info.get("shortName") or info.get("longName")
@@ -259,21 +294,7 @@ def _fetch_stock(ticker: str, info: dict, history: pd.DataFrame) -> StockData:
     data.payout_ratio = _safe_get(info, "payoutRatio")
     data.market_cap = _safe_get(info, "marketCap")
     data.current_price = _first(_safe_get(info, "currentPrice"), _safe_get(info, "regularMarketPrice"))
-
-    pvs, r1m, r12, slope, _vol, daily = _trend_metrics(history)
-    data.price_vs_sma200 = pvs
-    data.return_1m = r1m
-    data.return_12m = r12
-    data.sma200_slope = slope
-    data.daily_change = daily
-    if history is not None and not history.empty:
-        close = history["Close"].dropna()
-        rsi, macd = _technical_indicators(close)
-        data.rsi_14 = rsi
-        data.macd_histogram = macd
-    if data.current_price is None and history is not None and not history.empty:
-        data.current_price = float(history["Close"].iloc[-1])
-
+    _apply_history_common(data, history)
     return data
 
 
@@ -295,24 +316,7 @@ def _fetch_etf(ticker: str, info: dict, history: pd.DataFrame) -> EtfData:
     data.yield_ = _first(_safe_get(info, "yield"), _safe_get(info, "trailingAnnualDividendYield"))
     data.current_price = _first(_safe_get(info, "regularMarketPrice"), _safe_get(info, "previousClose"))
     data.nav = _safe_get(info, "navPrice")
-
-    pvs, r1m, r12, slope, vol, daily = _trend_metrics(history)
-    data.price_vs_sma200 = pvs
-    data.return_1m = r1m
-    data.return_12m = r12
-    data.sma200_slope = slope
-    data.volatility_1y = vol
-    data.daily_change = daily
-    if r12 is not None and vol is not None and vol > 0:
-        data.sharpe_proxy = (r12 - RISK_FREE_RATE) / vol
-    if history is not None and not history.empty:
-        close = history["Close"].dropna()
-        rsi, macd = _technical_indicators(close)
-        data.rsi_14 = rsi
-        data.macd_histogram = macd
-    if data.current_price is None and history is not None and not history.empty:
-        data.current_price = float(history["Close"].iloc[-1])
-
+    _apply_history_common(data, history, include_volatility=True)
     return data
 
 

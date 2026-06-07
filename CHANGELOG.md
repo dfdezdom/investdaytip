@@ -37,6 +37,13 @@
 - **Python 3.10 ISO-8601 timestamp parsing fixed** — `sentiment.py` now normalizes "Z" suffix to "+00:00" before calling `datetime.fromisoformat()`, which doesn't support "Z" in Python 3.10
 - **`run_comprehensive()` no longer aborts on missing portfolio** — portfolio review errors are logged to `result["errors"]` but recommendations are still generated, making the function more resilient
 - **Advisor superinvestor warm-up skipped for ETFs** — when `--asset-class etfs` is specified, the ~80 HTTP requests for superinvestor data are now skipped since superinvestor data is only relevant for stocks
+- **Constant dictionaries moved to module level** in `recommender.py` — `_CURRENCY_TO_REGION` and `_TICKER_ALIASES` are no longer recreated on every `_build_universe()` call, reducing allocation overhead
+- **Duplicated history-processing code extracted** in `data_source.py` — `_apply_history_common()` helper eliminates the identical 7-line block that was duplicated between `_fetch_stock()` and `_fetch_etf()`
+- **`_trend_metrics()` degrades gracefully** — short histories (<200 bars) no longer discard all metrics; daily_change and 1m return are now computed even when SMA200-dependent metrics (price_vs_sma200, return_12m, slope, volatility) cannot be calculated
+- **Fetch and score exceptions separated** in `recommender.py` — distinct log messages (`Failed to fetch %s` vs `Failed to score %s`) make it easier to diagnose whether a ticker is missing due to a network issue or a scoring bug
+- **Rate limiting added to DataRoma scraper** — polite `time.sleep(0.5)` between successful manager requests, plus clearer retry-exhaustion logging
+- **`fear_greed_index()` moved out of `export_recommendations_html()`** — the caller now fetches and passes the data explicitly, eliminating the side-effect network call inside the rendering function and making the export pure
+- **Cache safety improvements** — `close_all()` no longer sets a `_closed` flag that would block legitimate reopening; `clear()` now runs `VACUUM` after `commit()` to reclaim space; `set()` purges expired rows every 100 writes to prevent unbounded growth
 - **Universe corrections** (validated with live yfinance data):
   - `asia_universe.py`: Fixed 5 incorrect comments (e.g., `0001.HK` is CKH Holdings not HSBC, `8802.T` is Mitsubishi Estate not Astellas Pharma)
   - `asia_universe.py`: Replaced 3 delisted/low-quality tickers: `1918.HK` (Sunac, penny stock) → `0388.HK` (HKEX), `DXN.AX` (penny stock) → `CSL.AX` (CSL), `C61U.SI` (delisted) → `BN4.SI` (Keppel), `5491.T` (JUKI) → `4503.T` (Astellas Pharma)

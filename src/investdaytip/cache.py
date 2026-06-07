@@ -39,8 +39,12 @@ class CacheDB:
         # otherwise leak file handles across repeated recommend() runs.
         self._all_conns: list[sqlite3.Connection] = []
         self._conns_lock = threading.Lock()
+        self._closed = False
+        self._write_count = 0
 
     def _connect(self) -> sqlite3.Connection:
+        if self._closed:
+            raise RuntimeError("CacheDB has been closed")
         conn: sqlite3.Connection | None = getattr(self._local, "conn", None)
         if conn is None:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -51,7 +55,7 @@ class CacheDB:
                 "  key TEXT PRIMARY KEY,"
                 "  data TEXT NOT NULL,"
                 "  expires_at REAL NOT NULL"
-                ")"
+                "  )"
             )
             self._local.conn = conn
             with self._conns_lock:
@@ -72,10 +76,13 @@ class CacheDB:
         return data
 
     def set(self, key: str, data: str, ttl: int) -> None:
-        """Insert or update a cache entry."""
+        """Insert or update a cache entry, purging expired rows every 100 writes."""
         conn = self._connect()
         now = time.time()
         with self._write_lock:
+            self._write_count += 1
+            if self._write_count % 100 == 0:
+                conn.execute("DELETE FROM cache WHERE expires_at < ?", (now,))
             conn.execute(
                 "INSERT OR REPLACE INTO cache (key, data, expires_at) VALUES (?, ?, ?)",
                 (key, data, now + ttl),
@@ -83,11 +90,13 @@ class CacheDB:
             conn.commit()
 
     def clear(self) -> None:
-        """Delete all cached entries."""
+        """Delete all cached entries and run VACUUM."""
         conn = self._connect()
         with self._write_lock:
             conn.execute("DELETE FROM cache")
             conn.commit()
+        # VACUUM cannot run inside a transaction
+        conn.execute("VACUUM")
 
     def close(self) -> None:
         """Close the calling thread's connection."""

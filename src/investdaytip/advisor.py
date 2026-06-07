@@ -393,6 +393,7 @@ def run_comprehensive(
                 dest = (
                     f"advisor_recommendations/advisor_{region}_{ac}_{timestamp}.html"
                 )
+                from investdaytip.sentiment import fear_greed_index
                 out = export_recommendations_html(
                     filtered,
                     dest,
@@ -401,6 +402,7 @@ def run_comprehensive(
                     region=region,
                     currency=ccy,
                     tickers=None,
+                    fear_greed=fear_greed_index(),
                 )
                 result["html_reports"].append(out)
             except YFRateLimitError:
@@ -767,11 +769,13 @@ def advisor_main(argv: list[str] | None = None) -> int:
         Path("advisor_recommendations").mkdir(parents=True, exist_ok=True)
         dest = f"advisor_recommendations/recommendations_advisor_{datetime.now():%Y%m%d-%H%M}.html"
         try:
+            from investdaytip.sentiment import fear_greed_index
             out = export_recommendations_html(
                 new_results, dest, top_n=10,
                 asset_class=ac, region=reg,
                 currency=ccy, tickers=None,
                 include_superinvestor=args.superinvestor,
+                fear_greed=fear_greed_index(),
             )
             logger.info("Advisor HTML report exported: %s", out)
             console.print(f"\n[green]📄 HTML report:[/green] {out}")

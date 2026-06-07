@@ -621,6 +621,7 @@ def main(argv: list[str] | None = None) -> int:
                 meta_asset_class = args.asset_class
                 meta_region = args.region
                 meta_currency = args.currency
+            from investdaytip.sentiment import fear_greed_index
             out_path = export_recommendations_html(
                 results,
                 destination,
@@ -633,6 +634,7 @@ def main(argv: list[str] | None = None) -> int:
                 include_superinvestor=args.superinvestor,
                 include_technical=args.include_technical,
                 sector=args.sector,
+                fear_greed=fear_greed_index(),
             )
             logger.info("HTML report exported: %s", out_path)
             console.print(f"[green]HTML report exported:[/green] {out_path}")
