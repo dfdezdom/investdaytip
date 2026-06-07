@@ -179,7 +179,7 @@ def main() -> None:
     run = sub.add_parser("run", help="Run backtest and save baseline JSON")
     run.add_argument("--tag", required=True, help="Baseline tag (e.g. 'v1.2')")
     run.add_argument("-r", "--region", default="us")
-    run.add_argument("-n", "--top-n", type=int, default=5)
+    run.add_argument("-n", "--top-n", type=int, default=10)
     run.add_argument("--period", default="5y")
     run.add_argument("--interval-months", type=int, default=3)
     run.add_argument("--min-market-cap", type=float, default=2_000_000_000)

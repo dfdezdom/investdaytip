@@ -15,10 +15,15 @@
 - 6 new tests for technical indicator computation and scoring behavior
 - 176 total tests, all passing
 
+### Fixes
+
+- Backtest default `top_n` raised from 5 to 10 based on validation: with the full US universe, top 5 produced negative alpha (-3%) while top 10 delivers positive alpha (+1.1%), better Sharpe (0.45 vs 0.24), and lower max drawdown
+
 ### Docs
 
 - README updated with `--include-technical` flag, RSI/MACD output columns, and Trend pillar description
 - AGENTS.md updated with `--include-technical` validation note
+- Backtest examples and `scoring_baseline.py` docs updated to reflect new default `top_n=10`
 
 ---
 

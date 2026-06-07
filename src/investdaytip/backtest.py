@@ -654,7 +654,7 @@ def _fetch_all_data(
 def run_backtest(
     tickers: list[str] | None = None,
     *,
-    top_n: int = 5,
+    top_n: int = 10,
     period: str = "5y",
     interval_months: int = 3,
     benchmark: str | None = None,

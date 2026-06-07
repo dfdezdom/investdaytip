@@ -421,8 +421,8 @@ def main(argv: list[str] | None = None) -> int:
                      help="Clear all cached data.")
 
     bt = sub.add_parser("backtest", help="Historical backtest of the scoring model (stocks only).")
-    bt.add_argument("-n", "--top", type=int, default=5,
-                    help="Top N picks per snapshot (default: 5).")
+    bt.add_argument("-n", "--top", type=int, default=10,
+                    help="Top N picks per snapshot (default: 10).")
     bt.add_argument("-t", "--tickers", nargs="+", default=None,
                     help="Custom ticker list.")
     bt.add_argument("-r", "--region", metavar="REG", nargs="+",

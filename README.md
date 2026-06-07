@@ -225,14 +225,14 @@ Use the included `scripts/scoring_baseline.py` to validate scoring changes objec
 ```bash
 # Save baseline BEFORE your change
 python scripts/scoring_baseline.py run \
-  --tag "before" -r us -n 5 \
+  --tag "before" -r us -n 10 \
   -t "AAPL MSFT GOOGL META NVDA" \
   --period 2y --interval-months 3 \
   --min-market-cap 0
 
 # Save baseline AFTER your change
 python scripts/scoring_baseline.py run \
-  --tag "after" -r us -n 5 \
+  --tag "after" -r us -n 10 \
   -t "AAPL MSFT GOOGL META NVDA" \
   --period 2y --interval-months 3 \
   --min-market-cap 0
