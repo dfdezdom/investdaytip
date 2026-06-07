@@ -186,3 +186,50 @@ def test_export_backtest_html_shows_errors(tmp_path):
     html = out.read_text(encoding="utf-8")
     assert "Could not fetch SPY" in html
     assert "Rate limit hit" in html
+
+
+# ── Superinvestor & Technical columns ────────────────────────────────────────
+
+
+def test_export_html_includes_superinvestor_column(tmp_path):
+    stock = ScoredAsset(
+        data=StockData(
+            ticker="AAPL", name="Apple", sector="Technology",
+            current_price=190.5, return_1m=0.03, return_12m=0.21,
+            currency="USD",
+        ),
+        asset_type="STOCK", total=88.2,
+        breakdown={"Quality": 90, "Value": 75, "Health": 85, "Trend": 88},
+        rationale=["strong ROE"],
+        superinvestor_count=12,
+    )
+    out = tmp_path / "si.html"
+    export_recommendations_html(
+        [stock], str(out), top_n=5, asset_class="all", tickers=None,
+        include_superinvestor=True,
+    )
+    html = out.read_text(encoding="utf-8")
+    assert "Superinvestors" in html
+    assert "12" in html
+
+
+def test_export_html_includes_technical_columns(tmp_path):
+    stock = ScoredAsset(
+        data=StockData(
+            ticker="AAPL", name="Apple", sector="Technology",
+            current_price=190.5, return_1m=0.03, return_12m=0.21,
+            currency="USD", rsi_14=28.5, macd_histogram=0.02,
+        ),
+        asset_type="STOCK", total=88.2,
+        breakdown={"Quality": 90, "Value": 75, "Health": 85, "Trend": 88},
+        rationale=["RSI 28.5 suggests oversold", "MACD histogram positive"],
+    )
+    out = tmp_path / "tech.html"
+    export_recommendations_html(
+        [stock], str(out), top_n=5, asset_class="all", tickers=None,
+        include_technical=True,
+    )
+    html = out.read_text(encoding="utf-8")
+    assert "RSI" in html
+    assert "MACD" in html
+    assert "28.5" in html

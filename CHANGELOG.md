@@ -13,7 +13,7 @@
 ### Tests
 
 - 6 new tests for technical indicator computation and scoring behavior
-- 187 total tests, all passing
+- 229 total tests, all passing
 
 ### Fixes
 
@@ -29,6 +29,10 @@
 - **`_linear()` guards against NaN/inf** — scoring normalization now rejects non-finite values (NaN, +inf, -inf) via `math.isfinite()`, falling back to neutral default instead of propagating invalid values through the scoring pipeline
 - **DataRoma cache corruption handled** — `json.loads()` in `dataroma.py` now wrapped in `try/except (JSONDecodeError, ValueError)` to gracefully handle corrupt cache data and trigger a fresh fetch instead of crashing
 - **Unified `_fmt_pct` in HTML export** — merged `_fmt_pct` and `_fmt_pct_str` into a single function that uses `_is_finite_number()` guard, preventing crashes on NaN/inf values and eliminating code duplication
+- **`get_recommendations()` API now exposes `sector` and `include_technical`** — programmatic API users can now filter by sector and include technical indicators, matching the underlying `recommend()` capabilities
+- **Cross-universe aliases expanded** — added `RIO.AX`→`RIO.L` (Rio Tinto) and `ASML.AS`→`ASML` (ASML) to prevent duplicate fetches when multiple regions are merged
+- **42 new tests** covering: `get_recommendations()` public API (3 tests), `_safe_get()` NaN/inf rejection (9 tests), `_first()` fallback chain (4 tests), `_linear()` and `_clamp()` scoring primitives (16 tests), ETF fetch path including expense ratio fallback and Sharpe proxy (3 tests), HTML export with superinvestor/technical columns (2 tests), cross-universe aliases (5 tests)
+- **Removed duplicated currency filter test** from `test_integration.py` (already covered in `test_recommender.py`)
 - **Universe corrections** (validated with live yfinance data):
   - `asia_universe.py`: Fixed 5 incorrect comments (e.g., `0001.HK` is CKH Holdings not HSBC, `8802.T` is Mitsubishi Estate not Astellas Pharma)
   - `asia_universe.py`: Replaced 3 delisted/low-quality tickers: `1918.HK` (Sunac, penny stock) → `0388.HK` (HKEX), `DXN.AX` (penny stock) → `CSL.AX` (CSL), `C61U.SI` (delisted) → `BN4.SI` (Keppel), `5491.T` (JUKI) → `4503.T` (Astellas Pharma)

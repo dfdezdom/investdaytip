@@ -7,7 +7,14 @@ import pandas as pd
 import pytest
 from yfinance.exceptions import YFRateLimitError
 
-from investdaytip.data_source import StockData, _technical_indicators, fetch_asset
+from investdaytip.data_source import (
+    EtfData,
+    StockData,
+    _first,
+    _safe_get,
+    _technical_indicators,
+    fetch_asset,
+)
 
 
 def _mock_ticker(info: dict, history: pd.DataFrame | None = None) -> MagicMock:
@@ -143,3 +150,118 @@ def test_technical_indicators_oversold_rsi():
     rsi, _ = _technical_indicators(close)
     assert rsi is not None
     assert rsi < 30.0  # clearly oversold
+
+
+# ── _safe_get() ──────────────────────────────────────────────────────────────
+
+
+class TestSafeGet:
+    def test_returns_none_for_missing_key(self):
+        assert _safe_get({}, "foo") is None
+
+    def test_returns_none_for_none_value(self):
+        assert _safe_get({"foo": None}, "foo") is None
+
+    def test_returns_float_for_valid_number(self):
+        assert _safe_get({"foo": 42}, "foo") == 42.0
+        assert _safe_get({"foo": "3.14"}, "foo") == 3.14
+
+    def test_returns_none_for_nan(self):
+        assert _safe_get({"foo": float("nan")}, "foo") is None
+
+    def test_returns_none_for_positive_inf(self):
+        assert _safe_get({"foo": float("inf")}, "foo") is None
+
+    def test_returns_none_for_negative_inf(self):
+        assert _safe_get({"foo": float("-inf")}, "foo") is None
+
+    def test_returns_none_for_non_numeric_string(self):
+        assert _safe_get({"foo": "not a number"}, "foo") is None
+
+    def test_returns_zero_for_zero(self):
+        assert _safe_get({"foo": 0}, "foo") == 0.0
+        assert _safe_get({"foo": 0.0}, "foo") == 0.0
+
+
+# ── _first() ─────────────────────────────────────────────────────────────────
+
+
+class TestFirst:
+    def test_returns_first_non_none(self):
+        assert _first(None, None, 3.0) == 3.0
+
+    def test_preserves_zero(self):
+        assert _first(0.0, 1.0) == 0.0
+
+    def test_returns_none_when_all_none(self):
+        assert _first(None, None, None) is None
+
+    def test_returns_first_value(self):
+        assert _first(1.0, 2.0, 3.0) == 1.0
+
+
+# ── ETF fetch path ───────────────────────────────────────────────────────────
+
+
+def _mock_etf_ticker(info: dict, history: pd.DataFrame | None = None) -> MagicMock:
+    mock = MagicMock()
+    mock.info = info
+    mock.history.return_value = history if history is not None else pd.DataFrame({"Close": [100] * 300})
+    return mock
+
+
+def test_fetch_asset_detects_etf_quote_type(mocker):
+    info = {
+        "quoteType": "ETF",
+        "longName": "Vanguard S&P 500 ETF",
+        "currency": "USD",
+        "exchange": "PCX",
+        "totalAssets": 400_000_000_000,
+        "annualReportExpenseRatio": 0.0003,
+        "threeYearAverageReturn": 0.12,
+        "fiveYearAverageReturn": 0.14,
+        "yield": 0.015,
+    }
+    mock = _mock_etf_ticker(info)
+    mocker.patch("investdaytip.data_source.yf.Ticker", return_value=mock)
+
+    result = fetch_asset("VOO")
+    assert isinstance(result, EtfData)
+    assert result.ticker == "VOO"
+    assert result.total_assets == 400_000_000_000
+    assert result.expense_ratio == 0.0003
+
+
+def test_fetch_asset_etf_expense_ratio_fallback_chain(mocker):
+    info = {
+        "quoteType": "ETF",
+        "longName": "Test ETF",
+        "currency": "USD",
+        "totalAssets": 1_000_000_000,
+        "netExpenseRatio": 0.0010,
+    }
+    mock = _mock_etf_ticker(info)
+    mocker.patch("investdaytip.data_source.yf.Ticker", return_value=mock)
+
+    result = fetch_asset("TEST")
+    assert isinstance(result, EtfData)
+    assert result.expense_ratio == 0.0010
+
+
+def test_fetch_asset_etf_sharpe_proxy_computed(mocker):
+    info = {
+        "quoteType": "ETF",
+        "longName": "Test ETF",
+        "currency": "USD",
+        "totalAssets": 1_000_000_000,
+    }
+    prices = np.linspace(100, 130, 300)
+    history = pd.DataFrame({"Close": prices})
+    mock = _mock_etf_ticker(info, history)
+    mocker.patch("investdaytip.data_source.yf.Ticker", return_value=mock)
+
+    result = fetch_asset("TEST")
+    assert isinstance(result, EtfData)
+    assert result.return_12m is not None
+    assert result.volatility_1y is not None
+    assert result.sharpe_proxy is not None

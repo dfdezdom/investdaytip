@@ -34,11 +34,14 @@ def get_recommendations(
     region: str | list[str] = "all",
     currency: str | list[str] = "all",
     min_market_cap: float = 2_000_000_000,
+    sector: str | None = None,
+    include_technical: bool = False,
 ) -> list[ScoredAsset]:
     """Programmatic API: return the top ``top_n`` long-term buy recommendations."""
     return recommend(
         tickers=tickers, top_n=top_n, asset_class=asset_class,
         region=region, currency=currency, min_market_cap=min_market_cap,
+        sector=sector, include_technical=include_technical,
     )
 
 

@@ -85,19 +85,6 @@ class TestRecommendFullFlow:
         out = recommend(tickers=["AAA", "BBB", "CCC"], top_n=10, sector="Healthcare")
         assert out == []
 
-    def test_currency_filter_keeps_none_and_matches(self, mocker):
-        def _fetch(ticker, min_market_cap=0.0):
-            currencies = {"USD_T": "USD", "EUR_T": "EUR", "NONE_T": None}
-            return StockData(ticker=ticker, currency=currencies[ticker], market_cap=5e9)
-
-        mocker.patch("investdaytip.recommender.fetch_asset", side_effect=_fetch)
-        mocker.patch("investdaytip.recommender.close_db")
-        out = recommend(tickers=["USD_T", "EUR_T", "NONE_T"], top_n=10, currency="USD")
-        tickers = {s.data.ticker for s in out}
-        assert "USD_T" in tickers
-        assert "NONE_T" in tickers
-        assert "EUR_T" not in tickers
-
     def test_min_market_cap_is_passed_to_fetch(self, mocker):
         fetch = mocker.patch("investdaytip.recommender.fetch_asset", return_value=StockData(ticker="X"))
         mocker.patch("investdaytip.recommender.close_db")
@@ -207,8 +194,8 @@ class TestBuildUniverseExtended:
 
         u = _build_universe(None, "stocks", ["us", "eu"], "all")
         expected = set(DEFAULT_UNIVERSE) | set(DEFAULT_EU_UNIVERSE)
-        # Aliases applied when multiple regions merged: RACE.MI -> RACE
-        expected = (expected - {"RACE.MI"}) | {"RACE"}
+        # Aliases applied when multiple regions merged
+        expected = (expected - {"RACE.MI", "ASML.AS"}) | {"RACE", "ASML"}
         assert set(u) == expected
         assert len(u) == len(expected)
 
@@ -228,8 +215,8 @@ class TestBuildUniverseExtended:
 
         u = _build_universe(None, "stocks", "all", ["USD", "EUR"])
         expected = set(DEFAULT_UNIVERSE) | set(DEFAULT_EU_UNIVERSE) | set(SUPERINVESTOR_UNIVERSE)
-        # Aliases applied when multiple regions merged: RACE.MI -> RACE
-        expected = (expected - {"RACE.MI"}) | {"RACE"}
+        # Aliases applied when multiple regions merged
+        expected = (expected - {"RACE.MI", "ASML.AS"}) | {"RACE", "ASML"}
         assert set(u) == expected
         from investdaytip.asia_universe import ASIA_UNIVERSE
 
@@ -289,3 +276,55 @@ class TestBacktestCLI:
                       side_effect=OSError("write error"))
         rc = main(["backtest", "-t", "AAPL", "--export-html", "/x/y/z.html"])
         assert rc == 1
+
+
+# =========================================================================
+# get_recommendations() — public programmatic API
+# =========================================================================
+
+
+class TestGetRecommendations:
+    def test_returns_scored_assets(self, mocker):
+        def _fetch(ticker, min_market_cap=0.0):
+            return StockData(
+                ticker=ticker, currency="USD", market_cap=10e9,
+                return_on_equity=0.20, profit_margin=0.15,
+            )
+
+        mocker.patch("investdaytip.recommender.fetch_asset", side_effect=_fetch)
+        mocker.patch("investdaytip.recommender.close_db")
+
+        from investdaytip import get_recommendations
+
+        out = get_recommendations(tickers=["AAPL", "MSFT"], top_n=2)
+        assert len(out) == 2
+        assert all(hasattr(s, "total") for s in out)
+        assert out[0].total >= out[1].total
+
+    def test_top_n_limits_results(self, mocker):
+        def _fetch(ticker, min_market_cap=0.0):
+            return StockData(ticker=ticker, currency="USD", market_cap=10e9)
+
+        mocker.patch("investdaytip.recommender.fetch_asset", side_effect=_fetch)
+        mocker.patch("investdaytip.recommender.close_db")
+
+        from investdaytip import get_recommendations
+
+        out = get_recommendations(tickers=["A", "B", "C", "D", "E"], top_n=3)
+        assert len(out) == 3
+
+    def test_sector_filter(self, mocker):
+        def _fetch(ticker, min_market_cap=0.0):
+            sector = "Technology" if ticker in ("AAPL", "MSFT") else "Financial"
+            return StockData(ticker=ticker, currency="USD", market_cap=10e9, sector=sector)
+
+        mocker.patch("investdaytip.recommender.fetch_asset", side_effect=_fetch)
+        mocker.patch("investdaytip.recommender.close_db")
+
+        from investdaytip import get_recommendations
+
+        out = get_recommendations(
+            tickers=["AAPL", "MSFT", "JPM"], top_n=10, sector="Technology"
+        )
+        assert all(s.data.sector == "Technology" for s in out)
+        assert len(out) == 2

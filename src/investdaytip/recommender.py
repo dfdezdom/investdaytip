@@ -89,6 +89,8 @@ def _build_universe(
         "2330.TW": "TSM",    # Taiwan Semiconductor
         "9988.HK": "BABA",   # Alibaba
         "RACE.MI": "RACE",   # Ferrari
+        "RIO.AX": "RIO.L",   # Rio Tinto (ASX → LSE)
+        "ASML.AS": "ASML",   # ASML (Euronext → NASDAQ ADR)
     }
     seen: set[str] = set()
     merged: list[str] = []

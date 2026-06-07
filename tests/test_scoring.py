@@ -1,7 +1,8 @@
 """Tests for the scoring engine (pure functions, no network)."""
 
+
 from investdaytip.data_source import StockData
-from investdaytip.scoring import score_stock
+from investdaytip.scoring import _clamp, _linear, score_stock
 
 
 def _base_data() -> StockData:
@@ -116,3 +117,65 @@ def test_include_technical_false_preserves_original_scoring():
     s_original = score_stock(equivalent, include_technical=False)
     assert s_disabled.total == s_original.total
     assert s_disabled.breakdown == s_original.breakdown
+
+
+# ── _clamp() ─────────────────────────────────────────────────────────────────
+
+
+class TestClamp:
+    def test_clamps_below(self):
+        assert _clamp(-10.0) == 0.0
+
+    def test_clamps_above(self):
+        assert _clamp(150.0) == 100.0
+
+    def test_passthrough_in_range(self):
+        assert _clamp(50.0) == 50.0
+
+    def test_custom_bounds(self):
+        assert _clamp(5.0, lo=10.0, hi=20.0) == 10.0
+        assert _clamp(25.0, lo=10.0, hi=20.0) == 20.0
+        assert _clamp(15.0, lo=10.0, hi=20.0) == 15.0
+
+
+# ── _linear() ────────────────────────────────────────────────────────────────
+
+
+class TestLinear:
+    def test_best_maps_to_100(self):
+        assert _linear(10.0, best=10, worst=40) == 100.0
+
+    def test_worst_maps_to_0(self):
+        assert _linear(40.0, best=10, worst=40) == 0.0
+
+    def test_midpoint(self):
+        result = _linear(25.0, best=10, worst=40)
+        assert 45.0 <= result <= 55.0
+
+    def test_clamps_above_best(self):
+        assert _linear(5.0, best=10, worst=40) == 100.0
+
+    def test_clamps_below_worst(self):
+        assert _linear(50.0, best=10, worst=40) == 0.0
+
+    def test_none_returns_default(self):
+        assert _linear(None, best=10, worst=40) == 50.0
+
+    def test_none_returns_custom_default(self):
+        assert _linear(None, best=10, worst=40, default=75.0) == 75.0
+
+    def test_degenerate_range_returns_default(self):
+        assert _linear(25.0, best=25, worst=25) == 50.0
+
+    def test_nan_returns_default(self):
+        assert _linear(float("nan"), best=10, worst=40) == 50.0
+
+    def test_inf_returns_default(self):
+        assert _linear(float("inf"), best=10, worst=40) == 50.0
+
+    def test_negative_inf_returns_default(self):
+        assert _linear(float("-inf"), best=10, worst=40) == 50.0
+
+    def test_inverted_direction_lower_is_better(self):
+        assert _linear(0.2, best=0.2, worst=2.0) == 100.0
+        assert _linear(2.0, best=0.2, worst=2.0) == 0.0

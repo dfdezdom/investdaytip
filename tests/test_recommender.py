@@ -55,6 +55,10 @@ class TestBuildUniverse:
         assert "RACE.MI" not in u
         assert "TSM" in u
         assert "2330.TW" not in u
+        assert "RIO.L" in u
+        assert "RIO.AX" not in u
+        assert "ASML" in u
+        assert "ASML.AS" not in u
 
     def test_unknown_currency_keeps_all_regions(self):
         u_all = _build_universe(None, "stocks", "all", "all")
