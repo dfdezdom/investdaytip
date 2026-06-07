@@ -45,7 +45,7 @@ ASIA_UNIVERSE: list[str] = [
     "S63.SI",  # ST Engineering
     "Z74.SI",  # Singtel
     "BS6.SI",  # Genting Singapore
-    "M44U.SI",  # Mapletree Logistics Trust
+    "S68.SI",  # Singapore Exchange
     
     # India (NSE .NS and BSE .BO)
     "RELIANCE.NS",  # Reliance Industries

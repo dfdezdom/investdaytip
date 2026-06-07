@@ -56,6 +56,10 @@
   - Aliases only applied when multiple universes are merged (e.g., `region=all`), not when a single region is requested
   - Prevents duplicate fetching/scoring of the same company listed on different exchanges
   - Integration tests updated to reflect alias mapping behavior
+  - Added `test_recommender.py` tests for cross-universe aliases (single vs multi-region)
+- `asia_universe.py`: replaced `M44U.SI` (Mapletree Logistics Trust, $6.0B) with `S68.SI` (Singapore Exchange, $23.3B)
+  - Verified all Asia universe tickers now have market cap >=$10B
+- README.md: added "Ticker normalization" note under Data Source section explaining GOOGL/GOOG deduplication in DataRoma pipeline
 
 ---
 

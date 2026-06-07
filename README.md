@@ -516,6 +516,8 @@ All market data is fetched live from **Yahoo Finance** via the [`yfinance`](http
 
 **Superinvestor data** is scraped from **DataRoma** (https://www.dataroma.com) — 13F filings from ~82 legendary investors. The data is fetched once and cached for 7 days. Use `--superinvestor` to enable this data and display the "Superinvestors" column in both the HTML report and the CLI table (disabled by default to avoid the ~80 HTTP requests).
 
+**Ticker normalization:** When a company has multiple share classes (e.g., Alphabet's GOOGL and GOOG), DataRoma holdings are normalized to a single ticker (GOOGL) to avoid duplicate counting. This ensures the "Superinvestors" column reflects unique manager positions, not duplicated entries.
+
 ### Local Cache
 
 InvestDayTip includes an **SQLite cache** (`~/.investdaytip/cache.db`) created automatically on first fetch:

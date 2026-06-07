@@ -42,6 +42,20 @@ class TestBuildUniverse:
         u = _build_universe(None, "stocks", "all", "EUR")
         assert set(u) == set(DEFAULT_EU_UNIVERSE)
 
+    def test_cross_universe_aliases_single_region(self):
+        """Aliases NOT applied when a single region is requested."""
+        u = _build_universe(None, "stocks", "eu", "all")
+        assert "RACE.MI" in u
+        assert "RACE" not in u
+
+    def test_cross_universe_aliases_multi_region(self):
+        """Aliases ARE applied when multiple regions are merged."""
+        u = _build_universe(None, "stocks", ["us", "eu", "asia"], "all")
+        assert "RACE" in u
+        assert "RACE.MI" not in u
+        assert "TSM" in u
+        assert "2330.TW" not in u
+
     def test_unknown_currency_keeps_all_regions(self):
         u_all = _build_universe(None, "stocks", "all", "all")
         u_unknown = _build_universe(None, "stocks", "all", "ZZZ")
