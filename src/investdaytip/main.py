@@ -26,6 +26,16 @@ from investdaytip.scoring import ScoredAsset
 
 logger = logging.getLogger(__name__)
 
+ASCII_LOGO = r"""
+.-----------------------------------------------------.
+|   ____                 __  ___           _______    |
+|  /  _/__ _  _____ ___ / /_/ _ \___ ___ _/_  __(_)__ |
+| _/ // _ \ |/ / -_|_-</ __/ // / _ `/ // // / / / _ \|
+|/___/_//_/___/\__/___/\__/____/\_,_/\_, //_/ /_/ .__/|
+|                                   /___/      /_/    |
+'-----------------------------------------------------'
+"""
+
 
 def get_recommendations(
     tickers: list[str] | None = None,
@@ -379,6 +389,8 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    console = Console()
+    console.print(ASCII_LOGO, style="bold cyan")
     parser = argparse.ArgumentParser(
         prog="investdaytip",
         description="Suggests long-term stock & ETF buy recommendations using multi-factor analysis.",
