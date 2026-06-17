@@ -32,6 +32,7 @@
 
 - **Dividend yield normalization** — `yfinance` reports `dividendYield` inconsistently (decimal for most US tickers, already-multiplied percentage for some European tickers). Added `_sanitize_yield()` to divide any value greater than `1.0` by 100, ensuring the new **Yield** column is always displayed as a correct percentage.
 - **Reliable stock dividend yield** — `yfinance`'s `dividendYield` field can be outright wrong for some tickers (e.g. AAPL ~36%, V ~80%). Stock yield is now computed as trailing-twelve-month dividends from `Ticker.dividends` divided by the current price, with `_sanitize_yield(info["dividendYield"])` as a fallback when raw dividends are unavailable. Verified live: AAPL now ~0.35%, V now ~0.79%.
+- **Fix `quant` + `--include-technical` score calculation** — the total score was computed before blending RSI/MACD into the Momentum factor, so technical indicators had no effect on rankings. The total is now recomputed after the technical blend, and the updated backtest numbers for the "When to use technical indicators" section reflect the corrected behavior.
 
 ### UI
 
@@ -45,8 +46,8 @@
 
 ### Docs
 
-- README.md: added dual-model documentation, `--scoring-model` CLI option, scoring-model comparison in `scoring_baseline.py` examples, new **Yield** output column, and dividend-yield normalization note
-- AGENTS.md: documented `classic`/`quant` models, weights, validation workflow, and `_sanitize_yield()` convention
+- README.md: added dual-model documentation, `--scoring-model` CLI option, scoring-model comparison in `scoring_baseline.py` examples, new **Yield** output column, dividend-yield normalization note, and updated "When to use technical indicators" backtest table for the `quant` model
+- AGENTS.md: documented `classic`/`quant` models, weights, validation workflow, `_sanitize_yield()` convention, and `_ttm_dividend_yield()` convention
 
 ## v0.4.1 (2026-06-07)
 

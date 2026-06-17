@@ -372,22 +372,24 @@ class QuantStockScorer:
             # Blend technical signal lightly into the momentum factor so the
             # overall five-factor structure remains stable.
             momentum = (momentum * 0.70) + (tech * 0.30)
-            breakdown = {
-                "Value": value,
-                "Growth": growth,
-                "Profitability": profitability,
-                "Momentum": momentum,
-                "EPS Revisions": eps_rev,
-            }
             rationale.extend(tech_notes)
-        else:
-            breakdown = {
-                "Value": value,
-                "Growth": growth,
-                "Profitability": profitability,
-                "Momentum": momentum,
-                "EPS Revisions": eps_rev,
-            }
+
+        breakdown = {
+            "Value": value,
+            "Growth": growth,
+            "Profitability": profitability,
+            "Momentum": momentum,
+            "EPS Revisions": eps_rev,
+        }
+
+        # Recompute total with the (possibly technical-blended) momentum.
+        total = (
+            value * STOCK_WEIGHTS_QUANT["value"]
+            + growth * STOCK_WEIGHTS_QUANT["growth"]
+            + profitability * STOCK_WEIGHTS_QUANT["profitability"]
+            + momentum * STOCK_WEIGHTS_QUANT["momentum"]
+            + eps_rev * STOCK_WEIGHTS_QUANT["eps_revisions"]
+        )
 
         # Re-check cap after technical blending (momentum could only improve).
         if disqualified:

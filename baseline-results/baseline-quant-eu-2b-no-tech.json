@@ -1,0 +1,25 @@
+{
+  "tag": "quant-eu-2b-no-tech",
+  "timestamp": "2026-06-18T00:24:56.066081",
+  "config": {
+    "tickers": null,
+    "region": "eu",
+    "top_n": 10,
+    "period": "5y",
+    "interval_months": 3,
+    "min_market_cap": 2000000000.0,
+    "dynamic_weights": false,
+    "regime": null,
+    "scoring_model": "quant"
+  },
+  "html_file": "/var/folders/3j/qxzd04k92zs5t0nkxp2qrbdr0000gn/T/tmp_r021etf/backtest-20260618-0024.html",
+  "snapshots": 11,
+  "cumulative_return": 2.1733000000000002,
+  "benchmark_return": 1.3068,
+  "alpha": 0.1229,
+  "sharpe": 1.15,
+  "benchmark_sharpe": 1.03,
+  "win_rate_6m": 0.727,
+  "win_rate_12m": 0.727,
+  "max_drawdown": 0.1084
+}

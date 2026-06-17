@@ -321,19 +321,21 @@ Decision rules:
 
 ### When to use technical indicators
 
-The `--include-technical` flag adds RSI-14 and MACD histogram to the Trend pillar (20% weight). Backtest validation across four scenarios shows **mixed results** — the flag helps concentrated lists but consistently hurts broad screens:
+The `--include-technical` flag adds RSI-14 and MACD histogram to the Momentum factor (15% weight, blended at 30%). Backtest validation across four scenarios under the **quant** model shows the flag is generally additive for US screens but mixed for concentrated mega-caps and EU:
 
 | Scenario | Without `--include-technical` | With `--include-technical` | Verdict |
-|---|---|---|---|
-| **US ($2B+)** (59 tickers, `-n 10`) | Alpha **10.32%**, Sharpe **1.20** | Alpha 3.01%, Sharpe 1.06 | ❌ **Worse** — fundamentals filter already captures quality; technicals add noise |
-| **US (no cap filter)** (59 tickers, `-n 10`) | Alpha 2.18%, Sharpe 0.45 | Alpha 1.89%, Sharpe **0.47** | ⚠️ Neutral — slightly lower alpha, marginally better Sharpe |
-| **US mega-caps ($200B+)** (59 tickers, `-n 2`) | Alpha −11.50%, Sharpe 0.69 | Alpha **−5.08%**, Sharpe **0.89** | ✅ **Improved** — alpha up 6.4pp, Sharpe +0.20, drawdown halved |
-| **EU ($2B+)** (66 tickers, `-n 10`) | Alpha **4.59%**, Sharpe 0.98 | Alpha −1.20%, Sharpe 0.75 | ❌ **Worse** — alpha, Sharpe, and win rate all decline |
+|---|---|---|---|---|
+| **US ($2B+)** (59 tickers, `-n 10`) | Alpha 10.44%, Sharpe 1.37 | Alpha **12.62%**, Sharpe **1.38** | ✅ **Improved** — higher alpha, Sharpe, and 12M win rate (63.6% → 72.7%) |
+| **US (no cap filter)** (59 tickers, `-n 10`) | Alpha −1.11%, Sharpe 0.44 | Alpha **2.46%**, Sharpe **0.54** | ✅ **Improved** — turns negative alpha positive; drawdown also improves (32.5% → 26.3%) |
+| **US mega-caps ($200B+)** (59 tickers, `-n 2`) | Alpha 1.53%, Sharpe **1.29** | Alpha **12.58%**, Sharpe 1.08 | ⚠️ **Mixed** — large alpha gain (+11pp) but Sharpe and risk-adjusted return decline |
+| **EU ($2B+)** (66 tickers, `-n 10`) | Alpha **12.29%**, Sharpe 1.15 | Alpha 10.56%, Sharpe **1.16** | ⚠️ **Neutral/Mixed** — alpha down slightly, Sharpe marginally better, win rate unchanged |
 
 **Guidelines:**
-- ✅ **Use it** when analyzing a small, concentrated list of mega-caps (e.g., custom `-t` list with 5–15 tickers with market cap >$200B)
-- ❌ **Avoid it** when running broad-screen scans — the fundamental filter already selects the best candidates, and technicals dilute the signal
-- ⚠️ **Test it** for your specific region and ticker list — results vary and may require different parameter calibration
+- ✅ **Use it** for broad US screens (`quant` model) — it improves both alpha and Sharpe
+- ⚠️ **Test it** for concentrated mega-cap lists — alpha improves strongly but risk-adjusted returns may dip
+- ⚠️ **Test it** for EU screens — results are close to a wash; verify on your specific ticker list
+- ❌ **Avoid it** if you rely on the `classic` model — the original Trend-pillar integration showed consistent degradation on broad screens (see pre-quant documentation if needed)
+
 
 ### Market Cap Classification
 

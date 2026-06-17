@@ -1,0 +1,25 @@
+{
+  "tag": "quant-us-mega-no-tech",
+  "timestamp": "2026-06-18T00:24:56.592681",
+  "config": {
+    "tickers": null,
+    "region": "us",
+    "top_n": 2,
+    "period": "5y",
+    "interval_months": 3,
+    "min_market_cap": 200000000000.0,
+    "dynamic_weights": false,
+    "regime": null,
+    "scoring_model": "quant"
+  },
+  "html_file": "/var/folders/3j/qxzd04k92zs5t0nkxp2qrbdr0000gn/T/tmp971_g4bd/backtest-20260618-0024.html",
+  "snapshots": 11,
+  "cumulative_return": 2.161,
+  "benchmark_return": 2.0313999999999997,
+  "alpha": 0.015300000000000001,
+  "sharpe": 1.29,
+  "benchmark_sharpe": 1.29,
+  "win_rate_6m": 0.545,
+  "win_rate_12m": 0.545,
+  "max_drawdown": 0.0588
+}
