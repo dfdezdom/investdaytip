@@ -22,6 +22,7 @@ from investdaytip.dataroma import fetch_superinvestor_universe, get_superinvesto
 from investdaytip.html_export import export_recommendations_html
 from investdaytip.main import _load_tickers_from_file, _parse_min_market_cap, _render
 from investdaytip.recommender import recommend
+from investdaytip.scoring import resolve_include_technical
 from investdaytip.sentiment import fear_greed_index
 
 logger = logging.getLogger(__name__)
@@ -259,6 +260,7 @@ def portfolio_review(
     cartera_path: str,
     min_market_cap: float = 2_000_000_000,
     scoring_model: str = "quant",
+    include_technical: bool | None = None,
 ) -> dict:
     """Score existing portfolio, flag weak positions."""
     if not Path(cartera_path).exists():
@@ -273,6 +275,7 @@ def portfolio_review(
         top_n=len(tickers),
         min_market_cap=min_market_cap,
         scoring_model=scoring_model,
+        include_technical=include_technical,
     )
 
     weak = [s for s in results if s.total < 40]
@@ -321,6 +324,7 @@ def run_comprehensive(
     currencies: dict[str, str] | None = None,
     min_market_cap: float = 2_000_000_000,
     scoring_model: str = "quant",
+    include_technical: bool | None = None,
 ) -> dict:
     """Run analysis across multiple region×asset_class combinations.
 
@@ -356,7 +360,7 @@ def run_comprehensive(
     result: dict = {
         "macro": macro_regime(),
         "bubble": bubble_risk(),
-        "portfolio": portfolio_review(portfolio_path, min_market_cap, scoring_model),
+        "portfolio": portfolio_review(portfolio_path, min_market_cap, scoring_model, include_technical),
         "recommendations": {},
         "errors": [],
         "html_reports": [],
@@ -391,6 +395,7 @@ def run_comprehensive(
                     currency=ccy,
                     min_market_cap=min_market_cap,
                     scoring_model=scoring_model,
+                    include_technical=include_technical,
                 )
                 filtered = [
                     r for r in recs
@@ -413,6 +418,7 @@ def run_comprehensive(
                     region=region,
                     currency=ccy,
                     tickers=None,
+                    include_technical=include_technical,
                     fear_greed=fear_greed_index(),
                     scoring_model=scoring_model,
                 )
@@ -472,11 +478,17 @@ def advisor_main(argv: list[str] | None = None) -> int:
                         help="Include superinvestor ownership data.")
     parser.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",
                         help="Scoring model to use (default: quant).")
+    adv_tech = parser.add_mutually_exclusive_group()
+    adv_tech.add_argument("--include-technical", action="store_true", dest="include_technical",
+                          default=None, help="Include RSI and MACD in scoring (default: True for quant, False for classic).")
+    adv_tech.add_argument("--no-include-technical", action="store_false", dest="include_technical",
+                          default=None, help="Exclude RSI and MACD from scoring.")
     parser.add_argument("--no-cache", action="store_true",
                         help="Bypass SQLite cache.")
     parser.add_argument("--cache-clear", action="store_true",
                         help="Clear all cached data.")
     args = parser.parse_args(argv)
+    args.include_technical = resolve_include_technical(args.include_technical, args.scoring_model)
 
     from investdaytip.cache import clear_cache
     from investdaytip.cache import set_enabled as cache_set_enabled
@@ -603,7 +615,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
     else:
         with console.status("[bold green]Analyzing portfolio..."):
             try:
-                review = portfolio_review(str(portfolio_path), args.min_market_cap, args.scoring_model)
+                review = portfolio_review(str(portfolio_path), args.min_market_cap, args.scoring_model, args.include_technical)
             except YFRateLimitError:
                 logger.warning("Rate limit reached while analyzing portfolio.")
                 console.print(
@@ -741,6 +753,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 min_market_cap=args.min_market_cap,
                 sector=args.sector,
                 scoring_model=args.scoring_model,
+                include_technical=args.include_technical,
             )
         except YFRateLimitError:
             logger.warning("yfinance rate limit reached.")
@@ -787,7 +800,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 console.print(f"[yellow]No {label} picks found — showing all.[/yellow]")
 
     if new_results:
-        _render(new_results, console, include_superinvestor=args.superinvestor)
+        _render(new_results, console, include_superinvestor=args.superinvestor, include_technical=args.include_technical)
         Path("advisor_recommendations").mkdir(parents=True, exist_ok=True)
         dest = f"advisor_recommendations/recommendations_advisor_{datetime.now():%Y%m%d-%H%M}.html"
         try:
@@ -797,6 +810,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 asset_class=ac, region=reg,
                 currency=ccy, tickers=None,
                 include_superinvestor=args.superinvestor,
+                include_technical=args.include_technical,
                 fear_greed=fear_greed_index(),
                 scoring_model=args.scoring_model,
             )

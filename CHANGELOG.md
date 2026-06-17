@@ -28,6 +28,10 @@
 - Added `tests/test_scoring_quant.py` covering the `quant` model: factor breakdown, disqualifying grades, default behavior, technical blending, and classic backwards compatibility
 - Updated existing tests to reflect `quant` as the new default
 
+### Changed
+
+- **`--include-technical` default is now model-dependent** — enabled by default for the `quant` model (based on backtest validation showing broad US improvements) and disabled by default for `classic`. Added `--no-include-technical` to force-disable, and `resolve_include_technical()` helper to centralize the default logic across CLI, API, recommender, backtest, advisor, and HTML export.
+
 ### Fixes
 
 - **Dividend yield normalization** — `yfinance` reports `dividendYield` inconsistently (decimal for most US tickers, already-multiplied percentage for some European tickers). Added `_sanitize_yield()` to divide any value greater than `1.0` by 100, ensuring the new **Yield** column is always displayed as a correct percentage.
@@ -46,8 +50,8 @@
 
 ### Docs
 
-- README.md: added dual-model documentation, `--scoring-model` CLI option, scoring-model comparison in `scoring_baseline.py` examples, new **Yield** output column, dividend-yield normalization note, and updated "When to use technical indicators" backtest table for the `quant` model
-- AGENTS.md: documented `classic`/`quant` models, weights, validation workflow, `_sanitize_yield()` convention, and `_ttm_dividend_yield()` convention
+- README.md: added dual-model documentation, `--scoring-model` CLI option, scoring-model comparison in `scoring_baseline.py` examples, new **Yield** output column, dividend-yield normalization note, updated "When to use technical indicators" backtest table for the `quant` model, and model-dependent `--include-technical` defaults
+- AGENTS.md: documented `classic`/`quant` models, weights, validation workflow, `_sanitize_yield()` convention, `_ttm_dividend_yield()` convention, and `resolve_include_technical()` default rules
 
 ## v0.4.1 (2026-06-07)
 

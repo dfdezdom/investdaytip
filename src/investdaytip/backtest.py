@@ -33,7 +33,7 @@ from investdaytip.data_source import (
     _trend_metrics,
 )
 from investdaytip.recommender import _build_universe
-from investdaytip.scoring import ScoredAsset, score_stock
+from investdaytip.scoring import ScoredAsset, resolve_include_technical, score_stock
 
 logger = logging.getLogger(__name__)
 
@@ -681,7 +681,7 @@ def run_backtest(
     reporting_lag_days: int = 60,
     max_workers: int = 10,
     on_progress: Callable[[str, int, int], None] | None = None,
-    include_technical: bool = False,
+    include_technical: bool | None = None,
     scoring_model: str = "quant",
 ) -> BacktestResult:
     """Run a historical backtest of the stock scoring model.
@@ -711,6 +711,9 @@ def run_backtest(
         Days after quarter-end before financial data is considered available.
     max_workers:
         Parallel fetch workers.
+    include_technical:
+        Whether to blend RSI/MACD into the score. ``None`` defaults to
+        ``True`` for ``"quant"`` and ``False`` for ``"classic"``.
     scoring_model:
         ``"quant"`` (default) or ``"classic"``.
 
@@ -718,6 +721,8 @@ def run_backtest(
     -------
     BacktestResult with per-snapshot picks and aggregate metrics.
     """
+    include_technical = resolve_include_technical(include_technical, scoring_model)
+
     # Backtest requires consistent, up-to-date data across all tickers.
     # Stale cached history can shift the latest-common date and produce
     # different snapshot counts. We therefore disable the cache for the

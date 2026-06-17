@@ -69,6 +69,17 @@ ETF_WEIGHTS = {
 }
 
 
+def resolve_include_technical(include_technical: bool | None, scoring_model: str) -> bool:
+    """Return the effective ``include_technical`` flag.
+
+    ``None`` defaults to ``True`` for the ``"quant"`` model and ``False`` for
+    ``"classic"``, so users get the validated best default for each model.
+    """
+    if include_technical is not None:
+        return include_technical
+    return scoring_model == "quant"
+
+
 @dataclass
 class ScoredAsset:
     data: AssetData

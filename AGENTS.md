@@ -134,7 +134,8 @@ Two stock-scoring models are available, selectable via `--scoring-model {classic
   - Uses absolute thresholds (peer-relative scoring is left for a future iteration)
 - **`classic`** — Original InvestDayTip model (Graham/Buffett + momentum):
   - Quality 35%, Value 25%, Health 20%, Trend 20%
-  - Optional RSI-14 + MACD histogram via `--include-technical`
+  - RSI-14 + MACD histogram blended into Momentum by default for `quant`; opt-in for `classic` (`--include-technical` / `--no-include-technical`)
+  - `resolve_include_technical(include_technical, scoring_model)` centralizes the default: `None` → `True` for `quant`, `False` for `classic`
 
 **ETFs** always use the existing model: Returns 40%, RiskAdj 25%, Size 15%, Cost/Yield 20%.
 

@@ -14,7 +14,7 @@ from investdaytip.dataroma import get_superinvestor_data
 from investdaytip.etf_universe import DEFAULT_ETF_UNIVERSE
 from investdaytip.eu_etf_universe import DEFAULT_EU_ETF_UNIVERSE
 from investdaytip.eu_universe import DEFAULT_EU_UNIVERSE
-from investdaytip.scoring import ScoredAsset, score_asset
+from investdaytip.scoring import ScoredAsset, resolve_include_technical, score_asset
 from investdaytip.superinvestor_universe import SUPERINVESTOR_UNIVERSE
 from investdaytip.universe import DEFAULT_UNIVERSE
 
@@ -118,7 +118,7 @@ def recommend(
     currency: str | list[str] = "all",
     sector: str | None = None,
     progress_cb=None,
-    include_technical: bool = False,
+    include_technical: bool | None = None,
     scoring_model: str = "quant",
 ) -> list[ScoredAsset]:
     """Score each ticker and return the top ``top_n`` long-term buys.
@@ -136,8 +136,13 @@ def recommend(
         currency: Currency filter(s) — e.g. ``"USD"``, ``["USD", "EUR"]``.
         sector: Sector/category prefix filter (case-insensitive) — e.g. ``"Technology"``, ``"Healthcare"``.
         progress_cb: Optional callable ``(done, total, ticker)``.
+        include_technical: Whether to blend RSI/MACD into the score. ``None``
+            resolves to ``True`` for the ``"quant"`` model and ``False`` for
+            ``"classic"``.
         scoring_model: ``"quant"`` (default) or ``"classic"``.
     """
+    include_technical = resolve_include_technical(include_technical, scoring_model)
+
     universe = _build_universe(tickers, asset_class, region, currency)
     total = len(universe)
     scored: list[ScoredAsset] = []

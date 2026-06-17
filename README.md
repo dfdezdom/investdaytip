@@ -110,7 +110,7 @@ investdaytip --export-html             # Uses investDayTip-aaaammdd-hhmm.html
                                        # when --tickers-file is set
 
 investdaytip --superinvestor         # Fetch DataRoma superinvestor data and display column
-investdaytip --include-technical     # Include RSI + MACD in scoring (opt-in)
+investdaytip --no-include-technical  # Disable RSI + MACD (enabled by default for quant)
 investdaytip --scoring-model classic # Use the classic Graham/Buffett model instead of quant
 investdaytip --min-market-cap 1B     # Raise min market cap to $1B
 investdaytip --min-market-cap 0      # Disable market-cap filter
@@ -142,7 +142,8 @@ investdaytip --help
 | `-s, --sector TEXT` | Sector/category prefix filter, case-insensitive (e.g. `Financial` matches Financial Services) | disabled |
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
 | `--superinvestor` | Include superinvestor ownership data from DataRoma (adds ~80 HTTP requests, shows column in HTML and CLI) | disabled |
-| `--include-technical` | Include RSI + MACD technical indicators in the Trend pillar scoring (see [When to use technical indicators](#when-to-use-technical-indicators)) | disabled |
+| `--include-technical` | Include RSI + MACD technical indicators in the scoring. **Default is `True` for `quant` and `False` for `classic`.** Use `--no-include-technical` to force-disable. | model-dependent |
+| `--no-include-technical` | Force-disable RSI + MACD technical indicators | disabled |
 | `--scoring-model {classic,quant}` | Stock scoring model to use (see [Scoring Model](#scoring-model)) | `quant` |
 | `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable; see [Market Cap Classification](#market-cap-classification)) | `2B` |
 | `--no-cache` | Skip SQLite cache, fetch all data live from Yahoo Finance | disabled |
@@ -321,7 +322,9 @@ Decision rules:
 
 ### When to use technical indicators
 
-The `--include-technical` flag adds RSI-14 and MACD histogram to the Momentum factor (15% weight, blended at 30%). Backtest validation across four scenarios under the **quant** model shows the flag is generally additive for US screens but mixed for concentrated mega-caps and EU:
+The `--include-technical` flag adds RSI-14 and MACD histogram to the Momentum factor (15% weight, blended at 30%). Under the **quant** model this is now enabled by default; under **classic** it remains opt-in.
+
+Backtest validation across four scenarios under the **quant** model shows the flag is generally additive for US screens but mixed for concentrated mega-caps and EU:
 
 | Scenario | Without `--include-technical` | With `--include-technical` | Verdict |
 |---|---|---|---|
@@ -331,10 +334,11 @@ The `--include-technical` flag adds RSI-14 and MACD histogram to the Momentum fa
 | **EU ($2B+)** (66 tickers, `-n 10`) | Alpha **12.29%**, Sharpe 1.15 | Alpha 10.56%, Sharpe **1.16** | ⚠️ **Neutral/Mixed** — alpha down slightly, Sharpe marginally better, win rate unchanged |
 
 **Guidelines:**
-- ✅ **Use it** for broad US screens (`quant` model) — it improves both alpha and Sharpe
-- ⚠️ **Test it** for concentrated mega-cap lists — alpha improves strongly but risk-adjusted returns may dip
-- ⚠️ **Test it** for EU screens — results are close to a wash; verify on your specific ticker list
-- ❌ **Avoid it** if you rely on the `classic` model — the original Trend-pillar integration showed consistent degradation on broad screens (see pre-quant documentation if needed)
+- ✅ **Default behavior** — `quant` enables technical indicators automatically; `classic` keeps them opt-in
+- ✅ **Broad US screens** benefit the most — higher alpha and Sharpe
+- ⚠️ **Concentrated mega-cap lists** — alpha improves strongly but risk-adjusted returns may dip
+- ⚠️ **EU screens** — results are close to a wash; verify on your specific ticker list
+- ❌ **Use `--no-include-technical`** if you rely on the `classic` model or want a pure fundamental signal
 
 
 ### Market Cap Classification
@@ -450,7 +454,7 @@ Each metric is normalized to **0-100** via piecewise-linear functions over empir
 | **Value** | 25% | trailing P/E, P/B, PEG, FCF yield |
 | **Growth** | 20% | earnings growth, revenue growth |
 | **Profitability** | 25% | ROE, ROA, profit margin |
-| **Momentum** | 15% | price vs SMA200, 12-month return, SMA200 slope (plus RSI-14 + MACD histogram when `--include-technical` is enabled) |
+| **Momentum** | 15% | price vs SMA200, 12-month return, SMA200 slope (plus RSI-14 + MACD histogram by default; disable with `--no-include-technical`) |
 | **EPS Revisions** | 15% | earnings/revenue growth as a proxy for analyst estimate revisions |
 
 The `quant` model uses **disqualifying grades**: if any high-impact factor falls into red-flag territory, the total score is capped at neutral (50). This prevents a strong showing in one area from masking a serious weakness elsewhere.
@@ -462,7 +466,7 @@ The `quant` model uses **disqualifying grades**: if any high-impact factor falls
 | **Quality** | 35% | ROE, profit margin, earnings & revenue growth |
 | **Value** | 25% | trailing P/E, P/B, PEG |
 | **Health** | 20% | Debt/Equity, current ratio, free cash flow |
-| **Trend** | 20% | price vs SMA200, 12-month return, SMA200 slope (plus RSI-14 + MACD histogram when `--include-technical` is enabled) |
+| **Trend** | 20% | price vs SMA200, 12-month return, SMA200 slope (plus RSI-14 + MACD histogram when `--include-technical` is explicitly enabled) |
 
 ### ETFs
 

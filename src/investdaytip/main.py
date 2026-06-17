@@ -22,7 +22,7 @@ from investdaytip.backtest import BacktestResult
 from investdaytip.dataroma import fetch_superinvestor_universe, get_superinvestor_data
 from investdaytip.html_export import export_backtest_html, export_recommendations_html
 from investdaytip.recommender import recommend
-from investdaytip.scoring import ScoredAsset
+from investdaytip.scoring import ScoredAsset, resolve_include_technical
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +45,14 @@ def get_recommendations(
     currency: str | list[str] = "all",
     min_market_cap: float = 2_000_000_000,
     sector: str | None = None,
-    include_technical: bool = False,
+    include_technical: bool | None = None,
     scoring_model: str = "quant",
 ) -> list[ScoredAsset]:
-    """Programmatic API: return the top ``top_n`` long-term buy recommendations."""
+    """Programmatic API: return the top ``top_n`` long-term buy recommendations.
+
+    When ``include_technical`` is ``None``, it defaults to ``True`` for the
+    ``"quant"`` model and ``False`` for ``"classic"``.
+    """
     return recommend(
         tickers=tickers, top_n=top_n, asset_class=asset_class,
         region=region, currency=currency, min_market_cap=min_market_cap,
@@ -484,8 +488,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="Clear all cached data.")
     bt.add_argument("--max-workers", type=int, default=10,
                     help="Parallel fetch workers (default: 10).")
-    bt.add_argument("--include-technical", action="store_true",
-                    help="Include RSI and MACD in scoring.")
+    bt_tech = bt.add_mutually_exclusive_group()
+    bt_tech.add_argument("--include-technical", action="store_true", dest="include_technical",
+                         default=None, help="Include RSI and MACD in scoring.")
+    bt_tech.add_argument("--no-include-technical", action="store_false", dest="include_technical",
+                         default=None, help="Exclude RSI and MACD from scoring.")
     bt.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",
                     help="Scoring model to use (default: quant).")
 
@@ -537,13 +544,21 @@ def main(argv: list[str] | None = None) -> int:
     perf_grp = parser.add_argument_group("Performance")
     perf_grp.add_argument("--workers", type=int, default=10,
                           help="Parallel fetch workers (default: 10).")
-    perf_grp.add_argument("--include-technical", action="store_true",
-                          help="Include RSI and MACD in scoring.")
+    main_tech = perf_grp.add_mutually_exclusive_group()
+    main_tech.add_argument("--include-technical", action="store_true", dest="include_technical",
+                           default=None, help="Include RSI and MACD in scoring (default: True for quant, False for classic).")
+    main_tech.add_argument("--no-include-technical", action="store_false", dest="include_technical",
+                           default=None, help="Exclude RSI and MACD from scoring.")
     perf_grp.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",
                           help="Scoring model to use (default: quant).")
     if argcomplete is not None:
         argcomplete.autocomplete(parser)
     args = parser.parse_args(argv)
+
+    # Resolve technical-indicator default based on scoring model. Both the main
+    # parser and the backtest subparser expose --include-technical / --no-include-technical.
+    if hasattr(args, "include_technical") and hasattr(args, "scoring_model"):
+        args.include_technical = resolve_include_technical(args.include_technical, args.scoring_model)
 
     if args.command == "advisor":
         from investdaytip.advisor import advisor_main
