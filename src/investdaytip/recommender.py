@@ -119,6 +119,7 @@ def recommend(
     sector: str | None = None,
     progress_cb=None,
     include_technical: bool = False,
+    scoring_model: str = "quant",
 ) -> list[ScoredAsset]:
     """Score each ticker and return the top ``top_n`` long-term buys.
 
@@ -135,6 +136,7 @@ def recommend(
         currency: Currency filter(s) — e.g. ``"USD"``, ``["USD", "EUR"]``.
         sector: Sector/category prefix filter (case-insensitive) — e.g. ``"Technology"``, ``"Healthcare"``.
         progress_cb: Optional callable ``(done, total, ticker)``.
+        scoring_model: ``"quant"`` (default) or ``"classic"``.
     """
     universe = _build_universe(tickers, asset_class, region, currency)
     total = len(universe)
@@ -156,7 +158,7 @@ def recommend(
                     logger.warning("Failed to fetch %s", ticker, exc_info=True)
                     continue
                 try:
-                    scored.append(score_asset(data, include_technical=include_technical, si_data=si_data))
+                    scored.append(score_asset(data, model=scoring_model, include_technical=include_technical, si_data=si_data))
                 except Exception:
                     logger.warning("Failed to score %s", ticker, exc_info=True)
                 if progress_cb:

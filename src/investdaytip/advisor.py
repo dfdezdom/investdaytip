@@ -255,7 +255,11 @@ def macro_regime() -> dict:
 # Portfolio review
 # ---------------------------------------------------------------------------
 
-def portfolio_review(cartera_path: str, min_market_cap: float = 2_000_000_000) -> dict:
+def portfolio_review(
+    cartera_path: str,
+    min_market_cap: float = 2_000_000_000,
+    scoring_model: str = "quant",
+) -> dict:
     """Score existing portfolio, flag weak positions."""
     if not Path(cartera_path).exists():
         return {"error": f"File not found: {cartera_path}"}
@@ -264,7 +268,12 @@ def portfolio_review(cartera_path: str, min_market_cap: float = 2_000_000_000) -
     if not tickers:
         return {"error": "No tickers found in file."}
 
-    results = recommend(tickers=tickers, top_n=len(tickers), min_market_cap=min_market_cap)
+    results = recommend(
+        tickers=tickers,
+        top_n=len(tickers),
+        min_market_cap=min_market_cap,
+        scoring_model=scoring_model,
+    )
 
     weak = [s for s in results if s.total < 40]
     moderate = [s for s in results if 40 <= s.total < 60]
@@ -311,6 +320,7 @@ def run_comprehensive(
     top_n: int = 10,
     currencies: dict[str, str] | None = None,
     min_market_cap: float = 2_000_000_000,
+    scoring_model: str = "quant",
 ) -> dict:
     """Run analysis across multiple region×asset_class combinations.
 
@@ -346,7 +356,7 @@ def run_comprehensive(
     result: dict = {
         "macro": macro_regime(),
         "bubble": bubble_risk(),
-        "portfolio": portfolio_review(portfolio_path, min_market_cap),
+        "portfolio": portfolio_review(portfolio_path, min_market_cap, scoring_model),
         "recommendations": {},
         "errors": [],
         "html_reports": [],
@@ -380,6 +390,7 @@ def run_comprehensive(
                     top_n=top_n,
                     currency=ccy,
                     min_market_cap=min_market_cap,
+                    scoring_model=scoring_model,
                 )
                 filtered = [
                     r for r in recs
@@ -403,6 +414,7 @@ def run_comprehensive(
                     currency=ccy,
                     tickers=None,
                     fear_greed=fear_greed_index(),
+                    scoring_model=scoring_model,
                 )
                 result["html_reports"].append(out)
             except YFRateLimitError:
@@ -458,6 +470,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
                         help="Filter by sector (case-insensitive).")
     parser.add_argument("--superinvestor", action="store_true",
                         help="Include superinvestor ownership data.")
+    parser.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",
+                        help="Scoring model to use (default: quant).")
     parser.add_argument("--no-cache", action="store_true",
                         help="Bypass SQLite cache.")
     parser.add_argument("--cache-clear", action="store_true",
@@ -589,7 +603,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
     else:
         with console.status("[bold green]Analyzing portfolio..."):
             try:
-                review = portfolio_review(str(portfolio_path), args.min_market_cap)
+                review = portfolio_review(str(portfolio_path), args.min_market_cap, args.scoring_model)
             except YFRateLimitError:
                 logger.warning("Rate limit reached while analyzing portfolio.")
                 console.print(
@@ -719,7 +733,15 @@ def advisor_main(argv: list[str] | None = None) -> int:
             }
 
         try:
-            results = recommend(asset_class=ac, region=reg, top_n=10, currency=ccy, min_market_cap=args.min_market_cap, sector=args.sector)
+            results = recommend(
+                asset_class=ac,
+                region=reg,
+                top_n=10,
+                currency=ccy,
+                min_market_cap=args.min_market_cap,
+                sector=args.sector,
+                scoring_model=args.scoring_model,
+            )
         except YFRateLimitError:
             logger.warning("yfinance rate limit reached.")
             console.print(
@@ -776,6 +798,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 currency=ccy, tickers=None,
                 include_superinvestor=args.superinvestor,
                 fear_greed=fear_greed_index(),
+                scoring_model=args.scoring_model,
             )
             logger.info("Advisor HTML report exported: %s", out)
             console.print(f"\n[green]📄 HTML report:[/green] {out}")

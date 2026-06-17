@@ -148,6 +148,7 @@ _FY_ROW_NAMES: dict[str, str] = {
     "TotalRevenue": "Total Revenue",
     "BasicEPS": "Basic EPS",
     "StockholdersEquity": "Stockholders Equity",
+    "TotalAssets": "Total Assets",
     "TotalDebt": "Total Debt",
     "CurrentAssets": "Current Assets",
     "CurrentLiabilities": "Current Liabilities",
@@ -410,6 +411,7 @@ def _build_historical_stock_data(
     revenue_growth = _pct_change(rev, rev_prev)
 
     equity = _balance_sheet_value(balance_sheet, quarter_date, "StockholdersEquity")
+    total_assets = _balance_sheet_value(balance_sheet, quarter_date, "TotalAssets")
     total_debt = _balance_sheet_value(balance_sheet, quarter_date, "TotalDebt")
     curr_assets = _balance_sheet_value(balance_sheet, quarter_date, "CurrentAssets")
     curr_liab = _balance_sheet_value(balance_sheet, quarter_date, "CurrentLiabilities")
@@ -433,8 +435,9 @@ def _build_historical_stock_data(
     bvps = equity / shares if (equity and shares and shares != 0) else None
     price_to_book = (price / bvps) if (price and bvps and bvps != 0) else None
 
-    # ROE
+    # ROE / ROA
     roe = (ni / equity) if (ni and equity and equity != 0) else None
+    roa = (ni / total_assets) if (ni and total_assets and total_assets != 0) else None
 
     # Profit margin
     profit_margin = (ni / rev) if (ni and rev and rev != 0) else None
@@ -466,12 +469,13 @@ def _build_historical_stock_data(
         price_to_book=price_to_book,
         peg_ratio=None,
         return_on_equity=roe,
+        return_on_assets=roa,
         profit_margin=profit_margin,
         earnings_growth=earnings_growth,
         revenue_growth=revenue_growth,
         debt_to_equity=debt_to_equity,
         current_ratio=current_ratio,
-            free_cashflow=fcf,
+        free_cashflow=fcf,
         dividend_yield=dividend_yield,
         payout_ratio=payout_ratio,
         market_cap=market_cap,
@@ -484,6 +488,7 @@ def _build_historical_stock_data(
         rsi_14=rsi_14,
         macd_histogram=macd_histogram,
     )
+
 
 
 def _pct_change(current: Optional[float], previous: Optional[float]) -> Optional[float]:
@@ -677,6 +682,7 @@ def run_backtest(
     max_workers: int = 10,
     on_progress: Callable[[str, int, int], None] | None = None,
     include_technical: bool = False,
+    scoring_model: str = "quant",
 ) -> BacktestResult:
     """Run a historical backtest of the stock scoring model.
 
@@ -705,6 +711,8 @@ def run_backtest(
         Days after quarter-end before financial data is considered available.
     max_workers:
         Parallel fetch workers.
+    scoring_model:
+        ``"quant"`` (default) or ``"classic"``.
 
     Returns
     -------
@@ -811,7 +819,7 @@ def run_backtest(
                 ):
                     continue
 
-                scored.append(score_stock(sd_obj, include_technical=include_technical))
+                scored.append(score_stock(sd_obj, model=scoring_model, include_technical=include_technical))
 
             scored.sort(key=lambda s: s.total, reverse=True)
             picks = scored[:top_n]

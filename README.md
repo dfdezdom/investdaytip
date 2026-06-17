@@ -111,6 +111,7 @@ investdaytip --export-html             # Uses investDayTip-aaaammdd-hhmm.html
 
 investdaytip --superinvestor         # Fetch DataRoma superinvestor data and display column
 investdaytip --include-technical     # Include RSI + MACD in scoring (opt-in)
+investdaytip --scoring-model classic # Use the classic Graham/Buffett model instead of quant
 investdaytip --min-market-cap 1B     # Raise min market cap to $1B
 investdaytip --min-market-cap 0      # Disable market-cap filter
 
@@ -142,6 +143,7 @@ investdaytip --help
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
 | `--superinvestor` | Include superinvestor ownership data from DataRoma (adds ~80 HTTP requests, shows column in HTML and CLI) | disabled |
 | `--include-technical` | Include RSI + MACD technical indicators in the Trend pillar scoring (see [When to use technical indicators](#when-to-use-technical-indicators)) | disabled |
+| `--scoring-model {classic,quant}` | Stock scoring model to use (see [Scoring Model](#scoring-model)) | `quant` |
 | `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable; see [Market Cap Classification](#market-cap-classification)) | `2B` |
 | `--no-cache` | Skip SQLite cache, fetch all data live from Yahoo Finance | disabled |
 | `--cache-clear` | Purge the SQLite cache before running | disabled |
@@ -297,6 +299,17 @@ python scripts/scoring_baseline.py run \
   --period 2y --interval-months 3 \
   --min-market-cap 0
 
+# Compare two different scoring models on the same universe
+python scripts/scoring_baseline.py run --tag classic -r us -n 10 \
+  -t "AAPL MSFT GOOGL META NVDA" --period 2y --interval-months 3 \
+  --min-market-cap 0 --scoring-model classic
+
+python scripts/scoring_baseline.py run --tag quant -r us -n 10 \
+  -t "AAPL MSFT GOOGL META NVDA" --period 2y --interval-months 3 \
+  --min-market-cap 0 --scoring-model quant
+
+python scripts/scoring_baseline.py compare baseline-classic.json baseline-quant.json
+
 # Compare side-by-side with decision rules
 python scripts/scoring_baseline.py compare baseline-before.json baseline-after.json
 ```
@@ -390,6 +403,9 @@ picks = get_recommendations(top_n=5, sector="Financial")  # Financial + Financia
 
 # Or mix regions and asset classes
 picks = get_recommendations(top_n=10, region="all")  # US + EU + Asia stocks & ETFs
+
+# Choose the scoring model explicitly (quant is the default)
+picks = get_recommendations(top_n=5, region="us", scoring_model="classic")
 ```
 
 ---
@@ -407,6 +423,7 @@ Each recommendation includes:
 | **Price** | Current price in native currency |
 | **% Today** | Daily change vs previous close |
 | **P/E** | Trailing price-to-earnings ratio (stocks; `-` when unavailable) |
+| **Yield** | Dividend yield for stocks (TTM from raw dividends, fallback to `dividendYield`) or ETFs (`yield_`) — `-` when unavailable |
 | **1M Δ** | % change vs ~22 trading days ago |
 | **1Y Δ** | % change vs ~252 trading days ago |
 | **RSI** | RSI-14 (when `--include-technical` is enabled) |
@@ -420,9 +437,23 @@ Each recommendation includes:
 
 ## Scoring Model
 
+InvestDayTip supports two stock-scoring models, selectable via `--scoring-model {classic,quant}`. The default is **`quant`**, a five-factor model inspired by Seeking Alpha Quant Ratings. The original **`classic`** model (Graham/Buffett + momentum) remains available for backwards compatibility.
+
 Each metric is normalized to **0-100** via piecewise-linear functions over empirically reasonable ranges. Missing data contributes a neutral **50** so a ticker isn't penalized for lacking a metric.
 
-### Stocks (Graham/Buffett + Momentum)
+### Stocks — `quant` (default)
+
+| Factor | Weight | Metrics |
+|---|---|---|
+| **Value** | 25% | trailing P/E, P/B, PEG, FCF yield |
+| **Growth** | 20% | earnings growth, revenue growth |
+| **Profitability** | 25% | ROE, ROA, profit margin |
+| **Momentum** | 15% | price vs SMA200, 12-month return, SMA200 slope (plus RSI-14 + MACD histogram when `--include-technical` is enabled) |
+| **EPS Revisions** | 15% | earnings/revenue growth as a proxy for analyst estimate revisions |
+
+The `quant` model uses **disqualifying grades**: if any high-impact factor falls into red-flag territory, the total score is capped at neutral (50). This prevents a strong showing in one area from masking a serious weakness elsewhere.
+
+### Stocks — `classic`
 
 | Pillar | Weight | Metrics |
 |---|---|---|
@@ -513,6 +544,10 @@ Once enabled, try `investdaytip -<TAB>` or `investdaytip --region <TAB>`.
 ## Data Source
 
 All market data is fetched live from **Yahoo Finance** via the [`yfinance`](https://github.com/ranaroussi/yfinance) library. Fundamentals come from `Ticker.info`, prices and trend metrics from `Ticker.history(period="2y")`.
+
+**Dividend yield normalization:** `yfinance` reports `dividendYield` inconsistently — most US tickers return a decimal (e.g. `0.054` = 5.4%) while some European tickers return an already-multiplied percentage (e.g. `4.05` = 4.05%). InvestDayTip normalizes any value greater than `1.0` by dividing by 100.
+
+**Reliable stock dividend yield:** For stocks, the **Yield** column is computed directly from `Ticker.dividends` over the trailing twelve months divided by the current price, because yfinance's `dividendYield` field can be wildly wrong for some tickers (e.g. AAPL and V). When raw dividend history is unavailable, InvestDayTip falls back to the normalized `dividendYield` from `Ticker.info`.
 
 **Superinvestor data** is scraped from **DataRoma** (https://www.dataroma.com) — 13F filings from ~82 legendary investors. The data is fetched once and cached for 7 days. Use `--superinvestor` to enable this data and display the "Superinvestors" column in both the HTML report and the CLI table (disabled by default to avoid the ~80 HTTP requests).
 

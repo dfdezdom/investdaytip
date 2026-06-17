@@ -46,6 +46,8 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - `field(default_factory=list/dict)` for mutable defaults on dataclasses
 - `_safe_get(info, key)` — extracts/validates `Optional[float]` from yfinance info dicts; rejects non-finite values (NaN **and** ±inf) via `math.isfinite`
 - `_first(*values)` — returns the first non-`None` value; used for fallback chains so a legitimate `0.0` is preserved (an `or` chain would discard it)
+- `_sanitize_yield(value)` — normalizes yfinance yield fields to decimals; values greater than `1.0` are divided by 100 because some tickers (notably European ones) report `dividendYield` as an already-multiplied percentage (e.g. `4.05`) while most US tickers report decimals (e.g. `0.0405`)
+- `_ttm_dividend_yield(dividends, price)` — computes a stock's trailing-twelve-month dividend yield from `Ticker.dividends` (summed over the last 365 days) divided by the current price; used as the primary yield source because yfinance's `dividendYield` can be wrong by 100x for tickers like AAPL and V. Falls back to `_sanitize_yield(info["dividendYield"])` when raw dividends are unavailable
 - `_suppress_stderr()` context manager wraps **every** yfinance call — without it, yfinance spams stderr
 - Asset type dispatch: `score_asset()` → `score_stock()` / `score_etf()` via `isinstance`
 - `ScoredAsset` unified output; `ScoredStock = ScoredAsset` backwards-compatible alias
@@ -122,9 +124,49 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - `SUPERINVESTOR_UNIVERSE` tickers are **always** included in the stock pool (quality stocks); the DataRoma manager-count and column are controlled by `--superinvestor`
 - No ETF universe exists for superinvestor
 
-### Scoring Weights
-- **Stocks**: Quality 35%, Value 25%, Health 20%, Trend 20% (with optional RSI-14 + MACD histogram via `--include-technical`)
-- **ETFs**: Returns 40%, RiskAdj 25%, Size 15%, Cost/Yield 20%
+### Scoring Models
+
+Two stock-scoring models are available, selectable via `--scoring-model {classic,quant}` on the CLI and `scoring_model=` in the API. `quant` is the default.
+
+- **`quant`** (default) — Seeking-Alpha-inspired five-factor model:
+  - Value 25%, Growth 20%, Profitability 25%, Momentum 15%, EPS Revisions 15%
+  - Disqualifying grades cap the total score at neutral when a factor falls into red-flag territory
+  - Uses absolute thresholds (peer-relative scoring is left for a future iteration)
+- **`classic`** — Original InvestDayTip model (Graham/Buffett + momentum):
+  - Quality 35%, Value 25%, Health 20%, Trend 20%
+  - Optional RSI-14 + MACD histogram via `--include-technical`
+
+**ETFs** always use the existing model: Returns 40%, RiskAdj 25%, Size 15%, Cost/Yield 20%.
+
+CLI examples:
+
+```bash
+investdaytip -n 5 -r us                          # quant (default)
+investdaytip -n 5 -r us --scoring-model classic  # classic
+investdaytip backtest -n 5 -r us --scoring-model classic
+investdaytip advisor --scoring-model classic
+```
+
+Programmatic API:
+
+```python
+from investdaytip import get_recommendations
+get_recommendations(top_n=5, region="us")                         # quant (default)
+get_recommendations(top_n=5, region="us", scoring_model="classic")  # classic
+```
+
+When validating a new or changed scoring model, run backtest baselines for **both** models on the same universe and compare:
+
+```bash
+python scripts/scoring_baseline.py run --tag classic -r us -n 5 \
+  -t "AAPL MSFT GOOGL" --period 5y --interval-months 3 --min-market-cap 0
+
+python scripts/scoring_baseline.py run --tag quant -r us -n 5 \
+  -t "AAPL MSFT GOOGL" --period 5y --interval-months 3 --min-market-cap 0 \
+  --scoring-model quant
+
+python scripts/scoring_baseline.py compare baseline-classic.json baseline-quant.json
+```
 
 ## OpenCode Agent
 
@@ -255,4 +297,5 @@ from investdaytip import get_recommendations
 picks = get_recommendations(top_n=5, region="asia", asset_class="stocks")
 picks = get_recommendations(top_n=5, region="superinvestor", asset_class="stocks")
 picks = get_recommendations(top_n=5, sector="Financial")
+picks = get_recommendations(top_n=5, region="us", scoring_model="quant")
 ```

@@ -46,12 +46,14 @@ def get_recommendations(
     min_market_cap: float = 2_000_000_000,
     sector: str | None = None,
     include_technical: bool = False,
+    scoring_model: str = "quant",
 ) -> list[ScoredAsset]:
     """Programmatic API: return the top ``top_n`` long-term buy recommendations."""
     return recommend(
         tickers=tickers, top_n=top_n, asset_class=asset_class,
         region=region, currency=currency, min_market_cap=min_market_cap,
         sector=sector, include_technical=include_technical,
+        scoring_model=scoring_model,
     )
 
 
@@ -89,6 +91,15 @@ def _fmt_pe(value) -> str:
         return "—"
     try:
         return f"{float(value):.2f}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _fmt_yield(value) -> str:
+    if value is None:
+        return "—"
+    try:
+        return f"{float(value) * 100:.2f}%"
     except (TypeError, ValueError):
         return "—"
 
@@ -174,6 +185,7 @@ def _render(results: list[ScoredAsset], console: Console, include_superinvestor:
     table.add_column("Price", justify="right")
     table.add_column("% Today", justify="right")
     table.add_column("P/E", justify="right")
+    table.add_column("Yield", justify="right")
     table.add_column("1M Δ", justify="right")
     table.add_column("1Y Δ", justify="right")
     if include_superinvestor:
@@ -197,6 +209,7 @@ def _render(results: list[ScoredAsset], console: Console, include_superinvestor:
             _fmt_price(d.current_price, getattr(d, "currency", None)),
             _fmt_pct(d.daily_change),
             _fmt_pe(getattr(d, "trailing_pe", None)),
+            _fmt_yield(getattr(d, "dividend_yield", None) or getattr(d, "yield_", None)),
             _fmt_pct(d.return_1m),
             _fmt_pct(d.return_12m),
         ]
@@ -287,6 +300,7 @@ def _run_backtest_cli(args: argparse.Namespace) -> int:
             max_workers=args.max_workers,
             on_progress=on_progress,
             include_technical=args.include_technical,
+            scoring_model=args.scoring_model,
         )
 
     # ── Console summary ──
@@ -432,6 +446,8 @@ def main(argv: list[str] | None = None) -> int:
                      help="Sector/category prefix filter (case-insensitive).")
     adv.add_argument("--superinvestor", action="store_true",
                      help="Include superinvestor ownership data.")
+    adv.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",
+                     help="Scoring model to use (default: quant).")
     adv.add_argument("--no-cache", action="store_true",
                      help="Bypass SQLite cache.")
     adv.add_argument("--cache-clear", action="store_true",
@@ -470,6 +486,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="Parallel fetch workers (default: 10).")
     bt.add_argument("--include-technical", action="store_true",
                     help="Include RSI and MACD in scoring.")
+    bt.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",
+                    help="Scoring model to use (default: quant).")
 
     main_grp = parser.add_argument_group("Main options")
     main_grp.add_argument("-n", "--top", type=int, default=5,
@@ -521,6 +539,8 @@ def main(argv: list[str] | None = None) -> int:
                           help="Parallel fetch workers (default: 10).")
     perf_grp.add_argument("--include-technical", action="store_true",
                           help="Include RSI and MACD in scoring.")
+    perf_grp.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",
+                          help="Scoring model to use (default: quant).")
     if argcomplete is not None:
         argcomplete.autocomplete(parser)
     args = parser.parse_args(argv)
@@ -609,6 +629,7 @@ def main(argv: list[str] | None = None) -> int:
                 sector=args.sector,
                 progress_cb=cb,
                 include_technical=args.include_technical,
+                scoring_model=args.scoring_model,
             )
         except Exception as exc:
             logger.error("Error during analysis: %s", exc)
@@ -647,6 +668,7 @@ def main(argv: list[str] | None = None) -> int:
                 include_technical=args.include_technical,
                 sector=args.sector,
                 fear_greed=fear_greed_index(),
+                scoring_model=args.scoring_model,
             )
             logger.info("HTML report exported: %s", out_path)
             console.print(f"[green]HTML report exported:[/green] {out_path}")

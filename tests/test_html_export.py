@@ -233,3 +233,40 @@ def test_export_html_includes_technical_columns(tmp_path):
     assert "RSI" in html
     assert "MACD" in html
     assert "28.5" in html
+
+
+def test_export_html_includes_yield_column(tmp_path):
+    stock = ScoredAsset(
+        data=StockData(
+            ticker="AAPL", name="Apple", sector="Technology",
+            current_price=190.5, return_1m=0.03, return_12m=0.21,
+            dividend_yield=0.0054,
+            currency="USD",
+        ),
+        asset_type="STOCK", total=88.2,
+        breakdown={"Quality": 90, "Value": 75, "Health": 85, "Trend": 88},
+        rationale=["strong ROE"],
+    )
+    etf = ScoredAsset(
+        data=EtfData(
+            ticker="VYM",
+            name="Vanguard High Dividend Yield ETF",
+            category="Large Value",
+            current_price=110.0,
+            return_1m=0.02,
+            return_12m=0.10,
+            yield_=0.028,
+            currency="USD",
+        ),
+        asset_type="ETF", total=80.0,
+        breakdown={"Returns": 80, "RiskAdj": 75, "Size": 90, "Cost/Yield": 85},
+        rationale=["solid dividend yield"],
+    )
+    out = tmp_path / "yield.html"
+    export_recommendations_html(
+        [stock, etf], str(out), top_n=5, asset_class="all", tickers=None,
+    )
+    html = out.read_text(encoding="utf-8")
+    assert "Yield" in html
+    assert "0.54%" in html
+    assert "2.80%" in html

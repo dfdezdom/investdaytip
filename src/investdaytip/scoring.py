@@ -3,11 +3,29 @@
 Stocks and ETFs are scored with different models but produce a unified
 :class:`ScoredAsset` so they can be ranked together.
 
-**Stock model** (Graham/Buffett + momentum, weights):
+Two stock scoring models are available, selectable via ``model=``:
+
+**``quant``** (default) — Seeking-Alpha-inspired five-factor model:
+    Value            (25%)  — P/E, P/B, PEG, FCF yield
+    Growth           (20%)  — earnings growth, revenue growth
+    Profitability    (25%)  — ROE, ROA, profit margin
+    Momentum         (15%)  — 12m return, vs SMA200, SMA200 slope
+    EPS Revisions    (15%)  — earnings/revenue growth as estimate-revision proxy
+
+**``classic``** — Graham/Buffett + momentum:
     Quality (35%)  — ROE, margins, growth
     Value   (25%)  — P/E, P/B, PEG
     Health  (20%)  — debt, liquidity, FCF
     Trend   (20%)  — 200d-SMA position, 12m return, SMA slope
+    Value            (25%)  — P/E, P/B, PEG, FCF yield
+    Growth           (20%)  — earnings growth, revenue growth
+    Profitability    (25%)  — ROE, ROA, profit margin
+    Momentum         (15%)  — 12m return, vs SMA200, SMA200 slope
+    EPS Revisions    (15%)  — earnings/revenue growth as estimate-revision proxy
+
+Stocks that fail a "disqualifying grade" on any high-impact factor are capped
+at a neutral total score (50), preventing one strong factor from masking a
+serious red flag elsewhere.
 
 **ETF model**:
     Returns        (40%)  — 3y, 5y, 12m
@@ -15,8 +33,8 @@ Stocks and ETFs are scored with different models but produce a unified
     Size/Liquidity (15%)  — AUM
     Cost & Yield   (20%)  — expense ratio (lower=better), dividend yield
 
-Both models normalize each metric to 0–100 via piecewise-linear
-functions and fall back to a neutral 50 when data is missing.
+Both stock models and the ETF model normalize each metric to 0–100 via
+piecewise-linear functions and fall back to a neutral 50 when data is missing.
 """
 
 from __future__ import annotations
@@ -28,11 +46,19 @@ from typing import Optional
 from investdaytip.data_source import AssetData, EtfData, StockData
 from investdaytip.dataroma import get_superinvestor_data
 
-STOCK_WEIGHTS = {
+STOCK_WEIGHTS_CLASSIC = {
     "quality": 0.35,
     "value": 0.25,
     "health": 0.20,
     "trend": 0.20,
+}
+
+STOCK_WEIGHTS_QUANT = {
+    "value": 0.25,
+    "growth": 0.20,
+    "profitability": 0.25,
+    "momentum": 0.15,
+    "eps_revisions": 0.15,
 }
 
 ETF_WEIGHTS = {
@@ -80,52 +106,8 @@ def _linear(value: Optional[float], best: float, worst: float, *, default: float
 
 
 # ---------------------------------------------------------------------------
-# Stock scoring
+# Helpers shared by both stock scorers
 # ---------------------------------------------------------------------------
-
-def _value_score(d: StockData) -> tuple[float, list[str]]:
-    notes: list[str] = []
-    pe = _linear(d.trailing_pe, best=10, worst=40)
-    pb = _linear(d.price_to_book, best=1.0, worst=6.0)
-    peg = _linear(d.peg_ratio, best=0.8, worst=3.0)
-    if d.trailing_pe is not None and d.trailing_pe < 20:
-        notes.append(f"attractive P/E of {d.trailing_pe:.1f}")
-    if d.peg_ratio is not None and d.peg_ratio < 1.5:
-        notes.append(f"PEG of {d.peg_ratio:.2f} suggests growth at reasonable price")
-    return (pe * 0.45) + (pb * 0.20) + (peg * 0.35), notes
-
-
-def _quality_score(d: StockData) -> tuple[float, list[str]]:
-    notes: list[str] = []
-    roe = _linear(d.return_on_equity, best=0.30, worst=0.05)
-    margin = _linear(d.profit_margin, best=0.25, worst=0.02)
-    earn_g = _linear(d.earnings_growth, best=0.25, worst=-0.05)
-    rev_g = _linear(d.revenue_growth, best=0.20, worst=-0.05)
-    if d.return_on_equity is not None and d.return_on_equity > 0.15:
-        notes.append(f"strong ROE of {d.return_on_equity * 100:.1f}%")
-    if d.profit_margin is not None and d.profit_margin > 0.15:
-        notes.append(f"healthy profit margin of {d.profit_margin * 100:.1f}%")
-    if d.earnings_growth is not None and d.earnings_growth > 0.10:
-        notes.append(f"earnings growth of {d.earnings_growth * 100:.1f}%")
-    return (roe * 0.35) + (margin * 0.25) + (earn_g * 0.25) + (rev_g * 0.15), notes
-
-
-def _health_score(d: StockData) -> tuple[float, list[str]]:
-    notes: list[str] = []
-    # yfinance reports debtToEquity as a percentage (e.g. 45.3 == 0.453x), so
-    # divide by 100 to get the ratio compared against best=0.2x / worst=2.0x.
-    de = d.debt_to_equity / 100.0 if d.debt_to_equity is not None else None
-    debt = _linear(de, best=0.2, worst=2.0)
-    liq = _linear(d.current_ratio, best=2.5, worst=1.0)
-    fcf = 50.0
-    if d.free_cashflow is not None:
-        fcf = 80.0 if d.free_cashflow > 0 else 20.0
-    if de is not None and de < 0.5:
-        notes.append(f"low leverage (D/E={de:.2f})")
-    if d.free_cashflow is not None and d.free_cashflow > 0:
-        notes.append("positive free cash flow")
-    return (debt * 0.45) + (liq * 0.25) + (fcf * 0.30), notes
-
 
 def _technical_score(d: StockData | EtfData) -> tuple[float, list[str]]:
     """Score technical indicators (RSI + MACD) as a 0-100 sub-component of Trend.
@@ -147,58 +129,282 @@ def _technical_score(d: StockData | EtfData) -> tuple[float, list[str]]:
     return (rsi * 0.375) + (macd * 0.625), notes
 
 
-def _trend_score(d: StockData, *, include_technical: bool = False) -> tuple[float, list[str]]:
-    notes: list[str] = []
-    pvs = _linear(d.price_vs_sma200, best=0.15, worst=-0.20)
-    r12 = _linear(d.return_12m, best=0.30, worst=-0.20)
-    slope = _linear(d.sma200_slope, best=0.10, worst=-0.10)
-    if include_technical:
-        tech, tech_notes = _technical_score(d)
-        notes.extend(tech_notes)
-    else:
-        tech = 0.0
-    if d.price_vs_sma200 is not None and d.price_vs_sma200 > 0:
-        notes.append(f"trading {d.price_vs_sma200 * 100:.1f}% above 200d SMA")
-    if d.return_12m is not None and d.return_12m > 0.10:
-        notes.append(f"12-month return of {d.return_12m * 100:.1f}%")
-    if include_technical:
-        return (pvs * 0.20) + (r12 * 0.20) + (slope * 0.20) + (tech * 0.40), notes
-    return (pvs * 0.35) + (r12 * 0.30) + (slope * 0.35), notes
+# ---------------------------------------------------------------------------
+# Classic stock scoring
+# ---------------------------------------------------------------------------
+
+class ClassicStockScorer:
+    """Original InvestDayTip stock scoring model."""
+
+    def _value_score(self, d: StockData) -> tuple[float, list[str]]:
+        notes: list[str] = []
+        pe = _linear(d.trailing_pe, best=10, worst=40)
+        pb = _linear(d.price_to_book, best=1.0, worst=6.0)
+        peg = _linear(d.peg_ratio, best=0.8, worst=3.0)
+        if d.trailing_pe is not None and d.trailing_pe < 20:
+            notes.append(f"attractive P/E of {d.trailing_pe:.1f}")
+        if d.peg_ratio is not None and d.peg_ratio < 1.5:
+            notes.append(f"PEG of {d.peg_ratio:.2f} suggests growth at reasonable price")
+        return (pe * 0.45) + (pb * 0.20) + (peg * 0.35), notes
+
+    def _quality_score(self, d: StockData) -> tuple[float, list[str]]:
+        notes: list[str] = []
+        roe = _linear(d.return_on_equity, best=0.30, worst=0.05)
+        margin = _linear(d.profit_margin, best=0.25, worst=0.02)
+        earn_g = _linear(d.earnings_growth, best=0.25, worst=-0.05)
+        rev_g = _linear(d.revenue_growth, best=0.20, worst=-0.05)
+        if d.return_on_equity is not None and d.return_on_equity > 0.15:
+            notes.append(f"strong ROE of {d.return_on_equity * 100:.1f}%")
+        if d.profit_margin is not None and d.profit_margin > 0.15:
+            notes.append(f"healthy profit margin of {d.profit_margin * 100:.1f}%")
+        if d.earnings_growth is not None and d.earnings_growth > 0.10:
+            notes.append(f"earnings growth of {d.earnings_growth * 100:.1f}%")
+        return (roe * 0.35) + (margin * 0.25) + (earn_g * 0.25) + (rev_g * 0.15), notes
+
+    def _health_score(self, d: StockData) -> tuple[float, list[str]]:
+        notes: list[str] = []
+        # yfinance reports debtToEquity as a percentage (e.g. 45.3 == 0.453x), so
+        # divide by 100 to get the ratio compared against best=0.2x / worst=2.0x.
+        de = d.debt_to_equity / 100.0 if d.debt_to_equity is not None else None
+        debt = _linear(de, best=0.2, worst=2.0)
+        liq = _linear(d.current_ratio, best=2.5, worst=1.0)
+        fcf = 50.0
+        if d.free_cashflow is not None:
+            fcf = 80.0 if d.free_cashflow > 0 else 20.0
+        if de is not None and de < 0.5:
+            notes.append(f"low leverage (D/E={de:.2f})")
+        if d.free_cashflow is not None and d.free_cashflow > 0:
+            notes.append("positive free cash flow")
+        return (debt * 0.45) + (liq * 0.25) + (fcf * 0.30), notes
+
+    def _trend_score(self, d: StockData, *, include_technical: bool = False) -> tuple[float, list[str]]:
+        notes: list[str] = []
+        pvs = _linear(d.price_vs_sma200, best=0.15, worst=-0.20)
+        r12 = _linear(d.return_12m, best=0.30, worst=-0.20)
+        slope = _linear(d.sma200_slope, best=0.10, worst=-0.10)
+        if include_technical:
+            tech, tech_notes = _technical_score(d)
+            notes.extend(tech_notes)
+        else:
+            tech = 0.0
+        if d.price_vs_sma200 is not None and d.price_vs_sma200 > 0:
+            notes.append(f"trading {d.price_vs_sma200 * 100:.1f}% above 200d SMA")
+        if d.return_12m is not None and d.return_12m > 0.10:
+            notes.append(f"12-month return of {d.return_12m * 100:.1f}%")
+        if include_technical:
+            return (pvs * 0.20) + (r12 * 0.20) + (slope * 0.20) + (tech * 0.40), notes
+        return (pvs * 0.35) + (r12 * 0.30) + (slope * 0.35), notes
+
+    def score(
+        self,
+        data: StockData,
+        *,
+        include_technical: bool = False,
+        si_data: dict | None = None,
+    ) -> ScoredAsset:
+        quality, q_notes = self._quality_score(data)
+        value, v_notes = self._value_score(data)
+        health, h_notes = self._health_score(data)
+        trend, t_notes = self._trend_score(data, include_technical=include_technical)
+
+        total = (
+            quality * STOCK_WEIGHTS_CLASSIC["quality"]
+            + value * STOCK_WEIGHTS_CLASSIC["value"]
+            + health * STOCK_WEIGHTS_CLASSIC["health"]
+            + trend * STOCK_WEIGHTS_CLASSIC["trend"]
+        )
+        rationale = q_notes + v_notes + h_notes + t_notes
+        if not rationale:
+            rationale.append("Limited data available; score based on neutral defaults.")
+
+        if si_data is None:
+            si_data = get_superinvestor_data()
+        si_count = si_data.get(data.ticker, {}).get("manager_count")
+
+        return ScoredAsset(
+            data=data,
+            asset_type="STOCK",
+            total=total,
+            breakdown={"Quality": quality, "Value": value, "Health": health, "Trend": trend},
+            rationale=rationale,
+            superinvestor_count=si_count,
+        )
 
 
-def score_stock(
-    data: StockData,
-    *,
-    include_technical: bool = False,
-    si_data: dict | None = None,
-) -> ScoredAsset:
-    quality, q_notes = _quality_score(data)
-    value, v_notes = _value_score(data)
-    health, h_notes = _health_score(data)
-    trend, t_notes = _trend_score(data, include_technical=include_technical)
+# ---------------------------------------------------------------------------
+# Quant stock scoring (Seeking-Alpha-inspired)
+# ---------------------------------------------------------------------------
 
-    total = (
-        quality * STOCK_WEIGHTS["quality"]
-        + value * STOCK_WEIGHTS["value"]
-        + health * STOCK_WEIGHTS["health"]
-        + trend * STOCK_WEIGHTS["trend"]
-    )
-    rationale = q_notes + v_notes + h_notes + t_notes
-    if not rationale:
-        rationale.append("Limited data available; score based on neutral defaults.")
+class QuantStockScorer:
+    """Five-factor stock scoring model with disqualifying grades.
 
-    if si_data is None:
-        si_data = get_superinvestor_data()
-    si_count = si_data.get(data.ticker, {}).get("manager_count")
+    Inspired by Seeking Alpha Quant Ratings: Value, Growth, Profitability,
+    Momentum and EPS Revisions. A single very poor factor caps the overall
+    score at neutral, preventing red flags from being hidden by strengths
+    elsewhere.
+    """
 
-    return ScoredAsset(
-        data=data,
-        asset_type="STOCK",
-        total=total,
-        breakdown={"Quality": quality, "Value": value, "Health": health, "Trend": trend},
-        rationale=rationale,
-        superinvestor_count=si_count,
-    )
+    # Thresholds below which a factor is considered a disqualifying red flag.
+    _DISQUALIFY_SOFT = 20.0  # Growth, Momentum, EPS Revisions
+    _DISQUALIFY_HARD = 15.0  # Value, Profitability
+
+    def _value_score(self, d: StockData) -> tuple[float, list[str]]:
+        notes: list[str] = []
+        pe = _linear(d.trailing_pe, best=10, worst=40)
+        pb = _linear(d.price_to_book, best=1.0, worst=6.0)
+        peg = _linear(d.peg_ratio, best=0.8, worst=3.0)
+
+        fcf_yield = 50.0
+        if d.free_cashflow is not None and d.market_cap is not None and d.market_cap > 0:
+            fcf_yield = _linear(d.free_cashflow / d.market_cap, best=0.10, worst=0.00, default=50.0)
+
+        if d.trailing_pe is not None and d.trailing_pe < 20:
+            notes.append(f"attractive P/E of {d.trailing_pe:.1f}")
+        if d.peg_ratio is not None and d.peg_ratio < 1.5:
+            notes.append(f"PEG of {d.peg_ratio:.2f} suggests growth at reasonable price")
+        if fcf_yield > 70:
+            notes.append("strong free cash flow yield")
+
+        return (pe * 0.35) + (pb * 0.20) + (peg * 0.25) + (fcf_yield * 0.20), notes
+
+    def _growth_score(self, d: StockData) -> tuple[float, list[str]]:
+        notes: list[str] = []
+        earn_g = _linear(d.earnings_growth, best=0.25, worst=-0.05)
+        rev_g = _linear(d.revenue_growth, best=0.20, worst=-0.05)
+        if d.earnings_growth is not None and d.earnings_growth > 0.10:
+            notes.append(f"earnings growth of {d.earnings_growth * 100:.1f}%")
+        if d.revenue_growth is not None and d.revenue_growth > 0.08:
+            notes.append(f"revenue growth of {d.revenue_growth * 100:.1f}%")
+        return (earn_g * 0.55) + (rev_g * 0.45), notes
+
+    def _profitability_score(self, d: StockData) -> tuple[float, list[str]]:
+        notes: list[str] = []
+        roe = _linear(d.return_on_equity, best=0.30, worst=0.05)
+        roa = _linear(d.return_on_assets, best=0.15, worst=0.01)
+        margin = _linear(d.profit_margin, best=0.25, worst=0.02)
+        if d.return_on_equity is not None and d.return_on_equity > 0.15:
+            notes.append(f"strong ROE of {d.return_on_equity * 100:.1f}%")
+        if d.profit_margin is not None and d.profit_margin > 0.15:
+            notes.append(f"healthy profit margin of {d.profit_margin * 100:.1f}%")
+        return (roe * 0.45) + (margin * 0.35) + (roa * 0.20), notes
+
+    def _momentum_score(self, d: StockData) -> tuple[float, list[str]]:
+        notes: list[str] = []
+        pvs = _linear(d.price_vs_sma200, best=0.15, worst=-0.20)
+        r12 = _linear(d.return_12m, best=0.30, worst=-0.20)
+        slope = _linear(d.sma200_slope, best=0.10, worst=-0.10)
+        if d.return_12m is not None and d.return_12m > 0.10:
+            notes.append(f"12-month return of {d.return_12m * 100:.1f}%")
+        if d.price_vs_sma200 is not None and d.price_vs_sma200 > 0:
+            notes.append(f"trading {d.price_vs_sma200 * 100:.1f}% above 200d SMA")
+        return (pvs * 0.35) + (r12 * 0.40) + (slope * 0.25), notes
+
+    def _eps_revisions_score(self, d: StockData) -> tuple[float, list[str]]:
+        """Proxy for EPS/revenue estimate revisions.
+
+        yfinance does not provide rich analyst-estimate histories, so we use
+        trailing earnings and revenue growth as a proxy for the direction of
+        revisions. A future improvement could ingest ``earningsEstimate`` data
+        when available.
+        """
+        notes: list[str] = []
+        earn_g = _linear(d.earnings_growth, best=0.25, worst=-0.05)
+        rev_g = _linear(d.revenue_growth, best=0.20, worst=-0.05)
+        if d.earnings_growth is not None and d.earnings_growth > 0.10:
+            notes.append("positive earnings trajectory")
+        if d.revenue_growth is not None and d.revenue_growth > 0.08:
+            notes.append("positive revenue trajectory")
+        return (earn_g * 0.60) + (rev_g * 0.40), notes
+
+    def score(
+        self,
+        data: StockData,
+        *,
+        include_technical: bool = False,
+        si_data: dict | None = None,
+    ) -> ScoredAsset:
+        value, v_notes = self._value_score(data)
+        growth, g_notes = self._growth_score(data)
+        profitability, p_notes = self._profitability_score(data)
+        momentum, m_notes = self._momentum_score(data)
+        eps_rev, e_notes = self._eps_revisions_score(data)
+
+        total = (
+            value * STOCK_WEIGHTS_QUANT["value"]
+            + growth * STOCK_WEIGHTS_QUANT["growth"]
+            + profitability * STOCK_WEIGHTS_QUANT["profitability"]
+            + momentum * STOCK_WEIGHTS_QUANT["momentum"]
+            + eps_rev * STOCK_WEIGHTS_QUANT["eps_revisions"]
+        )
+
+        # Disqualifying grades: a serious red flag caps the total at neutral.
+        disqualified = False
+        if growth < self._DISQUALIFY_SOFT:
+            disqualified = True
+            g_notes.append("growth flagged as disqualifying")
+        if momentum < self._DISQUALIFY_SOFT:
+            disqualified = True
+            m_notes.append("momentum flagged as disqualifying")
+        if eps_rev < self._DISQUALIFY_SOFT:
+            disqualified = True
+            e_notes.append("EPS revisions flagged as disqualifying")
+        if value < self._DISQUALIFY_HARD:
+            disqualified = True
+            v_notes.append("valuation flagged as disqualifying")
+        if profitability < self._DISQUALIFY_HARD:
+            disqualified = True
+            p_notes.append("profitability flagged as disqualifying")
+
+        if disqualified:
+            total = min(total, 50.0)
+            if total <= 50.0:
+                rationale = ["Disqualifying factor(s) capped score at neutral"] + v_notes + g_notes + p_notes + m_notes + e_notes
+            else:
+                rationale = v_notes + g_notes + p_notes + m_notes + e_notes
+        else:
+            rationale = v_notes + g_notes + p_notes + m_notes + e_notes
+
+        if not rationale:
+            rationale.append("Limited data available; score based on neutral defaults.")
+
+        if include_technical:
+            tech, tech_notes = _technical_score(data)
+            # Blend technical signal lightly into the momentum factor so the
+            # overall five-factor structure remains stable.
+            momentum = (momentum * 0.70) + (tech * 0.30)
+            breakdown = {
+                "Value": value,
+                "Growth": growth,
+                "Profitability": profitability,
+                "Momentum": momentum,
+                "EPS Revisions": eps_rev,
+            }
+            rationale.extend(tech_notes)
+        else:
+            breakdown = {
+                "Value": value,
+                "Growth": growth,
+                "Profitability": profitability,
+                "Momentum": momentum,
+                "EPS Revisions": eps_rev,
+            }
+
+        # Re-check cap after technical blending (momentum could only improve).
+        if disqualified:
+            total = min(total, 50.0)
+
+        if si_data is None:
+            si_data = get_superinvestor_data()
+        si_count = si_data.get(data.ticker, {}).get("manager_count")
+
+        return ScoredAsset(
+            data=data,
+            asset_type="STOCK",
+            total=total,
+            breakdown=breakdown,
+            rationale=rationale,
+            superinvestor_count=si_count,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -282,13 +488,33 @@ def score_etf(data: EtfData) -> ScoredAsset:
 # Dispatch
 # ---------------------------------------------------------------------------
 
+def score_stock(
+    data: StockData,
+    *,
+    model: str = "quant",
+    include_technical: bool = False,
+    si_data: dict | None = None,
+) -> ScoredAsset:
+    """Score a single stock using the selected model.
+
+    Args:
+        data: populated ``StockData`` instance.
+        model: ``"quant"`` (default) or ``"classic"``.
+        include_technical: blend RSI/MACD into the trend/momentum component.
+        si_data: optional pre-loaded superinvestor data cache.
+    """
+    if model == "classic":
+        return ClassicStockScorer().score(data, include_technical=include_technical, si_data=si_data)
+    return QuantStockScorer().score(data, include_technical=include_technical, si_data=si_data)
+
+
 def score_asset(
     data: AssetData,
     *,
+    model: str = "quant",
     include_technical: bool = False,
     si_data: dict | None = None,
 ) -> ScoredAsset:
     if isinstance(data, EtfData):
         return score_etf(data)
-    return score_stock(data, include_technical=include_technical, si_data=si_data)
-
+    return score_stock(data, model=model, include_technical=include_technical, si_data=si_data)

@@ -46,7 +46,7 @@ def test_strong_stock_scores_high():
         return_12m=0.20,
         sma200_slope=0.08,
     )
-    s = score_stock(data)
+    s = score_stock(data, model="classic")
     assert s.asset_type == "STOCK"
     assert s.total > 70
     assert set(s.breakdown.keys()) == {"Quality", "Value", "Health", "Trend"}
@@ -71,22 +71,22 @@ def test_weak_stock_scores_low():
         return_12m=-0.40,
         sma200_slope=-0.20,
     )
-    s = score_stock(data)
+    s = score_stock(data, model="classic")
     assert s.total < 30
 
 
 def test_missing_data_gives_neutral_score():
-    s = score_stock(StockData(ticker="UNK"))
+    s = score_stock(StockData(ticker="UNK"), model="classic")
     assert 40 <= s.total <= 60
 
 
 def test_technical_indicators_boost_trend():
     """Strong technical signals (deeply oversold + strong MACD) boost total score."""
     base = _base_data()
-    s_without = score_stock(base, include_technical=False)
+    s_without = score_stock(base, model="classic", include_technical=False)
     base.rsi_14 = 15.0   # deeply oversold → max RSI score
     base.macd_histogram = 0.08  # strongly positive → max MACD score
-    s_with = score_stock(base, include_technical=True)
+    s_with = score_stock(base, model="classic", include_technical=True)
     # Strong technical signals should outweigh the reduced SMA/return/slope weights
     assert s_with.total > s_without.total
 
@@ -96,11 +96,11 @@ def test_rsi_floor_below_20():
     base = _base_data()
     base.rsi_14 = 10.0  # would score 100 if un-floored
     base.macd_histogram = 0.0
-    s_low = score_stock(base, include_technical=True)
+    s_low = score_stock(base, model="classic", include_technical=True)
     base.rsi_14 = 19.0  # just below floor
-    s_floor = score_stock(base, include_technical=True)
+    s_floor = score_stock(base, model="classic", include_technical=True)
     base.rsi_14 = 20.0  # exactly at floor
-    s_exact = score_stock(base, include_technical=True)
+    s_exact = score_stock(base, model="classic", include_technical=True)
     # Scores should be very close (10 and 19 both map to 20)
     assert abs(s_low.total - s_floor.total) < 1.0
     assert abs(s_floor.total - s_exact.total) < 1.0
@@ -111,10 +111,10 @@ def test_include_technical_false_preserves_original_scoring():
     base = _base_data()
     base.rsi_14 = 25.0
     base.macd_histogram = 0.02
-    s_disabled = score_stock(base, include_technical=False)
+    s_disabled = score_stock(base, model="classic", include_technical=False)
     # Build an equivalent StockData without technical fields and score it
     equivalent = _base_data()
-    s_original = score_stock(equivalent, include_technical=False)
+    s_original = score_stock(equivalent, model="classic", include_technical=False)
     assert s_disabled.total == s_original.total
     assert s_disabled.breakdown == s_original.breakdown
 

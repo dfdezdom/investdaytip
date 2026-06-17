@@ -1,5 +1,53 @@
 # Changelog
 
+## v0.5.0 (2026-06-17)
+
+### Features
+
+- **Dual scoring models** (`--scoring-model {classic,quant}):
+  - New **`quant`** model (default) — Seeking-Alpha-inspired five-factor scoring: Value 25%, Growth 20%, Profitability 25%, Momentum 15%, EPS Revisions 15%
+    - Includes disqualifying grades that cap the total score at neutral when a factor falls into red-flag territory
+    - EPS Revisions uses earnings/revenue growth as a proxy while richer analyst-estimate data is not available
+  - **`classic`** model — Original Graham/Buffett + momentum model: Quality 35%, Value 25%, Health 20%, Trend 20%
+  - Selectable via CLI (`--scoring-model`), API (`scoring_model=...`), backtest, and advisor subcommand
+  - `quant` is now the project-wide default based on backtest validation
+
+### Data
+
+- Added `return_on_assets` to `StockData` and the backtest financial-statement pipeline to support the `quant` Profitability factor
+
+### Validation
+
+- Backtest comparison (US universe, 5y, top 5, quarterly snapshots, min-market-cap 0):
+  - `classic`: Alpha -2.56%, Sharpe 0.36, Win Rate 12M 53.3%
+  - `quant`: Alpha **4.50%**, Sharpe **0.58**, Win Rate 12M **66.7%**
+  - Verdict: **IMPROVED** — higher alpha, Sharpe, and 12M win rate
+
+### Tests
+
+- Added `tests/test_scoring_quant.py` covering the `quant` model: factor breakdown, disqualifying grades, default behavior, technical blending, and classic backwards compatibility
+- Updated existing tests to reflect `quant` as the new default
+
+### Fixes
+
+- **Dividend yield normalization** — `yfinance` reports `dividendYield` inconsistently (decimal for most US tickers, already-multiplied percentage for some European tickers). Added `_sanitize_yield()` to divide any value greater than `1.0` by 100, ensuring the new **Yield** column is always displayed as a correct percentage.
+- **Reliable stock dividend yield** — `yfinance`'s `dividendYield` field can be outright wrong for some tickers (e.g. AAPL ~36%, V ~80%). Stock yield is now computed as trailing-twelve-month dividends from `Ticker.dividends` divided by the current price, with `_sanitize_yield(info["dividendYield"])` as a fallback when raw dividends are unavailable. Verified live: AAPL now ~0.35%, V now ~0.79%.
+
+### UI
+
+- New **Yield** column in both CLI Rich table and HTML export, placed between **P/E** and **1M Δ**. Shows `dividend_yield` for stocks and `yield_` for ETFs; sortable in the HTML report.
+
+### Tests
+
+- Added `tests/test_data_source.py::TestSanitizeYield` covering decimal, percentage, zero, and non-finite yield inputs
+- Added `tests/test_data_source.py::TestTtmDividendYield` covering trailing-twelve-month yield calculation and old/empty dividend handling
+- Added `tests/test_html_export.py::test_export_html_includes_yield_column` verifying stock and ETF yield rendering
+
+### Docs
+
+- README.md: added dual-model documentation, `--scoring-model` CLI option, scoring-model comparison in `scoring_baseline.py` examples, new **Yield** output column, and dividend-yield normalization note
+- AGENTS.md: documented `classic`/`quant` models, weights, validation workflow, and `_sanitize_yield()` convention
+
 ## v0.4.1 (2026-06-07)
 
 ### Docs

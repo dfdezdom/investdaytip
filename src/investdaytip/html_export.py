@@ -14,7 +14,7 @@ from investdaytip.scoring import ScoredAsset
 
 # Base number of <th> columns excluding the optional Superinvestors column.
 # Used for the empty-state row colspan server- and client-side.
-_TABLE_BASE_COLUMN_COUNT = 16
+_TABLE_BASE_COLUMN_COUNT = 17
 
 
 def _is_finite_number(v: Any) -> TypeGuard[float]:
@@ -180,6 +180,8 @@ def _as_row(index: int, s: ScoredAsset) -> dict[str, Any]:
   exchange_hint = getattr(d, "exchange", None)
   rsi_value = getattr(d, "rsi_14", None)
   macd_value = getattr(d, "macd_histogram", None)
+  # Stocks expose dividend_yield; ETFs expose yield_.
+  div_yield = getattr(d, "dividend_yield", None) or getattr(d, "yield_", None)
   return {
     "rank": index,
     "asset_type": s.asset_type.lower(),
@@ -199,6 +201,8 @@ def _as_row(index: int, s: ScoredAsset) -> dict[str, Any]:
     "return_1m_text": _fmt_pct(d.return_1m),
     "return_12m": d.return_12m,
     "return_12m_text": _fmt_pct(d.return_12m),
+    "dividend_yield": div_yield,
+    "dividend_yield_text": _fmt_pct(div_yield),
     "superinvestor_count": s.superinvestor_count,
     "superinvestor_count_text": f"{s.superinvestor_count}" if s.superinvestor_count is not None else "-",
     "rsi": rsi_value,
@@ -238,6 +242,7 @@ def _render_initial_rows(rows: list[dict[str, Any]], include_superinvestor: bool
       f"<td class=\"num\">{escape(str(r['price_text']))}</td>"
       f"<td class=\"num {daily_class}\">{escape(str(r['daily_change_text']))}</td>"
       f"<td class=\"num\">{escape(str(r['pe_text']))}</td>"
+      f"<td class=\"num\">{escape(str(r['dividend_yield_text']))}</td>"
       f"<td class=\"num {one_m_class}\">{escape(str(r['return_1m_text']))}</td>"
       f"<td class=\"num {one_y_class}\">{escape(str(r['return_12m_text']))}</td>"
     )
@@ -271,6 +276,7 @@ def export_recommendations_html(
     include_technical: bool = False,
     sector: str | None = None,
     fear_greed: dict[str, Any] | None = None,
+    scoring_model: str = "classic",
 ) -> str:
     """Write a self-contained, filterable HTML report to ``destination``.
 
@@ -290,6 +296,7 @@ def export_recommendations_html(
         "row_count": len(rows),
         "sector": sector,
         "fear_greed": fear_greed if fear_greed is not None else {},
+        "scoring_model": scoring_model,
     }
 
     rows_json = json.dumps(rows, ensure_ascii=True)
@@ -538,6 +545,7 @@ def export_recommendations_html(
           <th class="num sortable" data-sort-key="price" data-sort-type="number" tabindex="0" aria-sort="none">Price<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="daily_change" data-sort-type="number" tabindex="0" aria-sort="none">% Today<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="pe" data-sort-type="number" tabindex="0" aria-sort="none">P/E<span class="sort-indicator">↕</span></th>
+          <th class="num sortable" data-sort-key="dividend_yield" data-sort-type="number" tabindex="0" aria-sort="none">Yield<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="return_1m" data-sort-type="number" tabindex="0" aria-sort="none">1M<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="return_12m" data-sort-type="number" tabindex="0" aria-sort="none">1Y<span class="sort-indicator">↕</span></th>
           {superinvestor_th}{technical_th}<th class="num sortable" data-sort-key="score" data-sort-type="number" tabindex="0" aria-sort="none">Score<span class="sort-indicator">↕</span></th>
@@ -687,6 +695,7 @@ def export_recommendations_html(
             <td class="num">${{r.price_text}}</td>
             <td class="num ${{dailyClass}}">${{r.daily_change_text}}</td>
             <td class="num">${{r.pe_text}}</td>
+            <td class="num">${{r.dividend_yield_text}}</td>
             <td class="num ${{oneMClass}}">${{r.return_1m_text}}</td>
             <td class="num ${{oneYClass}}">${{r.return_12m_text}}</td>
             {superinvestor_td}{technical_td}<td class="num"><strong>${{scoreText}}</strong></td>

@@ -43,6 +43,8 @@ def _run_backtest(args: argparse.Namespace) -> dict[str, Any]:
         cmd.extend(["--regime", args.regime])
     if args.include_technical:
         cmd.append("--include-technical")
+    if args.scoring_model != "classic":
+        cmd.extend(["--scoring-model", args.scoring_model])
 
     # Run in temp dir so HTML file is captured
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -70,6 +72,7 @@ def _run_backtest(args: argparse.Namespace) -> dict[str, Any]:
                 "min_market_cap": args.min_market_cap,
                 "dynamic_weights": args.dynamic_weights,
                 "regime": args.regime,
+                "scoring_model": args.scoring_model,
             },
             "html_file": html_file,
         }
@@ -188,6 +191,8 @@ def main() -> None:
     run.add_argument("--dynamic-weights", action="store_true")
     run.add_argument("--regime", default=None)
     run.add_argument("--include-technical", action="store_true")
+    run.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",
+                     help="Scoring model to use (default: quant).")
     run.add_argument("-o", "--output", default=".")
 
     cmp = sub.add_parser("compare", help="Compare two baseline JSON files")

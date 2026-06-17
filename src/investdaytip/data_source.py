@@ -48,6 +48,7 @@ class StockData:
     peg_ratio: Optional[float] = None
     # Quality
     return_on_equity: Optional[float] = None
+    return_on_assets: Optional[float] = None
     profit_margin: Optional[float] = None
     earnings_growth: Optional[float] = None
     revenue_growth: Optional[float] = None
@@ -145,6 +146,43 @@ def _first(*values: Optional[float]) -> Optional[float]:
         if v is not None:
             return v
     return None
+
+
+def _sanitize_yield(value: Optional[float]) -> Optional[float]:
+    """Normalize yfinance yield fields to a decimal (e.g. 0.054 = 5.4%).
+
+    yfinance is inconsistent across tickers and regions: some report yield as
+    a decimal (0.054) and others as an already-multiplied percentage (5.4).
+    Treat any value greater than 1.0 as a percentage and divide by 100.
+    """
+    if value is None or not math.isfinite(value):
+        return None
+    if value > 1.0:
+        return value / 100.0
+    return value
+
+
+def _ttm_dividend_yield(
+    dividends: pd.Series | None,
+    price: Optional[float],
+) -> Optional[float]:
+    """Return trailing-twelve-month dividend yield computed from raw dividends.
+
+    yfinance's ``dividendYield`` field is unreliable for many tickers (it can
+    be off by 100x or report stale/synthetic values). Summing the dividends
+    distributed over the last 365 days and dividing by the current price is
+    more accurate. Returns ``None`` when no dividends or no price are available.
+    """
+    if dividends is None or dividends.empty or price is None or price <= 0:
+        return None
+    idx = dividends.index
+    if hasattr(idx, "tz") and idx.tz is not None:
+        idx = idx.tz_localize(None)
+        dividends = dividends.copy()
+        dividends.index = idx
+    cutoff = pd.Timestamp.now().normalize() - pd.Timedelta(days=365)
+    ttm = float(dividends[dividends.index >= cutoff].sum())
+    return (ttm / price) if ttm > 0 else None
 
 
 def _trend_metrics(
@@ -273,7 +311,12 @@ def _apply_history_common(
         data.current_price = float(history["Close"].iloc[-1])
 
 
-def _fetch_stock(ticker: str, info: dict, history: pd.DataFrame) -> StockData:
+def _fetch_stock(
+    ticker: str,
+    info: dict,
+    history: pd.DataFrame,
+    dividends: pd.Series | None = None,
+) -> StockData:
     data = StockData(ticker=ticker)
     data.name = info.get("shortName") or info.get("longName")
     data.sector = info.get("sector")
@@ -284,17 +327,27 @@ def _fetch_stock(ticker: str, info: dict, history: pd.DataFrame) -> StockData:
     data.price_to_book = _safe_get(info, "priceToBook")
     data.peg_ratio = _first(_safe_get(info, "pegRatio"), _safe_get(info, "trailingPegRatio"))
     data.return_on_equity = _safe_get(info, "returnOnEquity")
+    data.return_on_assets = _safe_get(info, "returnOnAssets")
     data.profit_margin = _safe_get(info, "profitMargins")
     data.earnings_growth = _safe_get(info, "earningsGrowth")
     data.revenue_growth = _safe_get(info, "revenueGrowth")
     data.debt_to_equity = _safe_get(info, "debtToEquity")
     data.current_ratio = _safe_get(info, "currentRatio")
     data.free_cashflow = _safe_get(info, "freeCashflow")
-    data.dividend_yield = _safe_get(info, "dividendYield")
     data.payout_ratio = _safe_get(info, "payoutRatio")
     data.market_cap = _safe_get(info, "marketCap")
     data.current_price = _first(_safe_get(info, "currentPrice"), _safe_get(info, "regularMarketPrice"))
     _apply_history_common(data, history)
+
+    # Compute dividend yield from raw dividends (more reliable than yfinance's
+    # dividendYield field, which can be off by 100x for some tickers). Fall back
+    # to the info field only when raw dividends are unavailable.
+    computed_yield = _ttm_dividend_yield(dividends, data.current_price)
+    if computed_yield is not None:
+        data.dividend_yield = computed_yield
+    else:
+        data.dividend_yield = _sanitize_yield(_safe_get(info, "dividendYield"))
+
     return data
 
 
@@ -313,7 +366,7 @@ def _fetch_etf(ticker: str, info: dict, history: pd.DataFrame) -> EtfData:
     data.three_year_return = _safe_get(info, "threeYearAverageReturn")
     data.five_year_return = _safe_get(info, "fiveYearAverageReturn")
     data.beta_3y = _first(_safe_get(info, "beta3Year"), _safe_get(info, "beta"))
-    data.yield_ = _first(_safe_get(info, "yield"), _safe_get(info, "trailingAnnualDividendYield"))
+    data.yield_ = _sanitize_yield(_first(_safe_get(info, "yield"), _safe_get(info, "trailingAnnualDividendYield")))
     data.current_price = _first(_safe_get(info, "regularMarketPrice"), _safe_get(info, "previousClose"))
     data.nav = _safe_get(info, "navPrice")
     _apply_history_common(data, history, include_volatility=True)
@@ -351,6 +404,8 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> AssetData:
     for tickers whose market cap / AUM is below the threshold.
     """
     from investdaytip.cache import (
+        cache_dividends_get,
+        cache_dividends_set,
         cache_history_get,
         cache_history_set,
         cache_info_get,
@@ -420,10 +475,35 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> AssetData:
     if info_fetched_fresh:
         cache_info_set(ticker, info)
 
-    # ── Step 3: construct result ─────────────────────────────────────────
+    # ── Step 3: get / fetch dividends ────────────────────────────────────
+    # Used to compute a reliable TTM dividend yield for stocks. ETFs keep
+    # using the yield field from info.
+    dividends: pd.Series | None = None
+    dividends_fetched_fresh = False
+    if quote_type != "ETF":
+        divs_raw = cache_dividends_get(ticker)
+        if divs_raw is not None:
+            try:
+                dividends = pd.read_json(StringIO(divs_raw), typ="series")
+            except Exception:
+                dividends = None
+        else:
+            try:
+                with _suppress_stderr():
+                    if t is None:
+                        t = yf.Ticker(ticker)
+                    dividends = t.dividends
+                dividends_fetched_fresh = True
+            except Exception:
+                dividends = None
+
+    # ── Step 4: construct result ─────────────────────────────────────────
     if quote_type == "ETF":
         return _fetch_etf(ticker, info, history)
-    return _fetch_stock(ticker, info, history)
+
+    if dividends_fetched_fresh and dividends is not None:
+        cache_dividends_set(ticker, dividends.to_json(date_format="iso"))
+    return _fetch_stock(ticker, info, history, dividends)
 
 
 # Backwards-compatible alias

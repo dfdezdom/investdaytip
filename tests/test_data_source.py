@@ -12,7 +12,9 @@ from investdaytip.data_source import (
     StockData,
     _first,
     _safe_get,
+    _sanitize_yield,
     _technical_indicators,
+    _ttm_dividend_yield,
     fetch_asset,
 )
 
@@ -22,6 +24,7 @@ def _mock_ticker(info: dict, history: pd.DataFrame | None = None) -> MagicMock:
     mock = MagicMock()
     mock.info = info
     mock.history.return_value = history if history is not None else pd.DataFrame({"Close": [100] * 300})
+    mock.dividends = pd.Series(dtype=float)
     return mock
 
 
@@ -198,6 +201,47 @@ class TestFirst:
 
     def test_returns_first_value(self):
         assert _first(1.0, 2.0, 3.0) == 1.0
+
+
+class TestSanitizeYield:
+    def test_decimal_yield_preserved(self):
+        assert _sanitize_yield(0.054) == 0.054
+
+    def test_percentage_yield_divided_by_100(self):
+        assert _sanitize_yield(5.4) == pytest.approx(0.054)
+
+    def test_zero_yield_preserved(self):
+        assert _sanitize_yield(0.0) == 0.0
+
+    def test_none_returns_none(self):
+        assert _sanitize_yield(None) is None
+
+    def test_non_finite_returns_none(self):
+        assert _sanitize_yield(float("nan")) is None
+        assert _sanitize_yield(float("inf")) is None
+
+
+class TestTtmDividendYield:
+    def test_ttm_yield_from_dividends(self):
+        today = pd.Timestamp.now().normalize()
+        dates = pd.date_range(end=today, periods=4, freq="91D")
+        dividends = pd.Series([0.25, 0.25, 0.25, 0.25], index=dates)
+        assert _ttm_dividend_yield(dividends, 100.0) == pytest.approx(0.01)
+
+    def test_ignores_dividends_older_than_one_year(self):
+        today = pd.Timestamp.now().normalize()
+        old = pd.Series([10.0], index=[today - pd.Timedelta(days=400)])
+        assert _ttm_dividend_yield(old, 100.0) is None
+
+    def test_none_or_empty_returns_none(self):
+        assert _ttm_dividend_yield(None, 100.0) is None
+        assert _ttm_dividend_yield(pd.Series(dtype=float), 100.0) is None
+
+    def test_zero_price_returns_none(self):
+        today = pd.Timestamp.now().normalize()
+        dividends = pd.Series([1.0], index=[today])
+        assert _ttm_dividend_yield(dividends, 0.0) is None
+        assert _ttm_dividend_yield(dividends, None) is None
 
 
 # ── ETF fetch path ───────────────────────────────────────────────────────────

@@ -45,4 +45,6 @@ poetry.lock
 /advisor_recommendations/
 /portfolios/
 
+# Local planning documents
+/plan-scoring-dual-model.md
 
