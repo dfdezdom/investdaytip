@@ -28,6 +28,7 @@ from yfinance.exceptions import YFRateLimitError
 
 from investdaytip.data_source import (
     StockData,
+    _compute_eps_surprise,
     _suppress_stderr,
     _technical_indicators,
     _trend_metrics,
@@ -364,6 +365,30 @@ def _max_drawdown(values: list[float]) -> float:
 # ── Per-ticker historical data construction ─────────────────────────────────
 
 
+def _compute_historical_eps_surprise(
+    earnings_dates: pd.DataFrame | None,
+    snapshot_date: datetime,
+    reporting_lag_days: int,
+    lookback_quarters: int = 4,
+) -> Optional[float]:
+    """Average EPS surprise for quarters reported before *snapshot_date*.
+
+    Only earnings reports that would have been public by
+    ``snapshot_date - reporting_lag_days`` are considered, preventing
+    look-ahead bias in the backtest.
+    """
+    if earnings_dates is None or earnings_dates.empty:
+        return None
+    cutoff = snapshot_date - timedelta(days=reporting_lag_days)
+    # Normalize index to naive dates for consistent comparisons.
+    idx = pd.DatetimeIndex(pd.to_datetime(earnings_dates.index)).tz_localize(None)
+    filtered = earnings_dates.loc[idx <= pd.Timestamp(cutoff)].copy()
+    if filtered.empty:
+        return None
+    filtered.index = idx[idx <= pd.Timestamp(cutoff)]
+    return _compute_eps_surprise(filtered, lookback_quarters)
+
+
 def _build_historical_stock_data(
     ticker: str,
     info: dict,
@@ -374,6 +399,8 @@ def _build_historical_stock_data(
     cash_flow: pd.DataFrame,
     dividends: pd.Series,
     quarter_date: datetime,
+    earnings_dates: pd.DataFrame | None = None,
+    reporting_lag_days: int = 60,
 ) -> StockData:
     """Build a ``StockData`` instance using only data available at *snapshot_date*.
 
@@ -458,6 +485,10 @@ def _build_historical_stock_data(
         (ttm_div / eps) if (ttm_div and eps and eps != 0) else None
     )
 
+    eps_surprise = _compute_historical_eps_surprise(
+        earnings_dates, snapshot_date, reporting_lag_days
+    )
+
     return StockData(
         ticker=ticker,
         name=info.get("shortName") or info.get("longName"),
@@ -478,6 +509,7 @@ def _build_historical_stock_data(
         free_cashflow=fcf,
         dividend_yield=dividend_yield,
         payout_ratio=payout_ratio,
+        eps_surprise=eps_surprise,
         market_cap=market_cap,
         current_price=price,
         price_vs_sma200=price_vs_sma200,
@@ -507,6 +539,7 @@ def _try_fetch_from_cache(ticker: str) -> _TickerData | None:
     """Return cached backtest data for *ticker*, or ``None`` if any component is missing/expired."""
     from investdaytip.cache import (
         cache_dividends_get,
+        cache_earnings_dates_get,
         cache_financial_get,
         cache_history_get,
         cache_info_get,
@@ -521,8 +554,9 @@ def _try_fetch_from_cache(ticker: str) -> _TickerData | None:
     inc_raw = cache_financial_get(ticker, "income_stmt")
     cf_raw = cache_financial_get(ticker, "cash_flow")
     divs_raw = cache_dividends_get(ticker)
+    ed_raw = cache_earnings_dates_get(ticker)
 
-    if any(r is None for r in (info_raw, hist_raw, bs_raw, inc_raw, cf_raw, divs_raw)):
+    if any(r is None for r in (info_raw, hist_raw, bs_raw, inc_raw, cf_raw, divs_raw, ed_raw)):
         return None
 
     try:
@@ -532,6 +566,7 @@ def _try_fetch_from_cache(ticker: str) -> _TickerData | None:
         inc = pd.read_json(StringIO(inc_raw))
         cf = pd.read_json(StringIO(cf_raw))
         divs = pd.read_json(StringIO(divs_raw), typ="series")
+        ed = pd.read_json(StringIO(ed_raw))
     except Exception:
         return None
 
@@ -543,6 +578,7 @@ def _try_fetch_from_cache(ticker: str) -> _TickerData | None:
         income_stmt=inc,
         cash_flow=cf,
         dividends=divs,
+        earnings_dates=ed,
     )
 
 
@@ -550,6 +586,7 @@ def _store_fetch_in_cache(ticker: str, data: _TickerData) -> None:
     """Persist each component of *data* in the SQLite cache."""
     from investdaytip.cache import (
         cache_dividends_set,
+        cache_earnings_dates_set,
         cache_financial_set,
         cache_history_set,
         cache_info_set,
@@ -575,6 +612,10 @@ def _store_fetch_in_cache(ticker: str, data: _TickerData) -> None:
     if divs is not None and not divs.empty:
         cache_dividends_set(ticker, divs.to_json(date_format="iso"))
 
+    ed = data.get("earnings_dates")
+    if ed is not None and not ed.empty:
+        cache_earnings_dates_set(ticker, ed.to_json(date_format="iso"))
+
 
 def _fetch_ticker_data(
     ticker: str, period: str = "5y", _retries: int = 0
@@ -585,8 +626,9 @@ def _fetch_ticker_data(
     cover a longer history (5+ fiscal years) than quarterly reports (which
     yfinance only returns 5 quarters for).
 
-    Results are cached per-component (info, history, financials, dividends)
-    with component-appropriate TTLs so repeated runs skip yfinance calls.
+    Results are cached per-component (info, history, financials, dividends,
+    earnings_dates) with component-appropriate TTLs so repeated runs skip
+    yfinance calls.
     """
     # ── Try cache first ──
     cached = _try_fetch_from_cache(ticker)
@@ -608,6 +650,11 @@ def _fetch_ticker_data(
             result["income_stmt"] = t.income_stmt
             result["cash_flow"] = t.cashflow
             result["dividends"] = t.dividends
+            try:
+                result["earnings_dates"] = t.earnings_dates
+            except Exception as ed_exc:
+                logger.warning("Failed to fetch earnings_dates for %s: %s", ticker, ed_exc)
+                result["earnings_dates"] = pd.DataFrame()
             # Strip timezone from financial statement columns so that
             # _col_before comparisons with tz-naive Timestamps work.
             for key in ("balance_sheet", "income_stmt", "cash_flow"):
@@ -805,6 +852,7 @@ def run_backtest(
                 inc = td.get("income_stmt", pd.DataFrame())
                 cf = td.get("cash_flow", pd.DataFrame())
                 divs = td.get("dividends", pd.Series(dtype=float))
+                ed = td.get("earnings_dates")
 
                 sd_obj = _build_historical_stock_data(
                     ticker=t,
@@ -816,6 +864,8 @@ def run_backtest(
                     cash_flow=cf,
                     dividends=divs,
                     quarter_date=quarter_date,
+                    earnings_dates=ed,
+                    reporting_lag_days=reporting_lag_days,
                 )
 
                 # Apply min market cap filter

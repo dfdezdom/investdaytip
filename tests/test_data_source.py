@@ -10,6 +10,7 @@ from yfinance.exceptions import YFRateLimitError
 from investdaytip.data_source import (
     EtfData,
     StockData,
+    _compute_eps_surprise,
     _first,
     _safe_get,
     _sanitize_yield,
@@ -19,12 +20,17 @@ from investdaytip.data_source import (
 )
 
 
-def _mock_ticker(info: dict, history: pd.DataFrame | None = None) -> MagicMock:
+def _mock_ticker(
+    info: dict,
+    history: pd.DataFrame | None = None,
+    earnings_dates: pd.DataFrame | None = None,
+) -> MagicMock:
     """Build a mock yf.Ticker returning the given info dict and history."""
     mock = MagicMock()
     mock.info = info
     mock.history.return_value = history if history is not None else pd.DataFrame({"Close": [100] * 300})
     mock.dividends = pd.Series(dtype=float)
+    mock.earnings_dates = earnings_dates if earnings_dates is not None else pd.DataFrame()
     return mock
 
 
@@ -309,3 +315,71 @@ def test_fetch_asset_etf_sharpe_proxy_computed(mocker):
     assert result.return_12m is not None
     assert result.volatility_1y is not None
     assert result.sharpe_proxy is not None
+
+
+# ── _compute_eps_surprise() ──────────────────────────────────────────────────
+
+
+def _earnings_dates_df(surprises: list[float]) -> pd.DataFrame:
+    today = pd.Timestamp.now().normalize()
+    dates = pd.date_range(end=today, periods=len(surprises), freq="91D")
+    return pd.DataFrame(
+        {
+            "EPS Estimate": [1.0] * len(surprises),
+            "Reported EPS": [1.0] * len(surprises),
+            "Surprise(%)": surprises,
+        },
+        index=dates,
+    )
+
+
+def test_compute_eps_surprise_averages_last_four_quarters():
+    df = _earnings_dates_df([2.0, 4.0, 6.0, 8.0, 10.0])
+    assert _compute_eps_surprise(df) == pytest.approx(7.0)
+
+
+def test_compute_eps_surprise_ignores_future_rows():
+    today = pd.Timestamp.now().normalize()
+    future = today + pd.Timedelta(days=30)
+    past = pd.date_range(end=today, periods=4, freq="91D")
+    df = pd.DataFrame(
+        {
+            "EPS Estimate": [1.0] * 5,
+            "Reported EPS": [1.0] * 4 + [None],
+            "Surprise(%)": [2.0, 4.0, 6.0, 8.0, None],
+        },
+        index=pd.DatetimeIndex(list(past) + [future]),
+    )
+    assert _compute_eps_surprise(df) == pytest.approx(5.0)
+
+
+def test_compute_eps_surprise_returns_none_when_empty():
+    assert _compute_eps_surprise(pd.DataFrame()) is None
+    assert _compute_eps_surprise(None) is None
+
+
+def test_compute_eps_surprise_deduplicates_same_report_day():
+    today = pd.Timestamp.now().normalize()
+    idx = pd.DatetimeIndex(
+        [today, today - pd.Timedelta(days=1), today - pd.Timedelta(days=1)]
+    )
+    df = pd.DataFrame(
+        {
+            "EPS Estimate": [1.0, 1.0, 1.0],
+            "Reported EPS": [1.0, 1.0, 1.0],
+            "Surprise(%)": [10.0, 5.0, 7.0],
+        },
+        index=idx,
+    )
+    # Latest entry for the duplicate day should be kept.
+    assert _compute_eps_surprise(df, lookback_quarters=2) == pytest.approx(8.5)
+
+
+def test_fetch_asset_populates_eps_surprise(mocker, stock_info):
+    earnings_dates = _earnings_dates_df([5.0, 5.0, 5.0, 5.0])
+    mock = _mock_ticker(stock_info, earnings_dates=earnings_dates)
+    mocker.patch("investdaytip.data_source.yf.Ticker", return_value=mock)
+
+    result = fetch_asset("BIGC")
+    assert isinstance(result, StockData)
+    assert result.eps_surprise == pytest.approx(5.0)

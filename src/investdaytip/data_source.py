@@ -59,6 +59,8 @@ class StockData:
     # Income
     dividend_yield: Optional[float] = None
     payout_ratio: Optional[float] = None
+    # Earnings surprises (proxy for EPS revisions)
+    eps_surprise: Optional[float] = None
     # Market context
     market_cap: Optional[float] = None
     current_price: Optional[float] = None
@@ -183,6 +185,54 @@ def _ttm_dividend_yield(
     cutoff = pd.Timestamp.now().normalize() - pd.Timedelta(days=365)
     ttm = float(dividends[dividends.index >= cutoff].sum())
     return (ttm / price) if ttm > 0 else None
+
+
+def _compute_eps_surprise(
+    earnings_dates: pd.DataFrame | None,
+    lookback_quarters: int = 4,
+) -> Optional[float]:
+    """Return the average EPS surprise (%) over the last *lookback_quarters*.
+
+    yfinance ``earnings_dates`` contains ``EPS Estimate``, ``Reported EPS`` and
+    ``Surprise(%)`` for past and future earnings dates.  We keep only rows with
+    a reported EPS and a finite surprise percentage, drop duplicate report
+    dates (e.g. pre/post-market entries), and average the most recent quarters.
+    Returns ``None`` when no usable data is available.
+    """
+    if earnings_dates is None or earnings_dates.empty:
+        return None
+    if "Surprise(%)" not in earnings_dates.columns or "Reported EPS" not in earnings_dates.columns:
+        return None
+
+    surprises = pd.Series(pd.to_numeric(earnings_dates["Surprise(%)"], errors="coerce"))
+    reported = pd.Series(pd.to_numeric(earnings_dates["Reported EPS"], errors="coerce"))
+    # Build boolean mask element-wise to avoid ndarray type issues.
+    valid = pd.Series(
+        [
+            pd.notna(surprises.iat[i]) and pd.notna(reported.iat[i]) and math.isfinite(float(surprises.iat[i]))
+            for i in range(len(surprises))
+        ],
+        index=surprises.index,
+        dtype=bool,
+    )
+    if not valid.any():
+        return None
+
+    # Normalize the index to naive dates so timezone differences do not create
+    # duplicate report days.
+    idx = pd.DatetimeIndex(pd.to_datetime(earnings_dates.index)).tz_localize(None).normalize()
+
+    df = pd.DataFrame({
+        "surprise": surprises[valid],
+        "report_date": idx[valid],
+    })
+    # Drop duplicate report dates, keeping the latest entry for each day.
+    df = df.sort_index().drop_duplicates(subset=["report_date"], keep="last")
+
+    recent = df.sort_index(ascending=False).head(lookback_quarters)
+    if recent.empty:
+        return None
+    return float(recent["surprise"].mean())
 
 
 def _trend_metrics(
@@ -316,6 +366,7 @@ def _fetch_stock(
     info: dict,
     history: pd.DataFrame,
     dividends: pd.Series | None = None,
+    earnings_dates: pd.DataFrame | None = None,
 ) -> StockData:
     data = StockData(ticker=ticker)
     data.name = info.get("shortName") or info.get("longName")
@@ -347,6 +398,8 @@ def _fetch_stock(
         data.dividend_yield = computed_yield
     else:
         data.dividend_yield = _sanitize_yield(_safe_get(info, "dividendYield"))
+
+    data.eps_surprise = _compute_eps_surprise(earnings_dates)
 
     return data
 
@@ -406,6 +459,8 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> AssetData:
     from investdaytip.cache import (
         cache_dividends_get,
         cache_dividends_set,
+        cache_earnings_dates_get,
+        cache_earnings_dates_set,
         cache_history_get,
         cache_history_set,
         cache_info_get,
@@ -497,13 +552,35 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> AssetData:
             except Exception:
                 dividends = None
 
-    # ── Step 4: construct result ─────────────────────────────────────────
+    # ── Step 4: get / fetch earnings_dates (stocks only) ─────────────────
+    earnings_dates: pd.DataFrame | None = None
+    earnings_dates_fetched_fresh = False
+    if quote_type != "ETF":
+        ed_raw = cache_earnings_dates_get(ticker)
+        if ed_raw is not None:
+            try:
+                earnings_dates = pd.read_json(StringIO(ed_raw))
+            except Exception:
+                earnings_dates = None
+        else:
+            try:
+                with _suppress_stderr():
+                    if t is None:
+                        t = yf.Ticker(ticker)
+                    earnings_dates = t.earnings_dates
+                earnings_dates_fetched_fresh = True
+            except Exception:
+                earnings_dates = None
+
+    # ── Step 5: construct result ─────────────────────────────────────────
     if quote_type == "ETF":
         return _fetch_etf(ticker, info, history)
 
     if dividends_fetched_fresh and dividends is not None:
         cache_dividends_set(ticker, dividends.to_json(date_format="iso"))
-    return _fetch_stock(ticker, info, history, dividends)
+    if earnings_dates_fetched_fresh and earnings_dates is not None:
+        cache_earnings_dates_set(ticker, earnings_dates.to_json(date_format="iso"))
+    return _fetch_stock(ticker, info, history, dividends, earnings_dates)
 
 
 # Backwards-compatible alias

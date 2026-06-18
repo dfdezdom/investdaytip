@@ -32,6 +32,8 @@ dependencies = [
     "numpy>=1.24,<3.0",
     "rich>=13.0,<15.0",
     "argcomplete>=3.0",
+    # yfinance uses lxml to parse earnings_dates (EPS surprise data).
+    "lxml>=4.9",
 ]
 
 [project.optional-dependencies]

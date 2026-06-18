@@ -10,19 +10,13 @@ Two stock scoring models are available, selectable via ``model=``:
     Growth           (20%)  — earnings growth, revenue growth
     Profitability    (25%)  — ROE, ROA, profit margin
     Momentum         (15%)  — 12m return, vs SMA200, SMA200 slope
-    EPS Revisions    (15%)  — earnings/revenue growth as estimate-revision proxy
+    EPS Revisions    (15%)  — average EPS surprise vs analyst estimates
 
 **``classic``** — Graham/Buffett + momentum:
     Quality (35%)  — ROE, margins, growth
     Value   (25%)  — P/E, P/B, PEG
     Health  (20%)  — debt, liquidity, FCF
     Trend   (20%)  — 200d-SMA position, 12m return, SMA slope
-    Value            (25%)  — P/E, P/B, PEG, FCF yield
-    Growth           (20%)  — earnings growth, revenue growth
-    Profitability    (25%)  — ROE, ROA, profit margin
-    Momentum         (15%)  — 12m return, vs SMA200, SMA200 slope
-    EPS Revisions    (15%)  — earnings/revenue growth as estimate-revision proxy
-
 Stocks that fail a "disqualifying grade" on any high-impact factor are capped
 at a neutral total score (50), preventing one strong factor from masking a
 serious red flag elsewhere.
@@ -311,21 +305,24 @@ class QuantStockScorer:
         return (pvs * 0.35) + (r12 * 0.40) + (slope * 0.25), notes
 
     def _eps_revisions_score(self, d: StockData) -> tuple[float, list[str]]:
-        """Proxy for EPS/revenue estimate revisions.
+        """EPS estimate-revision factor based on reported EPS surprises.
 
-        yfinance does not provide rich analyst-estimate histories, so we use
-        trailing earnings and revenue growth as a proxy for the direction of
-        revisions. A future improvement could ingest ``earningsEstimate`` data
-        when available.
+        We average the percentage surprise (Reported EPS vs Estimate) over the
+        last four reported quarters.  Positive surprises indicate analysts were
+        too pessimistic and are likely revising estimates upward; negative
+        surprises suggest downward revisions.  When no earnings-dates data is
+        available the factor falls back to neutral.
         """
         notes: list[str] = []
-        earn_g = _linear(d.earnings_growth, best=0.25, worst=-0.05)
-        rev_g = _linear(d.revenue_growth, best=0.20, worst=-0.05)
-        if d.earnings_growth is not None and d.earnings_growth > 0.10:
-            notes.append("positive earnings trajectory")
-        if d.revenue_growth is not None and d.revenue_growth > 0.08:
-            notes.append("positive revenue trajectory")
-        return (earn_g * 0.60) + (rev_g * 0.40), notes
+        if d.eps_surprise is None:
+            return 50.0, notes
+
+        score = _linear(d.eps_surprise, best=15.0, worst=-15.0, default=50.0)
+        if d.eps_surprise > 5.0:
+            notes.append(f"EPS beat estimates by {d.eps_surprise:.1f}% on average")
+        elif d.eps_surprise < -5.0:
+            notes.append(f"EPS missed estimates by {abs(d.eps_surprise):.1f}% on average")
+        return score, notes
 
     def score(
         self,

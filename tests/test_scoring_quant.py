@@ -1,5 +1,7 @@
 """Tests for the optional ``quant`` scoring model."""
 
+import pytest
+
 from investdaytip.data_source import StockData
 from investdaytip.scoring import (
     QuantStockScorer,
@@ -133,3 +135,38 @@ def test_quant_scorer_directly():
     s = scorer.score(_base_data())
     assert isinstance(s, ScoredAsset)
     assert s.total > 70
+
+
+def test_quant_eps_revisions_high_surprise():
+    base = _base_data()
+    base.eps_surprise = 15.0
+    s = score_stock(base, model="quant")
+    assert s.breakdown["EPS Revisions"] == pytest.approx(100.0)
+    assert any("beat estimates" in note for note in s.rationale)
+
+
+def test_quant_eps_revisions_low_surprise():
+    base = _base_data()
+    base.eps_surprise = -15.0
+    s = score_stock(base, model="quant")
+    assert s.breakdown["EPS Revisions"] == pytest.approx(0.0)
+    assert s.total <= 50.0  # disqualified
+    assert any("missed estimates" in note for note in s.rationale)
+
+
+def test_quant_eps_revisions_missing_is_neutral():
+    base = _base_data()
+    base.eps_surprise = None
+    s = score_stock(base, model="quant")
+    assert s.breakdown["EPS Revisions"] == pytest.approx(50.0)
+
+
+def test_quant_eps_revisions_does_not_use_growth():
+    """When eps_surprise is present, Growth and EPS Revisions differ."""
+    base = _base_data()
+    base.eps_surprise = 15.0
+    base.earnings_growth = -0.20
+    base.revenue_growth = -0.10
+    s = score_stock(base, model="quant")
+    assert s.breakdown["EPS Revisions"] > 90.0
+    assert s.breakdown["Growth"] < 20.0

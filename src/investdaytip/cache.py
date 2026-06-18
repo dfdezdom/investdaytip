@@ -19,6 +19,7 @@ CACHE_DB = CACHE_DIR / "cache.db"
 TTL_PRICES = 900          # 15 minutes
 TTL_FUNDAMENTALS = 86400  # 1 day
 TTL_FINANCIALS = 604800   # 7 days
+TTL_EARNINGS_DATES = 604800  # 7 days
 TTL_SENTIMENT = 3600      # 1 hour
 
 
@@ -232,6 +233,20 @@ def cache_dividends_set(ticker: str, series_json: str) -> None:
     if not enabled:
         return
     get_db().set(_cache_key(ticker, "dividends"), series_json, TTL_FINANCIALS)
+
+
+def cache_earnings_dates_get(ticker: str) -> str | None:
+    """Return cached earnings_dates JSON string or None."""
+    if not enabled:
+        return None
+    return get_db().get(_cache_key(ticker, "earnings_dates"))
+
+
+def cache_earnings_dates_set(ticker: str, df_json: str) -> None:
+    """Store earnings_dates JSON string in cache with 7-day TTL."""
+    if not enabled:
+        return
+    get_db().set(_cache_key(ticker, "earnings_dates"), df_json, TTL_EARNINGS_DATES)
 
 
 def clear_cache() -> None:

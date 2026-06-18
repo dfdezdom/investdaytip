@@ -16,6 +16,7 @@ from investdaytip.backtest import (
     _balance_sheet_value,
     _build_historical_stock_data,
     _col_before,
+    _compute_historical_eps_surprise,
     _compute_metrics,
     _forward_return,
     _generate_snapshot_dates,
@@ -388,6 +389,64 @@ class TestBuildHistoricalStockData:
         assert sd.earnings_growth is not None and abs(sd.earnings_growth - 0.143) < 0.02
         # Revenue growth: (850-800)/800 ≈ 6.25%
         assert sd.revenue_growth is not None and abs(sd.revenue_growth - 0.0625) < 0.01
+
+    def test_historical_eps_surprise_ignores_future_reports(self):
+        dates = pd.date_range("2023-01-01", "2024-12-31", freq="D")
+        history = pd.DataFrame(
+            {"Close": np.linspace(100, 150, len(dates))}, index=dates
+        )
+        info = {"shortName": "Test Inc", "sector": "Technology", "currency": "USD"}
+
+        snapshot = datetime(2024, 6, 15)
+        past_report = snapshot - pd.Timedelta(days=30)
+        future_report = snapshot + pd.Timedelta(days=30)
+        earnings_dates = pd.DataFrame(
+            {
+                "EPS Estimate": [1.0, 1.0],
+                "Reported EPS": [1.1, None],
+                "Surprise(%)": [10.0, None],
+            },
+            index=pd.DatetimeIndex([past_report, future_report]),
+        )
+
+        sd = _build_historical_stock_data(
+            ticker="TEST",
+            info=info,
+            price_history=history,
+            snapshot_date=snapshot,
+            balance_sheet=_fin_df({"Stockholders Equity": [1000]}, ["2023-12-31"]),
+            income_stmt=_fin_df(
+                {"Net Income": [100], "Total Revenue": [1000], "Basic EPS": [1.0]},
+                ["2023-12-31"],
+            ),
+            cash_flow=_fin_df({"Free Cash Flow": [50]}, ["2023-12-31"]),
+            dividends=pd.Series(dtype=float),
+            quarter_date=datetime(2023, 12, 31),
+            earnings_dates=earnings_dates,
+            reporting_lag_days=0,
+        )
+
+        assert sd.eps_surprise == pytest.approx(10.0)
+
+
+class TestComputeHistoricalEpsSurprise:
+    def test_only_uses_reports_known_at_snapshot(self):
+        today = pd.Timestamp.now().normalize()
+        snapshot = (today - pd.Timedelta(days=60)).to_pydatetime()
+        dates = pd.DatetimeIndex([
+            today - pd.Timedelta(days=120),
+            today - pd.Timedelta(days=30),  # after snapshot
+        ])
+        df = pd.DataFrame(
+            {
+                "EPS Estimate": [1.0, 1.0],
+                "Reported EPS": [1.1, 1.2],
+                "Surprise(%)": [10.0, 20.0],
+            },
+            index=dates,
+        )
+        result = _compute_historical_eps_surprise(df, snapshot, reporting_lag_days=0)
+        assert result == pytest.approx(10.0)
 
 
 # =========================================================================
