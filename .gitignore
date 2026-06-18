@@ -47,4 +47,5 @@ poetry.lock
 
 # Local planning documents
 /plan-scoring-dual-model.md
+/portfolio_analysis.py
 
