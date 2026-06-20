@@ -115,7 +115,7 @@ def recommend(
     tickers: Iterable[str] | None = None,
     top_n: int = 5,
     max_workers: int = 10,
-    min_market_cap: float = 2_000_000_000,
+    min_market_cap: float | None = None,
     asset_class: AssetClass | str = "all",
     region: str | list[str] = "all",
     currency: str | list[str] = "all",
@@ -145,6 +145,9 @@ def recommend(
         scoring_model: ``"quant"`` (default) or ``"classic"``.
     """
     include_technical = resolve_include_technical(include_technical, scoring_model)
+
+    if min_market_cap is None:
+        min_market_cap = 0.0 if tickers is not None else 2_000_000_000.0
 
     universe = _build_universe(tickers, asset_class, region, currency)
     total = len(universe)

@@ -145,7 +145,7 @@ investdaytip --help
 | `--include-technical` | Include RSI + MACD technical indicators in the scoring. **Default is `True` for `quant` and `False` for `classic`.** Use `--no-include-technical` to force-disable. | model-dependent |
 | `--no-include-technical` | Force-disable RSI + MACD technical indicators | disabled |
 | `--scoring-model {classic,quant}` | Stock scoring model to use (see [Scoring Model](#scoring-model)) | `quant` |
-| `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable; see [Market Cap Classification](#market-cap-classification)) | `2B` |
+| `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable; see [Market Cap Classification](#market-cap-classification)) | `0` with tickers, `2B` otherwise |
 | `--no-cache` | Skip SQLite cache, fetch all data live from Yahoo Finance | disabled |
 | `--cache-clear` | Purge the SQLite cache before running | disabled |
 | `--workers N` | Parallel fetch threads | `10` |
@@ -361,6 +361,8 @@ The model is designed for long-term fundamental investing. Below $2B (small/micr
 - Lower liquidity, making technical indicators less meaningful
 
 The $2B threshold strikes a balance: it includes mid-caps and above (where fundamentals are reliable) while filtering out the noisiest small/micro-caps. Use `--min-market-cap 0` to include all tickers, or raise it to `10B`/`50B` for a pure large/mega-cap focus.
+
+**Note:** when explicit tickers are provided via `-t` or `--tickers-file`, the filter defaults to `0` (disabled) — the assumption is that you curated your own list.
 
 ### HTML export
 

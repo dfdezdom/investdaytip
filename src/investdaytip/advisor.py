@@ -258,7 +258,7 @@ def macro_regime() -> dict:
 
 def portfolio_review(
     cartera_path: str,
-    min_market_cap: float = 2_000_000_000,
+    min_market_cap: float | None = None,
     scoring_model: str = "quant",
     include_technical: bool | None = None,
 ) -> dict:
@@ -322,7 +322,7 @@ def run_comprehensive(
     asset_classes: Iterable[str] = ("stocks",),
     top_n: int = 10,
     currencies: dict[str, str] | None = None,
-    min_market_cap: float = 2_000_000_000,
+    min_market_cap: float | None = None,
     scoring_model: str = "quant",
     include_technical: bool | None = None,
 ) -> dict:
@@ -470,8 +470,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
         default=None,
         help="Currency: all, USD, EUR, GBP, CHF, JPY, HKD, INR, KRW, TWD, SGD, AUD, DKK, SEK, NOK, GBp (interactive if omitted).",
     )
-    parser.add_argument("--min-market-cap", metavar="CAP", type=_parse_min_market_cap, default=2_000_000_000,
-                        help="Minimum market cap (default: 2B).")
+    parser.add_argument("--min-market-cap", metavar="CAP", type=_parse_min_market_cap, default=None,
+                        help="Minimum market cap (default: 0 with tickers, 2B otherwise).")
     parser.add_argument("-s", "--sector", type=str, default=None,
                         help="Filter by sector (case-insensitive).")
     parser.add_argument("--superinvestor", action="store_true",

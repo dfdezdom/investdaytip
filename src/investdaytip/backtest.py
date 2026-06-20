@@ -726,7 +726,7 @@ def run_backtest(
     region: str | list[str] = "us",
     currency: str | list[str] = "USD",
     asset_class: str = "stocks",
-    min_market_cap: float = 2_000_000_000,
+    min_market_cap: float | None = None,
     reporting_lag_days: int = 60,
     max_workers: int = 10,
     on_progress: Callable[[str, int, int], None] | None = None,
@@ -771,6 +771,9 @@ def run_backtest(
     BacktestResult with per-snapshot picks and aggregate metrics.
     """
     include_technical = resolve_include_technical(include_technical, scoring_model)
+
+    if min_market_cap is None:
+        min_market_cap = 0.0 if tickers is not None else 2_000_000_000.0
 
     # Backtest requires consistent, up-to-date data across all tickers.
     # Stale cached history can shift the latest-common date and produce

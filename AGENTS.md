@@ -79,7 +79,7 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - `--export-html` uses `nargs="?"` with `const=""` — no arg means auto-generated filename `investDayTip[-<tag>]-yyyymmdd-hhmm.html`; tag derived from tickers-file stem (stopwords filtered)
 - `advisor` subcommand duplicates many flags from main parser but some default to `None` for interactive prompts
 - Ticker files: supports newlines, spaces, commas, and `#` comments; `_merge_ticker_lists()` deduplicates case-insensitively preserving first-occurrence casing
-- `--min-market-cap` filter: $2B default (e.g. `1B`, `500M`, `0` to disable); applied against native-currency figures, approximate for non-USD. When the filter is active, assets with **missing** market cap are excluded (a missing figure can't satisfy the filter), and history fetch is skipped for them
+- `--min-market-cap` filter: defaults to `0` when explicit tickers are passed (`-t`/`--tickers-file`), `2B` otherwise (e.g. `1B`, `500M`, `0` to disable); applied against native-currency figures, approximate for non-USD. When the filter is active, assets with **missing** market cap are excluded (a missing figure can't satisfy the filter), and history fetch is skipped for them
 - Currency filter keeps assets whose `currency` is `None` (a missing field shouldn't silently drop an otherwise-valid candidate)
 - `-r`/`--region` and `-c`/`--currency` use `nargs="+"` — pass multiple values: `-r us eu`, `-c USD EUR`. Both `str` and `list[str]` accepted programmatically.
 - `-s`/`--sector` accepts a single string; prefix match case-insensitive (e.g. `Financial` matches Financial Services). Applied inside `recommend()` before the `top_n` truncation, so it filters the full universe rather than just the top results.

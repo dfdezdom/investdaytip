@@ -43,7 +43,7 @@ def get_recommendations(
     asset_class: str = "all",
     region: str | list[str] = "all",
     currency: str | list[str] = "all",
-    min_market_cap: float = 2_000_000_000,
+    min_market_cap: float | None = None,
     sector: str | None = None,
     include_technical: bool | None = None,
     scoring_model: str = "quant",
@@ -447,8 +447,8 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Currency: all, USD, EUR, GBP, CHF, JPY, HKD, INR, KRW, TWD, SGD, AUD, DKK, SEK, NOK, GBp (interactive if omitted).",
     )
-    adv.add_argument("--min-market-cap", metavar="CAP", type=_parse_min_market_cap, default=2_000_000_000,
-                     help="Minimum market cap (default: 2B).")
+    adv.add_argument("--min-market-cap", metavar="CAP", type=_parse_min_market_cap, default=None,
+                     help="Minimum market cap (default: 0 with tickers, 2B otherwise).")
     adv.add_argument("-s", "--sector", metavar="SECTOR", default=None,
                      help="Sector/category prefix filter (case-insensitive).")
     adv.add_argument("--superinvestor", action="store_true",
@@ -479,8 +479,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="Months between snapshots (default: 3).")
     bt.add_argument("--lag-days", type=int, default=60,
                     help="Reporting lag in days (default: 60).")
-    bt.add_argument("--min-market-cap", metavar="CAP", type=_parse_min_market_cap, default=2_000_000_000,
-                    help="Minimum market cap (default: 2B). See Market Cap Classification in README for reference ranges.")
+    bt.add_argument("--min-market-cap", metavar="CAP", type=_parse_min_market_cap, default=None,
+                    help="Minimum market cap (default: 0 with tickers, 2B otherwise).")
     bt.add_argument("--benchmark", default=None,
                     help="Benchmark ticker (default: auto from region).")
     bt.add_argument("--export-html", nargs="?", const="", default=None,
@@ -531,8 +531,8 @@ def main(argv: list[str] | None = None) -> int:
         default="all",
         help="Currency: all, USD, EUR, GBP, CHF, JPY, HKD, INR, KRW, TWD, SGD, AUD, DKK, SEK, NOK, GBp (default: all).",
     )
-    filter_grp.add_argument("--min-market-cap", metavar="CAP", type=_parse_min_market_cap, default=2_000_000_000,
-                            help="Minimum market cap (default: 2B). See Market Cap Classification in README for reference ranges.")
+    filter_grp.add_argument("--min-market-cap", metavar="CAP", type=_parse_min_market_cap, default=None,
+                            help="Minimum market cap (default: 0 with tickers, 2B otherwise).")
     filter_grp.add_argument("-s", "--sector", type=str, default=None,
                             help="Filter by sector prefix (case-insensitive).")
 
