@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.6.0 (2026-06-20)
+
+### Features
+
+- **EPS Revisions now uses EPS surprise** in the `quant` scoring model:
+  - Replaces the previous proxy of `earnings_growth` + `revenue_growth` with the average EPS surprise (Reported EPS vs analyst Estimate) over the last four reported quarters.
+  - Differentiates the `Growth` factor (earnings/revenue growth) from the `EPS Revisions` factor (estimate surprises).
+  - Falls back to neutral when `earnings_dates` data is unavailable.
+
+### Data
+
+- Added `eps_surprise` to `StockData`.
+- Added `earnings_dates` fetch and cache support in both live fetching and the backtest pipeline.
+- Added `lxml` as a project dependency because yfinance requires it to parse `earnings_dates`.
+
+### Validation
+
+- Backtest comparison (US universe, 5y, top 5, quarterly snapshots, min-market-cap $2B):
+  - `quant` before EPS surprise: Alpha **9.59%**, Sharpe **1.24**, Win Rate 12M **72.7%**, Max Drawdown **9.86%**
+  - `quant` with EPS surprise: Alpha **10.02%**, Sharpe **1.19**, Win Rate 12M **54.5%**, Max Drawdown **8.87%**
+  - Verdict: **MIXED** — alpha and drawdown improved, but Sharpe and 12M win rate declined.
+
+### Tests
+
+- Added `tests/test_data_source.py` coverage for `_compute_eps_surprise`.
+- Added `tests/test_scoring_quant.py` coverage for EPS Revisions scoring.
+- Added `tests/test_backtest.py` coverage for historical EPS surprise handling without look-ahead bias.
+
+### Docs
+
+- README.md, AGENTS.md, and CHANGELOG.md updated to describe EPS Revisions as an EPS-surprise signal.
+
 ## v0.5.0 (2026-06-17)
 
 ### Features
