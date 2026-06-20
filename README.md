@@ -327,17 +327,17 @@ The `--include-technical` flag adds RSI-14 and MACD histogram to the Momentum fa
 Backtest validation across four scenarios under the **quant** model shows the flag is generally additive for US screens but mixed for concentrated mega-caps and EU:
 
 | Scenario | Without `--include-technical` | With `--include-technical` | Verdict |
-|---|---|---|---|
-| **US ($2B+)** (59 tickers, `-n 10`) | Alpha 10.44%, Sharpe 1.37 | Alpha **12.62%**, Sharpe **1.38** | ✅ **Improved** — higher alpha, Sharpe, and 12M win rate (63.6% → 72.7%) |
-| **US (no cap filter)** (59 tickers, `-n 10`) | Alpha −1.11%, Sharpe 0.44 | Alpha **2.46%**, Sharpe **0.54** | ✅ **Improved** — turns negative alpha positive; drawdown also improves (32.5% → 26.3%) |
-| **US mega-caps ($200B+)** (59 tickers, `-n 2`) | Alpha 1.53%, Sharpe **1.29** | Alpha **12.58%**, Sharpe 1.08 | ⚠️ **Mixed** — large alpha gain (+11pp) but Sharpe and risk-adjusted return decline |
-| **EU ($2B+)** (66 tickers, `-n 10`) | Alpha **12.29%**, Sharpe 1.15 | Alpha 10.56%, Sharpe **1.16** | ⚠️ **Neutral/Mixed** — alpha down slightly, Sharpe marginally better, win rate unchanged |
+|---|---|---|---|---|
+| **US ($2B+)** (134 tickers, `-n 10`) | Alpha 21.94%, Sharpe 1.49 | Alpha **25.00%**, Sharpe **1.68** | ✅ **Improved** — higher alpha (+3pp), Sharpe (+0.19), and lower drawdown (6.76% → 5.63%) |
+| **US (no cap filter)** (134 tickers, `-n 10`) | Alpha 5.47%, Sharpe 0.54 | Alpha **11.53%**, Sharpe **0.85** | ✅ **Improved** — alpha doubles, drawdown halves (34.3% → 16.2%), 12M win rate climbs (53% → 73%) |
+| **US mega-caps ($200B+)** (134 tickers, `-n 2`) | Alpha **44.33%**, Sharpe **1.31** | Alpha 42.35%, Sharpe 1.18 | ⚠️ **Mixed** — slightly lower alpha (−2pp) and Sharpe, but drawdown improves sharply (18.8% → 10.4%) |
+| **EU ($2B+)** (66 tickers, `-n 10`) | Alpha **7.11%**, Sharpe **1.71** | Alpha 3.93%, Sharpe 0.93 | ⚠️ **Neutral/Mixed** — lower alpha and Sharpe with tech, but 12M win rate climbs (42% → 60%) |
 
 **Guidelines:**
 - ✅ **Default behavior** — `quant` enables technical indicators automatically; `classic` keeps them opt-in
-- ✅ **Broad US screens** benefit the most — higher alpha and Sharpe
-- ⚠️ **Concentrated mega-cap lists** — alpha improves strongly but risk-adjusted returns may dip
-- ⚠️ **EU screens** — results are close to a wash; verify on your specific ticker list
+- ✅ **Broad US screens** benefit the most — higher alpha, Sharpe, and lower drawdown
+- ⚠️ **Concentrated mega-cap lists** — mixed results; alpha and Sharpe may dip but drawdown improves
+- ⚠️ **EU screens** — fundamental-only (no-tech) shows stronger risk-adjusted returns; verify on your specific ticker list
 - ❌ **Use `--no-include-technical`** if you rely on the `classic` model or want a pure fundamental signal
 
 
