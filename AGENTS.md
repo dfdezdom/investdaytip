@@ -130,6 +130,7 @@ Two stock-scoring models are available, selectable via `--scoring-model {classic
 
 - **`quant`** (default) — Seeking-Alpha-inspired five-factor model:
   - Value 25%, Growth 20%, Profitability 25%, Momentum 15%, EPS Revisions 15%
+  - EPS Revisions uses the average EPS surprise (Reported EPS vs Estimate) over the last four reported quarters; `lxml` is required for yfinance to expose this data.
   - Disqualifying grades cap the total score at neutral when a factor falls into red-flag territory
   - Uses absolute thresholds (peer-relative scoring is left for a future iteration)
 - **`classic`** — Original InvestDayTip model (Graham/Buffett + momentum):

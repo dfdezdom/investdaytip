@@ -455,7 +455,7 @@ Each metric is normalized to **0-100** via piecewise-linear functions over empir
 | **Growth** | 20% | earnings growth, revenue growth |
 | **Profitability** | 25% | ROE, ROA, profit margin |
 | **Momentum** | 15% | price vs SMA200, 12-month return, SMA200 slope (plus RSI-14 + MACD histogram by default; disable with `--no-include-technical`) |
-| **EPS Revisions** | 15% | earnings/revenue growth as a proxy for analyst estimate revisions |
+| **EPS Revisions** | 15% | average EPS surprise (Reported EPS vs analyst Estimate) over the last four quarters |
 
 The `quant` model uses **disqualifying grades**: if any high-impact factor falls into red-flag territory, the total score is capped at neutral (50). This prevents a strong showing in one area from masking a serious weakness elsewhere.
 

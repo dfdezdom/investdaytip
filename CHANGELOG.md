@@ -7,7 +7,7 @@
 - **Dual scoring models** (`--scoring-model {classic,quant}):
   - New **`quant`** model (default) — Seeking-Alpha-inspired five-factor scoring: Value 25%, Growth 20%, Profitability 25%, Momentum 15%, EPS Revisions 15%
     - Includes disqualifying grades that cap the total score at neutral when a factor falls into red-flag territory
-    - EPS Revisions uses earnings/revenue growth as a proxy while richer analyst-estimate data is not available
+    - EPS Revisions uses the average EPS surprise (Reported EPS vs analyst Estimate) over the last four reported quarters
   - **`classic`** model — Original Graham/Buffett + momentum model: Quality 35%, Value 25%, Health 20%, Trend 20%
   - Selectable via CLI (`--scoring-model`), API (`scoring_model=...`), backtest, and advisor subcommand
   - `quant` is now the project-wide default based on backtest validation
