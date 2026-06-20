@@ -15,4 +15,4 @@ else:
 
 
 __all__ = ["get_recommendations"]
-__version__ = "0.4.1"
+__version__ = "0.7.1"

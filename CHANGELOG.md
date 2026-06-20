@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.7.1 (2026-06-20)
+
+### Fixes
+
+- **`--min-market-cap` filter disabled with explicit tickers** — when using `-t`/`--tickers-file`, the market cap filter now defaults to `0` (disabled) instead of `$2B`. The assumption is that a user-curated list should not be silently filtered. The `$2B` default still applies when scanning the built-in universe.
+
 ## v0.7.0 (2026-06-20)
 
 ### Fixes
