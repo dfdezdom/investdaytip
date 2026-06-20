@@ -38,6 +38,9 @@ Thumbs.db
 /backtest-*
 /baseline-*.json
 
+# Stale baseline snapshots (regenerate on demand via scripts/scoring_baseline.py)
+/baseline-results/
+
 # Build system debris (project uses hatchling, not Poetry)
 poetry.lock
 
