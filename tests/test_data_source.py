@@ -1,5 +1,6 @@
 """Tests for data_source — yfinance mocking only, no live network."""
 
+from io import StringIO
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -383,3 +384,30 @@ def test_fetch_asset_populates_eps_surprise(mocker, stock_info):
     result = fetch_asset("BIGC")
     assert isinstance(result, StockData)
     assert result.eps_surprise == pytest.approx(5.0)
+
+
+def test_fetch_asset_deduplicates_earnings_dates_index(mocker, stock_info):
+    """Duplicate report days from yfinance must not crash JSON serialization."""
+    today = pd.Timestamp.now().normalize()
+    idx = pd.DatetimeIndex([today, today - pd.Timedelta(days=1), today - pd.Timedelta(days=1)])
+    earnings_dates = pd.DataFrame(
+        {
+            "EPS Estimate": [1.0, 1.0, 1.0],
+            "Reported EPS": [1.0, 1.0, 1.0],
+            "Surprise(%)": [10.0, 5.0, 7.0],
+        },
+        index=idx,
+    )
+    mock = _mock_ticker(stock_info, earnings_dates=earnings_dates)
+    mocker.patch("investdaytip.data_source.yf.Ticker", return_value=mock)
+    cache_set = mocker.patch("investdaytip.cache.cache_earnings_dates_set")
+
+    result = fetch_asset("BIGC")
+
+    assert isinstance(result, StockData)
+    assert result.eps_surprise == pytest.approx(8.5)
+    cache_set.assert_called_once()
+    # The JSON written to cache must have a unique index.
+    written_json = cache_set.call_args[0][1]
+    cached = pd.read_json(StringIO(written_json))
+    assert not cached.index.duplicated().any()

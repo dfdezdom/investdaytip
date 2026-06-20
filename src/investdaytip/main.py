@@ -409,6 +409,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     console = Console()
     console.print(ASCII_LOGO, style="bold cyan")
+    console.print(
+        f"[dim]Execution started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/dim]\n"
+    )
     parser = argparse.ArgumentParser(
         prog="investdaytip",
         description="Suggests long-term stock & ETF buy recommendations using multi-factor analysis.",

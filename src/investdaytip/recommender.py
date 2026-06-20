@@ -76,7 +76,10 @@ def _build_universe(
             pools.append(list(DEFAULT_EU_UNIVERSE))
         if "all" in regions or "asia" in regions:
             pools.append(list(ASIA_UNIVERSE))
-        if "all" in regions or "superinvestor" in regions:
+        # Superinvestor tickers are US-listed quality stocks and should be
+        # part of any US-facing stock pool, regardless of the --superinvestor
+        # flag (that flag only controls DataRoma manager-count data/column).
+        if "all" in regions or "us" in regions or "superinvestor" in regions:
             pools.append(list(SUPERINVESTOR_UNIVERSE))
     if asset_class in ("etfs", "all"):
         if "all" in regions or "us" in regions:

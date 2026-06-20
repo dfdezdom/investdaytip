@@ -190,10 +190,11 @@ class TestMainFlow:
 class TestBuildUniverseExtended:
     def test_multi_region_stocks(self):
         from investdaytip.eu_universe import DEFAULT_EU_UNIVERSE
+        from investdaytip.superinvestor_universe import SUPERINVESTOR_UNIVERSE
         from investdaytip.universe import DEFAULT_UNIVERSE
 
         u = _build_universe(None, "stocks", ["us", "eu"], "all")
-        expected = set(DEFAULT_UNIVERSE) | set(DEFAULT_EU_UNIVERSE)
+        expected = set(DEFAULT_UNIVERSE) | set(DEFAULT_EU_UNIVERSE) | set(SUPERINVESTOR_UNIVERSE)
         # Aliases applied when multiple regions merged
         expected = (expected - {"RACE.MI", "ASML.AS"}) | {"RACE", "ASML"}
         assert set(u) == expected

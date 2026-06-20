@@ -579,6 +579,8 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> AssetData:
     if dividends_fetched_fresh and dividends is not None:
         cache_dividends_set(ticker, dividends.to_json(date_format="iso"))
     if earnings_dates_fetched_fresh and earnings_dates is not None:
+        if earnings_dates.index.duplicated().any():
+            earnings_dates = earnings_dates[~earnings_dates.index.duplicated(keep="last")]
         cache_earnings_dates_set(ticker, earnings_dates.to_json(date_format="iso"))
     return _fetch_stock(ticker, info, history, dividends, earnings_dates)
 

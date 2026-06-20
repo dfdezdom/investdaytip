@@ -614,6 +614,8 @@ def _store_fetch_in_cache(ticker: str, data: _TickerData) -> None:
 
     ed = data.get("earnings_dates")
     if ed is not None and not ed.empty:
+        if ed.index.duplicated().any():
+            ed = ed[~ed.index.duplicated(keep="last")]
         cache_earnings_dates_set(ticker, ed.to_json(date_format="iso"))
 
 

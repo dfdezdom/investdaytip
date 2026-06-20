@@ -10,10 +10,11 @@ class TestBuildUniverse:
         assert _build_universe(["AAA", "BBB"], "all", "all", "all") == ["AAA", "BBB"]
 
     def test_stocks_us_only(self):
+        from investdaytip.superinvestor_universe import SUPERINVESTOR_UNIVERSE
         from investdaytip.universe import DEFAULT_UNIVERSE
 
         u = _build_universe(None, "stocks", "us", "all")
-        assert set(u) == set(DEFAULT_UNIVERSE)
+        assert set(u) == set(DEFAULT_UNIVERSE) | set(SUPERINVESTOR_UNIVERSE)
 
     def test_etfs_only_excludes_stocks(self):
         u = _build_universe(None, "etfs", "all", "all")

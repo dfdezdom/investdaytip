@@ -478,6 +478,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
                         help="Include superinvestor ownership data.")
     parser.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",
                         help="Scoring model to use (default: quant).")
+    parser.add_argument("-n", "--top", type=int, default=10,
+                        help="Number of buy recommendations to show (default: 10).")
     adv_tech = parser.add_mutually_exclusive_group()
     adv_tech.add_argument("--include-technical", action="store_true", dest="include_technical",
                           default=None, help="Include RSI and MACD in scoring (default: True for quant, False for classic).")
@@ -745,10 +747,12 @@ def advisor_main(argv: list[str] | None = None) -> int:
             }
 
         try:
-            results = recommend(
+            # Oversample so that after filtering out portfolio holdings we still
+            # have enough candidates to show the requested number.
+            candidates = recommend(
                 asset_class=ac,
                 region=reg,
-                top_n=10,
+                top_n=args.top + len(portfolio_tickers),
                 currency=ccy,
                 min_market_cap=args.min_market_cap,
                 sector=args.sector,
@@ -765,14 +769,14 @@ def advisor_main(argv: list[str] | None = None) -> int:
             _ccy_str = " ".join(ccy) if isinstance(ccy, list) else str(ccy)
             console.print(
                 f"  [bold]investdaytip -a {ac} -r {_reg_str} -c {_ccy_str} "
-                "--top 10 --export-html[/bold]"
+                f"--top {args.top} --export-html[/bold]"
             )
             return 1
 
         new_results = [
-            r for r in results
+            r for r in candidates
             if r.data.ticker.upper() not in portfolio_tickers
-        ]
+        ][: args.top]
 
         # Filter by target sector if requested
         if target_sector and target_sector != "No":
@@ -806,7 +810,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
         try:
             from investdaytip.sentiment import fear_greed_index
             out = export_recommendations_html(
-                new_results, dest, top_n=10,
+                new_results, dest, top_n=args.top,
                 asset_class=ac, region=reg,
                 currency=ccy, tickers=None,
                 include_superinvestor=args.superinvestor,
