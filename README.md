@@ -327,7 +327,7 @@ The `--include-technical` flag adds RSI-14 and MACD histogram to the Momentum fa
 Backtest validation across four scenarios under the **quant** model shows the flag is generally additive for US screens but mixed for concentrated mega-caps and EU:
 
 | Scenario | Without `--include-technical` | With `--include-technical` | Verdict |
-|---|---|---|---|---|
+|---|---|---|---|
 | **US ($2B+)** (134 tickers, `-n 10`) | Alpha 21.94%, Sharpe 1.49 | Alpha **25.00%**, Sharpe **1.68** | ✅ **Improved** — higher alpha (+3pp), Sharpe (+0.19), and lower drawdown (6.76% → 5.63%) |
 | **US (no cap filter)** (134 tickers, `-n 10`) | Alpha 5.47%, Sharpe 0.54 | Alpha **11.53%**, Sharpe **0.85** | ✅ **Improved** — alpha doubles, drawdown halves (34.3% → 16.2%), 12M win rate climbs (53% → 73%) |
 | **US mega-caps ($200B+)** (134 tickers, `-n 2`) | Alpha **44.33%**, Sharpe **1.31** | Alpha 42.35%, Sharpe 1.18 | ⚠️ **Mixed** — slightly lower alpha (−2pp) and Sharpe, but drawdown improves sharply (18.8% → 10.4%) |
