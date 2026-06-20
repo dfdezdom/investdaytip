@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.7.0 (2026-06-20)
+
+### Fixes
+
+- **`earnings_dates` duplicate index** — yfinance can return duplicate rows in `earnings_dates` (same quarter indexed twice), causing a `ValueError: cannot reindex on an axis with duplicate labels` in `_compute_eps_surprise`. The DataFrame is now deduplicated via `~index.duplicated(keep='first')` before processing.
+- **Superinvestor universe included in US stock pool** — the curated `SUPERINVESTOR_UNIVERSE` tickers (102 quality US stocks) were previously only added to the pool when their region was explicitly listed. They are now included whenever `region="us"` is requested, growing the US stock universe from ~58 to ~134 tickers without requiring the `--superinvestor` flag.
+
+### Features
+
+- **Advisor `--top` flag** — limits the number of recommendations shown in portfolio review output, mirroring the main CLI `-n`/`--top-n` behavior.
+- **Startup timestamp** — the CLI now prints the current date and time at startup so the output context is clear in logs or screenshots.
+
+### UI
+
+- **Updated Quick Start CLI screenshot** — reflects the new scoring model output and expanded universe.
+- **Refreshed backtest table** — "When to use technical indicators" section updated with re-run results for the expanded US universe (134 tickers) under the `quant` scoring model.
+
 ## v0.6.0 (2026-06-20)
 
 ### Features
