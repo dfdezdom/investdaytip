@@ -411,7 +411,8 @@ def main(argv: list[str] | None = None) -> int:
     console.print(ASCII_LOGO, style="bold cyan")
     version = importlib.metadata.version("investdaytip")
     console.print(
-        f"[dim]v{version} — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/dim]\n"
+        f"v{version} — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
+        style="dim",
     )
     parser = argparse.ArgumentParser(
         prog="investdaytip",
