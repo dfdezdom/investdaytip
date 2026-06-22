@@ -116,7 +116,7 @@ def test_fetch_asset_rate_limit_retries_then_returns_error(mocker):
 
     assert isinstance(result, StockData)
     assert any("rate limited" in e for e in result.errors)
-    assert sleep.call_count == 3
+    assert sleep.call_count == 4
 
 
 def test_fetch_asset_generic_error_returns_error_dataclass(mocker):

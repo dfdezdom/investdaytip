@@ -472,7 +472,7 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> AssetData:
     t: yf.Ticker | None = None
     info_fetched_fresh = False
     if info is None:
-        delays = [10, 30, 60]
+        delays = [15, 45, 90, 180]
         for attempt in range(len(delays) + 1):
             try:
                 with _suppress_stderr():

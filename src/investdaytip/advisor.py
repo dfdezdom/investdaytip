@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import logging
 import math
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Optional
@@ -38,14 +39,25 @@ VIX_BEARISH = 35
 # ---------------------------------------------------------------------------
 
 def _fetch_index(ticker: str) -> Optional[float]:
-    """Fetch latest close of any index via yfinance."""
-    with _suppress_stderr():
-        t = yf.Ticker(ticker)
-        hist = t.history(period="5d", interval="1d")
-    if hist is not None and not hist.empty and "Close" in hist:
-        val = float(hist["Close"].iloc[-1])
-        if math.isfinite(val):
-            return val
+    """Fetch latest close of any index via yfinance.
+    Retries up to 3 times with backoff on rate-limit errors.
+    """
+    delays = [15, 45, 90]
+    for attempt in range(len(delays) + 1):
+        try:
+            with _suppress_stderr():
+                t = yf.Ticker(ticker)
+                hist = t.history(period="5d", interval="1d")
+        except YFRateLimitError:
+            if attempt < len(delays):
+                time.sleep(delays[attempt])
+                continue
+            return None
+        if hist is not None and not hist.empty and "Close" in hist:
+            val = float(hist["Close"].iloc[-1])
+            if math.isfinite(val):
+                return val
+        return None
     return None
 
 
@@ -105,10 +117,21 @@ def bubble_risk() -> dict:
     """Assess bubble risk via VIX historical percentile.
 
     VIX persistently below its 2-year median suggests complacency.
+    Retries up to 3 times with backoff on rate-limit errors.
     """
-    with _suppress_stderr():
-        t = yf.Ticker("^VIX")
-        hist = t.history(period="2y", interval="1d")
+    hist = None
+    delays = [15, 45, 90]
+    for attempt in range(len(delays) + 1):
+        try:
+            with _suppress_stderr():
+                t = yf.Ticker("^VIX")
+                hist = t.history(period="2y", interval="1d")
+            break
+        except YFRateLimitError:
+            if attempt < len(delays):
+                time.sleep(delays[attempt])
+                continue
+            return {"level": "unknown", "pct_rank": None, "note": "Rate limited fetching VIX."}
     if hist is None or hist.empty or "Close" not in hist:
         return {"level": "unknown", "pct_rank": None, "note": "No historical VIX data."}
 
@@ -636,7 +659,9 @@ def advisor_main(argv: list[str] | None = None) -> int:
             port_table.add_column("Score", justify="right")
             port_table.add_column("Sector")
             port_table.add_column("Signal")
+            port_table.add_column("Status")
 
+            failed_tickers: list[tuple[str, str]] = []
             for i, s in enumerate(review["results"], start=1):
                 sector = (
                     getattr(s.data, "sector", None)
@@ -649,7 +674,14 @@ def advisor_main(argv: list[str] | None = None) -> int:
                     signal = "[yellow]🟡 HOLD[/yellow]"
                 else:
                     signal = "[green]🟢 OK[/green]"
-                port_table.add_row(str(i), s.data.ticker, f"{s.total:.1f}", sector, signal)
+                errs = getattr(s.data, "errors", None) or []
+                if errs:
+                    short_err = errs[0][:50]
+                    failed_tickers.append((s.data.ticker, errs[0]))
+                    status = f"[red]❌ {short_err}[/red]"
+                else:
+                    status = "[dim]✅[/dim]"
+                port_table.add_row(str(i), s.data.ticker, f"{s.total:.1f}", sector, signal, status)
 
             console.print(port_table)
 
@@ -659,6 +691,12 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 for s in review["weak_positions"]:
                     console.print(f"  • [red]{s.data.ticker}[/red] — Score {s.total:.1f}"
                                   f" — {'; '.join(s.rationale[:2])}")
+
+            # Tickers with fetch errors
+            if failed_tickers:
+                console.print("\n[bold yellow]⚠️  Tickers with fetch errors:[/bold yellow]")
+                for ticker, err in failed_tickers:
+                    console.print(f"  • [yellow]{ticker}[/yellow] — {err}")
 
             # Sector gaps
             _all_sectors = {"Technology", "Financials", "Healthcare",
