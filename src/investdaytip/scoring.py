@@ -315,6 +315,7 @@ class QuantStockScorer:
         """
         notes: list[str] = []
         if d.eps_surprise is None:
+            notes.append("EPS surprise data unavailable — install lxml for earnings analysis")
             return 50.0, notes
 
         score = _linear(d.eps_surprise, best=15.0, worst=-15.0, default=50.0)

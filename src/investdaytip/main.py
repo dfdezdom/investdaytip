@@ -563,6 +563,17 @@ def main(argv: list[str] | None = None) -> int:
     if hasattr(args, "include_technical") and hasattr(args, "scoring_model"):
         args.include_technical = resolve_include_technical(args.include_technical, args.scoring_model)
 
+    # Warn if lxml is missing (needed for EPS Revisions in quant scoring).
+    if getattr(args, "scoring_model", "quant") == "quant":
+        try:
+            import lxml  # noqa: F401
+        except ImportError:
+            Console().print(
+                "[yellow]⚠️  lxml not installed — EPS Revisions will default to"
+                " neutral. To enable full quant scoring:[/yellow]"
+            )
+            Console().print("  [bold]pip install lxml[/bold]")
+
     if args.command == "advisor":
         from investdaytip.advisor import advisor_main
         remaining = argv[1:] if argv else sys.argv[2:]
