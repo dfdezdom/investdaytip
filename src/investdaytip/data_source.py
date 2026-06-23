@@ -182,7 +182,7 @@ def _ttm_dividend_yield(
         idx = idx.tz_localize(None)
         dividends = dividends.copy()
         dividends.index = idx
-    cutoff = pd.Timestamp.now().normalize() - pd.Timedelta(days=365)
+    cutoff = pd.Timestamp.now().normalize() - pd.Timedelta(365, unit='D')
     ttm = float(dividends[dividends.index >= cutoff].sum())
     return (ttm / price) if ttm > 0 else None
 
