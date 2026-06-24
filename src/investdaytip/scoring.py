@@ -338,15 +338,11 @@ class QuantStockScorer:
         momentum, m_notes = self._momentum_score(data)
         eps_rev, e_notes = self._eps_revisions_score(data)
 
-        total = (
-            value * STOCK_WEIGHTS_QUANT["value"]
-            + growth * STOCK_WEIGHTS_QUANT["growth"]
-            + profitability * STOCK_WEIGHTS_QUANT["profitability"]
-            + momentum * STOCK_WEIGHTS_QUANT["momentum"]
-            + eps_rev * STOCK_WEIGHTS_QUANT["eps_revisions"]
-        )
+        if include_technical:
+            tech, tech_notes = _technical_score(data)
+            momentum = (momentum * 0.70) + (tech * 0.30)
+            m_notes.extend(tech_notes)
 
-        # Disqualifying grades: a serious red flag caps the total at neutral.
         disqualified = False
         if growth < self._DISQUALIFY_SOFT:
             disqualified = True
@@ -364,6 +360,13 @@ class QuantStockScorer:
             disqualified = True
             p_notes.append("profitability flagged as disqualifying")
 
+        total = (
+            value * STOCK_WEIGHTS_QUANT["value"]
+            + growth * STOCK_WEIGHTS_QUANT["growth"]
+            + profitability * STOCK_WEIGHTS_QUANT["profitability"]
+            + momentum * STOCK_WEIGHTS_QUANT["momentum"]
+            + eps_rev * STOCK_WEIGHTS_QUANT["eps_revisions"]
+        )
         if disqualified:
             total = min(total, 50.0)
             if total <= 50.0:
@@ -376,13 +379,6 @@ class QuantStockScorer:
         if not rationale:
             rationale.append("Limited data available; score based on neutral defaults.")
 
-        if include_technical:
-            tech, tech_notes = _technical_score(data)
-            # Blend technical signal lightly into the momentum factor so the
-            # overall five-factor structure remains stable.
-            momentum = (momentum * 0.70) + (tech * 0.30)
-            rationale.extend(tech_notes)
-
         breakdown = {
             "Value": value,
             "Growth": growth,
@@ -390,19 +386,6 @@ class QuantStockScorer:
             "Momentum": momentum,
             "EPS Revisions": eps_rev,
         }
-
-        # Recompute total with the (possibly technical-blended) momentum.
-        total = (
-            value * STOCK_WEIGHTS_QUANT["value"]
-            + growth * STOCK_WEIGHTS_QUANT["growth"]
-            + profitability * STOCK_WEIGHTS_QUANT["profitability"]
-            + momentum * STOCK_WEIGHTS_QUANT["momentum"]
-            + eps_rev * STOCK_WEIGHTS_QUANT["eps_revisions"]
-        )
-
-        # Re-check cap after technical blending (momentum could only improve).
-        if disqualified:
-            total = min(total, 50.0)
 
         if si_data is None:
             si_data = get_superinvestor_data()
