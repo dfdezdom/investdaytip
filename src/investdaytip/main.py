@@ -47,6 +47,7 @@ def get_recommendations(
     sector: str | None = None,
     include_technical: bool | None = None,
     scoring_model: str = "quant",
+    data_source: str = "yfinance",
 ) -> list[ScoredAsset]:
     """Programmatic API: return the top ``top_n`` long-term buy recommendations.
 
@@ -57,7 +58,7 @@ def get_recommendations(
         tickers=tickers, top_n=top_n, asset_class=asset_class,
         region=region, currency=currency, min_market_cap=min_market_cap,
         sector=sector, include_technical=include_technical,
-        scoring_model=scoring_model,
+        scoring_model=scoring_model, data_source=data_source,
     )
 
 
@@ -539,6 +540,8 @@ def main(argv: list[str] | None = None) -> int:
                             help="Filter by sector prefix (case-insensitive).")
 
     data_grp = parser.add_argument_group("Data")
+    data_grp.add_argument("--data-source", choices=["yfinance", "fmp"], default="yfinance",
+                          help="Data source (default: yfinance). FMP requires FMP_API_KEY env var.")
     data_grp.add_argument("--superinvestor", action="store_true",
                           help="Include superinvestor ownership data.")
     data_grp.add_argument("--no-cache", action="store_true",
@@ -600,6 +603,21 @@ def main(argv: list[str] | None = None) -> int:
     # resolving it here is more explicit and avoids edge cases.
     if effective_tickers and args.min_market_cap is None:
         args.min_market_cap = 0.0
+
+    # Validate data-source requirements before starting.
+    if args.data_source == "fmp":
+        import os as _os
+        if not _os.environ.get("FMP_API_KEY"):
+            Console().print(
+                "[red]FMP data source requires the FMP_API_KEY environment variable.[/red]\n"
+                "  Get a free API key at [underline]https://financialmodelingprep.com/[/underline]\n"
+                "  Then set:  [bold]export FMP_API_KEY=your_key_here[/bold]"
+            )
+            return 1
+        Console().print(
+            "[yellow]FMP free tier: 250\u202frequests/day (~60\u202ftickers), "
+            "10\u202fs timeout per request.[/yellow]"
+        )
 
     from investdaytip.cache import clear_cache
     from investdaytip.cache import set_enabled as cache_set_enabled
@@ -667,6 +685,7 @@ def main(argv: list[str] | None = None) -> int:
                 progress_cb=cb,
                 include_technical=args.include_technical,
                 scoring_model=args.scoring_model,
+                data_source=args.data_source,
             )
         except Exception as exc:
             logger.error("Error during analysis: %s", exc)

@@ -28,6 +28,7 @@ the convention is `Optional[...]` for dataclass fields, not `X | None`.
 | Advisor | `advisor.py` | interactive market pulse, portfolio review, buy recs, CLI subcommand |
 | Orchestration | `recommender.py` | builds universe, ThreadPoolExecutor fetches, scores, filters, sorts |
 | Data fetching | `data_source.py` | yfinance wrapper, dataclasses (`StockData` / `EtfData` / `AssetData`). **All network I/O lives here.** |
+| FMP data source | `data_source_fmp.py` | FMP wrapper, `fetch_asset()` alternative, 4 endpoints/ticker, rate-limit auto-fallback to yfinance |
 | Caching | `cache.py` | SQLite cache with per-thread connections, WAL mode, write lock |
 | Scoring | `scoring.py` | pure functions only — no I/O, no side effects |
 | HTML export | `html_export.py` | self-contained report with inline CSS/JS |
@@ -37,7 +38,63 @@ the convention is `Optional[...]` for dataclass fields, not `X | None`.
 | Tests | `tests/` | 9 files, no live network calls (autouse network guard in `conftest.py`) |
 | OpenCode agent | `.opencode/agents/advisor.md` | advisor subagent: permissions, interactive flow, execution methods, and interpretation guide |
 
-Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_export / Rich table`
+Data flow: `CLI → recommender → data_source (yfinance|fmp) → scoring → html_export / Rich table`
+
+## FMP Data Source (`--data-source fmp`)
+
+Financial Modeling Prep is an alternative data source selectable via `--data-source fmp`.
+It uses 4 FMP endpoints per stock ticker (ETFs are **not** supported):
+
+| Endpoint | Field | Used For |
+|---|---|---|
+| `profile/{ticker}` | name, sector, exchange, currency, market cap, price | ETF check, market-cap filter, basic fields |
+| `ratios-ttm/{ticker}` | PE, PB, PEG, ROE, ROA, profit margin, D/E, current ratio, div yield, payout ratio, FCF/share | Valuation, quality, health, income — **all scoring fields** |
+| `historical-price-eod/{ticker}` | OHLCV for 2 years | Trend indicators, RSI, MACD |
+| `earnings-surprises/{ticker}` | EPS surprise over last 4 quarters | `quant` model EPS Revisions factor |
+
+**Free tier limits:** 250 requests/day → ~60 tickers/day (4 calls/ticker).
+
+### Rate-Limit Handling & Automatic Fallback
+
+When FMP returns HTTP 429 (Too Many Requests) or a JSON `"Error Message"` containing "limit":
+
+1. **Pre-flight check** (`check_rate_limit()`) sends a single `profile/SPY` request before the batch starts. If rate-limited, all tickers go directly to the fallback.
+2. **During fetch** (`recommend()` loop), per-ticker `FmpRateLimitError` is caught and that ticker is added to `leftovers`.
+3. **Automatic fallback** — remaining tickers are re-fetched with yfinance (no user prompt).
+4. A message is printed to stderr: `⚠️  FMP rate limit — continuing with yfinance for N tickers`
+
+### CLI & Config
+
+- `--data-source {yfinance,fmp}` (default: `yfinance`)
+- Requires `FMP_API_KEY` env var (startup prints install instructions if missing)
+- Shows a warning banner: `FMP free tier: 250 requests/day (~60 tickers), 10s timeout per request.`
+- Works with `advisor` subcommand (`investdaytip advisor --data-source fmp`)
+- Supported in programmatic API: `get_recommendations(data_source="fmp")`
+
+### Timeouts & Performance
+
+| Setting | Value |
+|---|---|
+| Per-request HTTP timeout | `FMP_REQUEST_TIMEOUT = 10s` |
+| Per-ticker total timeout | `FMP_TICKER_TIMEOUT = 90s` |
+| Retry backoff (network errors) | `[2, 5]s` (2 retries) |
+| Rate limit detection | Immediate (no retry on 429) |
+
+### Error Handling
+
+- Missing `FMP_API_KEY` → startup error with setup instructions, exit code 1
+- HTTP 404 (bad ticker) → `FmpError`, ticker skipped
+- HTTP 429 (rate limit) → `FmpRateLimitError`, yfinance fallback
+- Network timeout → retry up to 2 times, then `FmpError`, ticker skipped
+- FMP unavailable (network, API key invalid) → caught by pre-flight, all tickers fallback to yfinance
+
+### Testing
+
+- `tests/test_data_source_fmp.py` — 13+ tests with mocked `_get()`
+- Tests use `_build_mock_get(responses)` to return canned data based on URL suffix
+- Must mock `_get()` directly (not HTTP), since FMP uses `urllib.request.urlopen` internally
+- The pre-flight check calls `_get("profile/SPY")` — the mock must include this path
+- `FmpRateLimitError` tests: mock `_get` with `side_effect`, mock `fetch_asset` (yfinance) for the fallback pass
 
 ## Conventions & Gotchas
 
@@ -48,6 +105,7 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 - `_first(*values)` — returns the first non-`None` value; used for fallback chains so a legitimate `0.0` is preserved (an `or` chain would discard it)
 - `_sanitize_yield(value)` — normalizes yfinance yield fields to decimals; values greater than `1.0` are divided by 100 because some tickers (notably European ones) report `dividendYield` as an already-multiplied percentage (e.g. `4.05`) while most US tickers report decimals (e.g. `0.0405`)
 - `_ttm_dividend_yield(dividends, price)` — computes a stock's trailing-twelve-month dividend yield from `Ticker.dividends` (summed over the last 365 days) divided by the current price; used as the primary yield source because yfinance's `dividendYield` can be wrong by 100x for tickers like AAPL and V. Falls back to `_sanitize_yield(info["dividendYield"])` when raw dividends are unavailable
+- `_technical_indicators(close, high, low)` — returns `(rsi_14, macd_histogram, ema_cross, adx_14, stochastic_k)`. EMA cross is `(EMA50 - EMA200) / close` (positive = bullish). ADX uses Wilder's smoothing (14-period). All 5 indicators contribute to `_technical_score()`: RSI 20%, MACD 30%, EMA cross 25%, ADX 15%, Stochastic %K 10%
 - `_suppress_stderr()` context manager wraps **every** yfinance call — without it, yfinance spams stderr
 - Asset type dispatch: `score_asset()` → `score_stock()` / `score_etf()` via `isinstance`
 - `ScoredAsset` unified output; `ScoredStock = ScoredAsset` backwards-compatible alias
@@ -74,6 +132,7 @@ Data flow: `CLI → recommender → data_source (yfinance) → scoring → html_
 ### Rate Limits & Error Handling
 - `fetch_asset()` retries on `YFRateLimitError` with delays [10, 30, 60]s then returns error dataclass
 - Missing data → neutral 50 (never crashes); yfinance errors caught per-ticker, stored in `errors` list
+- FMP rate limit (429 or JSON "limit") → `FmpRateLimitError` → auto-fallback to yfinance
 
 ### CLI Quirks
 - `--export-html` uses `nargs="?"` with `const=""` — no arg means auto-generated filename `investDayTip[-<tag>]-yyyymmdd-hhmm.html`; tag derived from tickers-file stem (stopwords filtered)
@@ -135,7 +194,7 @@ Two stock-scoring models are available, selectable via `--scoring-model {classic
   - Uses absolute thresholds (peer-relative scoring is left for a future iteration)
 - **`classic`** — Original InvestDayTip model (Graham/Buffett + momentum):
   - Quality 35%, Value 25%, Health 20%, Trend 20%
-  - RSI-14 + MACD histogram blended into Momentum by default for `quant`; opt-in for `classic` (`--include-technical` / `--no-include-technical`)
+  - Five technical indicators (RSI-14, MACD histogram, EMA 50/200 cross, ADX-14, Stochastic %K) blended into Trend (45% sub-weight) via `--include-technical`; opt-in for `classic`
   - `resolve_include_technical(include_technical, scoring_model)` centralizes the default: `None` → `True` for `quant`, `False` for `classic`
 
 **ETFs** always use the existing model: Returns 40%, RiskAdj 25%, Size 15%, Cost/Yield 20%.
@@ -147,6 +206,8 @@ investdaytip -n 5 -r us                          # quant (default)
 investdaytip -n 5 -r us --scoring-model classic  # classic
 investdaytip backtest -n 5 -r us --scoring-model classic
 investdaytip advisor --scoring-model classic
+investdaytip --data-source fmp -n 5 -r us          # FMP data source
+investdaytip advisor --data-source fmp             # FMP in advisor mode
 ```
 
 Programmatic API:
@@ -300,4 +361,5 @@ picks = get_recommendations(top_n=5, region="asia", asset_class="stocks")
 picks = get_recommendations(top_n=5, region="superinvestor", asset_class="stocks")
 picks = get_recommendations(top_n=5, sector="Financial")
 picks = get_recommendations(top_n=5, region="us", scoring_model="quant")
+picks = get_recommendations(top_n=5, region="us", data_source="fmp")
 ```

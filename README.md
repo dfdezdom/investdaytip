@@ -18,6 +18,7 @@
 ## Features
 
 - 📈 **Multi-factor scoring** — composite 0-100 score per asset
+- 🔗 **Multiple data sources** — yfinance (default) or Financial Modeling Prep (FMP) with automatic fallback
 - 🏦 **Stocks & ETFs** — auto-detected and scored with dedicated models
 - 🌍 **US, European, Asian & Superinvestor markets** — S&P 500, DAX, CAC 40, FTSE 100, Nikkei 225, Hang Seng, NSE, and superinvestor consensus picks from DataRoma 13F filings
 - 💱 **Currency filter** — narrow by native currency (`USD`, `EUR`, `JPY`, …)
@@ -115,6 +116,8 @@ investdaytip --scoring-model classic # Use the classic Graham/Buffett model inst
 investdaytip --min-market-cap 1B     # Raise min market cap to $1B
 investdaytip --min-market-cap 0      # Disable market-cap filter
 
+investdaytip --data-source fmp        # Use Financial Modeling Prep (requires FMP_API_KEY env var)
+                                       # Get a free key at https://financialmodelingprep.com/
 investdaytip --no-cache              # Bypass SQLite cache, fetch fresh data
 investdaytip --cache-clear           # Purge all cached data before running
 investdaytip --workers 20            # More parallelism
@@ -144,7 +147,7 @@ investdaytip --help
 | `--superinvestor` | Include superinvestor ownership data from DataRoma (adds ~80 HTTP requests, shows column in HTML and CLI) | disabled |
 | `--include-technical` | Include RSI + MACD technical indicators in the scoring. **Default is `True` for `quant` and `False` for `classic`.** Use `--no-include-technical` to force-disable. | model-dependent |
 | `--no-include-technical` | Force-disable RSI + MACD technical indicators | disabled |
-| `--scoring-model {classic,quant}` | Stock scoring model to use (see [Scoring Model](#scoring-model)) | `quant` |
+| `--data-source {yfinance,fmp}` | Data source (yfinance or FMP) | `yfinance` |
 | `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable; see [Market Cap Classification](#market-cap-classification)) | `0` with tickers, `2B` otherwise |
 | `--no-cache` | Skip SQLite cache, fetch all data live from Yahoo Finance | disabled |
 | `--cache-clear` | Purge the SQLite cache before running | disabled |
@@ -414,6 +417,9 @@ picks = get_recommendations(top_n=10, region="all")  # US + EU + Asia stocks & E
 
 # Choose the scoring model explicitly (quant is the default)
 picks = get_recommendations(top_n=5, region="us", scoring_model="classic")
+
+# Use FMP data source (requires FMP_API_KEY env var)
+picks = get_recommendations(top_n=5, region="us", data_source="fmp")
 ```
 
 ---
@@ -594,6 +600,7 @@ src/investdaytip/
 ├── recommender.py         # Concurrent orchestration
 ├── cache.py               # SQLite caching layer (per-thread connections, WAL mode)
 ├── data_source.py         # yfinance wrapper + dataclasses (StockData / EtfData)
+├── data_source_fmp.py     # FMP wrapper (alternative data source, 4 endpoints/ticker)
 ├── scoring.py             # Pure scoring functions (score_stock, score_etf)
 ├── sentiment.py           # CNN Fear & Greed Index fetch
 ├── universe.py            # US stock universe
@@ -617,7 +624,8 @@ tests/
 ├── test_sentiment.py      # Fear & Greed sentiment tests
 ├── test_cache.py          # SQLite cache tests
 ├── test_universes.py      # Universe integrity tests
-└── test_data_source.py    # Data fetching tests
+├── test_data_source.py    # yfinance data fetching tests
+└── test_data_source_fmp.py # FMP data fetching tests
 tickers-files-examples/
 ├── semiconductors_relevant_tickers.txt
 ├── artificial_intelligence_relevant_tickers.txt

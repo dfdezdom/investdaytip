@@ -276,11 +276,11 @@ class TestAdvisorMain:
         ])
 
         assert rc == 0
-        port_mock.assert_called_once_with(str(p), None, "quant", True)
+        port_mock.assert_called_once_with(str(p), None, "quant", True, "yfinance")
         rec_mock.assert_called_once_with(
             asset_class="stocks", region=["us"], top_n=12,
             currency=["USD"], min_market_cap=None,
             sector=None, scoring_model="quant",
-            include_technical=True,
+            include_technical=True, data_source="yfinance",
         )
         html_mock.assert_called_once()

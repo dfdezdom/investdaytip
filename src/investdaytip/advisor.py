@@ -284,6 +284,7 @@ def portfolio_review(
     min_market_cap: float | None = None,
     scoring_model: str = "quant",
     include_technical: bool | None = None,
+    data_source: str = "yfinance",
 ) -> dict:
     """Score existing portfolio, flag weak positions."""
     if not Path(cartera_path).exists():
@@ -299,6 +300,7 @@ def portfolio_review(
         min_market_cap=min_market_cap,
         scoring_model=scoring_model,
         include_technical=include_technical,
+        data_source=data_source,
     )
 
     weak = [s for s in results if s.total < 40]
@@ -348,6 +350,7 @@ def run_comprehensive(
     min_market_cap: float | None = None,
     scoring_model: str = "quant",
     include_technical: bool | None = None,
+    data_source: str = "yfinance",
 ) -> dict:
     """Run analysis across multiple region×asset_class combinations.
 
@@ -419,6 +422,7 @@ def run_comprehensive(
                     min_market_cap=min_market_cap,
                     scoring_model=scoring_model,
                     include_technical=include_technical,
+                    data_source=data_source,
                 )
                 filtered = [
                     r for r in recs
@@ -497,6 +501,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
                         help="Minimum market cap (default: 0 with tickers, 2B otherwise).")
     parser.add_argument("-s", "--sector", type=str, default=None,
                         help="Filter by sector (case-insensitive).")
+    parser.add_argument("--data-source", choices=["yfinance", "fmp"], default="yfinance",
+                        help="Data source (default: yfinance). FMP requires FMP_API_KEY env var.")
     parser.add_argument("--superinvestor", action="store_true",
                         help="Include superinvestor ownership data.")
     parser.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",
@@ -514,6 +520,17 @@ def advisor_main(argv: list[str] | None = None) -> int:
                         help="Clear all cached data.")
     args = parser.parse_args(argv)
     args.include_technical = resolve_include_technical(args.include_technical, args.scoring_model)
+
+    if args.data_source == "fmp":
+        import os as _os
+        if not _os.environ.get("FMP_API_KEY"):
+            from rich.console import Console
+            Console().print(
+                "[red]FMP data source requires the FMP_API_KEY environment variable.[/red]\n"
+                "  Get a free API key at [underline]https://financialmodelingprep.com/[/underline]\n"
+                "  Then set:  [bold]export FMP_API_KEY=your_key_here[/bold]"
+            )
+            return 1
 
     from investdaytip.cache import clear_cache
     from investdaytip.cache import set_enabled as cache_set_enabled
@@ -640,7 +657,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
     else:
         with console.status("[bold green]Analyzing portfolio..."):
             try:
-                review = portfolio_review(str(portfolio_path), args.min_market_cap, args.scoring_model, args.include_technical)
+                review = portfolio_review(str(portfolio_path), args.min_market_cap, args.scoring_model, args.include_technical, args.data_source)
             except YFRateLimitError:
                 logger.warning("Rate limit reached while analyzing portfolio.")
                 console.print(
@@ -796,6 +813,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 sector=args.sector,
                 scoring_model=args.scoring_model,
                 include_technical=args.include_technical,
+                data_source=args.data_source,
             )
         except YFRateLimitError:
             logger.warning("yfinance rate limit reached.")
