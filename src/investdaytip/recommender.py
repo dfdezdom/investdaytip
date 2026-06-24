@@ -147,7 +147,10 @@ def recommend(
     include_technical = resolve_include_technical(include_technical, scoring_model)
 
     if min_market_cap is None:
-        min_market_cap = 0.0 if tickers is not None else 2_000_000_000.0
+        if tickers:
+            min_market_cap = 0.0
+        else:
+            min_market_cap = 2_000_000_000.0
 
     universe = _build_universe(tickers, asset_class, region, currency)
     total = len(universe)

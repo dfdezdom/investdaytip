@@ -595,6 +595,12 @@ def main(argv: list[str] | None = None) -> int:
 
     effective_tickers = _merge_ticker_lists(args.tickers, file_tickers)
 
+    # When explicit tickers are provided, min_market_cap must default to 0
+    # regardless of any other logic. The recommender also handles this, but
+    # resolving it here is more explicit and avoids edge cases.
+    if effective_tickers and args.min_market_cap is None:
+        args.min_market_cap = 0.0
+
     from investdaytip.cache import clear_cache
     from investdaytip.cache import set_enabled as cache_set_enabled
     if args.cache_clear:
