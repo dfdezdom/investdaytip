@@ -7,10 +7,11 @@ for ``investdaytip.data_source.fetch_asset`` when the user specifies
 Only stocks are supported (ETFs return an error).  Uses the FMP stable API
 with the following endpoints per ticker:
   - ``profile``              — name, sector, exchange, currency, market cap, price
-  - ``ratios-ttm``           — PE, PB, PEG, ROE, ROA, profit margin, D/E,
+  - ``ratios-ttm``           — PE, PB, PEG, profit margin, D/E,
                                current ratio, div yield, payout ratio, FCF/share
+  - ``key-metrics-ttm``      — ROE, ROA
+  - ``financial-growth``     — earnings growth, revenue growth
   - ``historical-price-eod`` — OHLCV for 2 years (trend + technicals)
-  - ``earnings-surprises``   — EPS surprise for the ``quant`` scoring model
 """
 
 from __future__ import annotations
@@ -65,7 +66,7 @@ def check_rate_limit() -> None:
     Raises :exc:`FmpError` for other failures (network, missing key).
     Safe to call before starting the batch so the user gets prompt feedback.
     """
-    _get("profile/SPY")  # fast, well-known ticker; raises on error
+    _get("profile", {"symbol": "SPY"})  # fast, well-known ticker; raises on error
 
 
 def _get(path: str, params: dict[str, str] | None = None) -> list[dict]:
@@ -85,7 +86,7 @@ def _get(path: str, params: dict[str, str] | None = None) -> list[dict]:
                 data = json.loads(resp.read().decode())
         except HTTPError as exc:
             if exc.code == 404:
-                raise FmpError(f"ticker not found: {path}") from exc
+                raise FmpError(f"endpoint not found: {path} (HTTP 404)") from exc
             if exc.code == 429:
                 raise FmpRateLimitError(
                     f"FMP rate limit (HTTP 429): {exc}"
@@ -102,6 +103,7 @@ def _get(path: str, params: dict[str, str] | None = None) -> list[dict]:
 
         if isinstance(data, dict) and "Error Message" in data:
             msg: str = data["Error Message"]
+            logger.warning("FMP API error for %s: %s", path, msg)
             if "limit" in msg.lower():
                 raise FmpRateLimitError(f"FMP rate limit: {msg}")
             raise FmpError(f"FMP error: {msg}")
@@ -110,25 +112,6 @@ def _get(path: str, params: dict[str, str] | None = None) -> list[dict]:
         return data
 
     raise FmpError("FMP request failed after all retries")
-
-
-def _fetch_eps_surprise(data: list[dict]) -> Optional[float]:
-    """Compute average EPS surprise (%) over the last 4 quarters."""
-    quarters: list[tuple[str, float]] = []
-    for entry in data:
-        try:
-            actual = float(entry["actualEarningResult"])
-            estimate = float(entry["estimatedEarning"])
-            if estimate != 0 and math.isfinite(actual) and math.isfinite(estimate):
-                pct = ((actual - estimate) / abs(estimate)) * 100.0
-                quarters.append((entry["date"], pct))
-        except (KeyError, TypeError, ValueError):
-            continue
-    if not quarters:
-        return None
-    quarters.sort(key=lambda x: x[0], reverse=True)
-    recent = [pct for _, pct in quarters[:4]]
-    return sum(recent) / len(recent) if recent else None
 
 
 def _history_to_df(data: list[dict]) -> pd.DataFrame:
@@ -163,7 +146,7 @@ def _fetch_and_cache_profile(ticker: str) -> dict | None:
     if cached is not None and "profile" in cached:
         return cached["profile"]
     try:
-        data = _get(f"profile/{ticker}")
+        data = _get("profile", {"symbol": ticker})
         profile = data[0] if data else {}
         # Store under info key for reuse by _fetch_and_cache_fundamentals
         cache_info_set(ticker, {"profile": profile})
@@ -175,7 +158,7 @@ def _fetch_and_cache_profile(ticker: str) -> dict | None:
 
 
 def _fetch_and_cache_fundamentals(ticker: str) -> dict | None:
-    """Fetch ratios-ttm + earnings-surprises and merge into the info cache.
+    """Fetch ratios-ttm and merge into the info cache.
 
     The profile must already be cached (via ``_fetch_and_cache_profile``)
     before calling this.  Returns the full info dict on success, ``None``
@@ -186,26 +169,60 @@ def _fetch_and_cache_fundamentals(ticker: str) -> dict | None:
         return cached
 
     try:
-        raw_ratios = _get(f"ratios-ttm/{ticker}")
+        raw_ratios = _get("ratios-ttm", {"symbol": ticker})
         ratios = raw_ratios[0] if raw_ratios else {}
+        if not ratios:
+            logger.warning("FMP: ratios-ttm empty for %s", ticker)
     except FmpRateLimitError:
         raise
     except FmpError:
         return None
 
-    eps_surprise = None
+    profile = (cached or {}).get("profile") or {}
+    info = {"profile": profile, "ratios_ttm": ratios}
+    cache_info_set(ticker, info)
+    return info
+
+
+def _fetch_and_cache_key_metrics(ticker: str) -> dict:
+    """Fetch key-metrics-ttm and return the first record (or empty dict)."""
     try:
-        surprises = _get(f"earnings-surprises/{ticker}")
-        eps_surprise = _fetch_eps_surprise(surprises)
+        data = _get("key-metrics-ttm", {"symbol": ticker})
+        if not data:
+            logger.warning("FMP: key-metrics-ttm empty for %s", ticker)
+            return {}
+        return data[0]
     except FmpRateLimitError:
         raise
     except FmpError:
-        pass
+        return {}
 
-    profile = (cached or {}).get("profile") or {}
-    info = {"profile": profile, "ratios_ttm": ratios, "eps_surprise": eps_surprise}
-    cache_info_set(ticker, info)
-    return info
+
+def _fetch_and_cache_financial_growth(ticker: str) -> dict:
+    """Fetch financial-growth and return the most recent record (or empty dict)."""
+    try:
+        data = _get("financial-growth", {"symbol": ticker})
+        if not data:
+            logger.warning("FMP: financial-growth empty for %s", ticker)
+            return {}
+        # Most recent period first
+        data.sort(key=lambda x: x.get("date", ""), reverse=True)
+        return data[0]
+    except FmpRateLimitError:
+        raise
+    except FmpError:
+        return {}
+
+
+def _shares_outstanding(profile: dict, price: float | None) -> Optional[float]:
+    """Return shares outstanding from profile or infer from market cap / price."""
+    shares = _safe_float(profile, "sharesOutstanding")
+    if shares is not None and shares > 0:
+        return shares
+    cap = _safe_float(profile, "marketCap") or _safe_float(profile, "mktCap")
+    if cap is not None and price is not None and price > 0:
+        return cap / price
+    return None
 
 
 def _fetch_and_cache_history(ticker: str) -> pd.DataFrame:
@@ -220,9 +237,16 @@ def _fetch_and_cache_history(ticker: str) -> pd.DataFrame:
     today = time.strftime("%Y-%m-%d")
     two_years_ago = time.strftime("%Y-%m-%d", time.gmtime(time.time() - 63072000))
     try:
-        data = _get(f"historical-price-eod/{ticker}", {"from": two_years_ago, "to": today})
+        data = _get(
+            "historical-price-eod/full",
+            {"symbol": ticker, "from": two_years_ago, "to": today},
+        )
         df = _history_to_df(data)
-        cache_history_set(ticker, df.to_json())
+        if df.empty:
+            logger.warning("FMP: historical-price-eod empty for %s", ticker)
+        history_json = df.to_json()
+        if history_json is not None:
+            cache_history_set(ticker, history_json)
         return df
     except FmpRateLimitError:
         raise
@@ -247,7 +271,7 @@ def _safe_float(d: dict, key: str) -> Optional[float]:
 
 
 def _mkt_cap(profile: dict) -> tuple[bool, float]:
-    cap_val = profile.get("mktCap")
+    cap_val = profile.get("marketCap") or profile.get("mktCap")
     if cap_val is None:
         return False, 0.0
     try:
@@ -279,12 +303,14 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> StockData:
     if profile is None:
         d = StockData(ticker=ticker)
         d.errors.append("failed to fetch profile from FMP")
+        logger.warning("FMP: %s", "; ".join(d.errors))
         return d
 
     # ETF check
     if profile.get("isEtf", False):
         d = StockData(ticker=ticker)
         d.errors.append("ETFs not supported via FMP data source")
+        logger.warning("FMP: %s", "; ".join(d.errors))
         return d
 
     # Market cap validation + filter
@@ -292,16 +318,20 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> StockData:
     if not is_valid:
         d = StockData(ticker=ticker)
         d.errors.append("no valid market cap from FMP")
+        logger.warning("FMP: %s", "; ".join(d.errors))
         return d
 
     if min_market_cap > 0 and cap < min_market_cap:
         d = StockData(ticker=ticker, market_cap=cap)
         d.errors.append("market cap below threshold")
+        logger.warning("FMP: %s", "; ".join(d.errors))
         return d
 
-    # ── 2. Fundamentals (ratios + EPS) ────────────────────────────────────
+    # ── 2. Fundamentals (ratios + key metrics + growth) ───────────────────
     info = _fetch_and_cache_fundamentals(ticker)
     ratios = (info or {}).get("ratios_ttm") or {}
+    key_metrics = _fetch_and_cache_key_metrics(ticker)
+    growth = _fetch_and_cache_financial_growth(ticker)
 
     # ── 3. Price history ──────────────────────────────────────────────────
     history = _fetch_and_cache_history(ticker)
@@ -316,36 +346,31 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> StockData:
     data.current_price = price
     data.market_cap = cap
 
-    # Valuation
-    data.trailing_pe = _safe_float(ratios, "priceEarningsRatio")
-    data.price_to_book = _safe_float(ratios, "priceToBookRatio")
-    data.peg_ratio = _safe_float(ratios, "pegRatio")
+    # Valuation (FMP stable uses *TTM field names)
+    data.trailing_pe = _safe_float(ratios, "priceToEarningsRatioTTM")
+    data.price_to_book = _safe_float(ratios, "priceToBookRatioTTM")
+    data.peg_ratio = _safe_float(ratios, "priceToEarningsGrowthRatioTTM")
 
     # Quality
-    data.return_on_equity = _safe_float(ratios, "returnOnEquity")
-    data.return_on_assets = _safe_float(ratios, "returnOnAssets")
-    data.profit_margin = _safe_float(ratios, "netProfitMargin")
-    data.earnings_growth = _safe_float(ratios, "earningsGrowth")
-    data.revenue_growth = _safe_float(ratios, "revenueGrowth")
+    data.return_on_equity = _safe_float(key_metrics, "returnOnEquityTTM")
+    data.return_on_assets = _safe_float(key_metrics, "returnOnAssetsTTM")
+    data.profit_margin = _safe_float(ratios, "netProfitMarginTTM")
+    data.earnings_growth = _safe_float(growth, "epsgrowth")
+    data.revenue_growth = _safe_float(growth, "revenueGrowth")
 
     # Health
-    data.debt_to_equity = _safe_float(ratios, "debtToEquity")
-    data.current_ratio = _safe_float(ratios, "currentRatio")
+    data.debt_to_equity = _safe_float(ratios, "debtToEquityRatioTTM")
+    data.current_ratio = _safe_float(ratios, "currentRatioTTM")
 
     # FCF: compute from FCF/share * shares outstanding
-    fcf_ps = _safe_float(ratios, "freeCashFlowPerShare")
-    shares = _safe_float(ratios, "totalSharesOutstanding")
+    fcf_ps = _safe_float(ratios, "freeCashFlowPerShareTTM")
+    shares = _shares_outstanding(profile, price)
     if fcf_ps is not None and shares is not None and shares > 0:
         data.free_cashflow = fcf_ps * shares
 
     # Income
-    data.dividend_yield = _safe_float(ratios, "dividendYield")
-    data.payout_ratio = _safe_float(ratios, "payoutRatio")
-
-    # EPS surprise
-    surprise_val = (info or {}).get("eps_surprise")
-    if surprise_val is not None and math.isfinite(surprise_val):
-        data.eps_surprise = surprise_val
+    data.dividend_yield = _safe_float(ratios, "dividendYieldTTM")
+    data.payout_ratio = _safe_float(ratios, "dividendPayoutRatioTTM")
 
     # Trend + technicals from price history
     _apply_history_common(data, history)

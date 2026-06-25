@@ -163,7 +163,6 @@ def _compare(before_path: str, after_path: str) -> None:
     alpha_improved = (after.get("alpha") or 0) > (before.get("alpha") or 0)
     sharpe_improved = (after.get("sharpe") or 0) > (before.get("sharpe") or 0)
     win12_improved = (after.get("win_rate_12m") or 0) > (before.get("win_rate_12m") or 0)
-    dd_improved = (after.get("max_drawdown") or 0) < (before.get("max_drawdown") or 0)
 
     print("\n" + "=" * 65)
     if alpha_improved and sharpe_improved and win12_improved:

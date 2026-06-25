@@ -113,3 +113,28 @@ class TestRecommend:
             out = recommend(tickers=["XXX"], top_n=5)
         assert out == []
         assert any("Failed to fetch" in rec.message for rec in caplog.records)
+
+    def test_yahooquery_fallback_to_yfinance(self, mocker):
+        """When yahooquery fails for a ticker, recommend falls back to yfinance."""
+        from investdaytip.data_source_yahooquery import fetch_batch_yq
+
+        def _fake_batch(tickers, progress_cb=None):
+            results = {}
+            for tk in tickers:
+                if tk == "AAA":
+                    results[tk] = StockData(ticker=tk, market_cap=5e9, return_on_equity=0.3)
+                else:
+                    results[tk] = StockData(ticker=tk, errors=["yahooquery failed"])
+            return results
+
+        def _fake_fetch(ticker, min_market_cap=0.0):
+            return StockData(ticker=ticker, market_cap=5e9, return_on_equity=0.2)
+
+        mocker.patch.object(fetch_batch_yq, "__call__", side_effect=_fake_batch)
+        mocker.patch("investdaytip.recommender.fetch_asset", side_effect=_fake_fetch)
+        mocker.patch("investdaytip.recommender.close_db")
+
+        out = recommend(tickers=["AAA", "BBB"], top_n=2, data_source="yahooquery")
+        tickers = {s.data.ticker for s in out}
+        assert "AAA" in tickers
+        assert "BBB" in tickers

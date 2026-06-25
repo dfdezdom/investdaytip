@@ -28,6 +28,9 @@ dependencies = [
     # yfinance changes its scraping/API frequently; cap the major.minor range
     # so an upstream break doesn't silently propagate to users.
     "yfinance>=0.2.40,<0.3",
+    # yahooquery uses Yahoo's internal API endpoints — faster and more stable
+    # than HTML scraping. Enables --data-source yahooquery.
+    "yahooquery>=2.4",
     "pandas>=2.0,<3.0",
     "numpy>=1.24,<3.0",
     "rich>=13.0,<15.0",

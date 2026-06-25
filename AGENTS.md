@@ -28,6 +28,7 @@ the convention is `Optional[...]` for dataclass fields, not `X | None`.
 | Advisor | `advisor.py` | interactive market pulse, portfolio review, buy recs, CLI subcommand |
 | Orchestration | `recommender.py` | builds universe, ThreadPoolExecutor fetches, scores, filters, sorts |
 | Data fetching | `data_source.py` | yfinance wrapper, dataclasses (`StockData` / `EtfData` / `AssetData`). **All network I/O lives here.** |
+| Yahooquery data source | `data_source_yahooquery.py` | yahooquery batch wrapper, maps `all_modules` to yfinance-style `info`, yfinance fallback |
 | FMP data source | `data_source_fmp.py` | FMP wrapper, `fetch_asset()` alternative, 4 endpoints/ticker, rate-limit auto-fallback to yfinance |
 | Caching | `cache.py` | SQLite cache with per-thread connections, WAL mode, write lock |
 | Scoring | `scoring.py` | pure functions only — no I/O, no side effects |
@@ -38,7 +39,62 @@ the convention is `Optional[...]` for dataclass fields, not `X | None`.
 | Tests | `tests/` | 9 files, no live network calls (autouse network guard in `conftest.py`) |
 | OpenCode agent | `.opencode/agents/advisor.md` | advisor subagent: permissions, interactive flow, execution methods, and interpretation guide |
 
-Data flow: `CLI → recommender → data_source (yfinance|fmp) → scoring → html_export / Rich table`
+Data flow: `CLI → recommender → data_source (yfinance|yahooquery|fmp) → scoring → html_export / Rich table`
+
+## Yahooquery Data Source (`--data-source yahooquery`)
+
+Yahooquery uses Yahoo's internal API endpoints (not HTML scraping) and supports efficient batch fetching. It is selectable via `--data-source yahooquery`.
+
+| Aspect | Value |
+|---|---|
+| Batch size | `_CHUNK_SIZE = 10` tickers per chunk |
+| Parallel workers | `_MAX_CHUNK_WORKERS = 5` |
+| Fallback | Automatic per-ticker fallback to yfinance on failure |
+| Cache | Reuses existing SQLite cache (`info` + `history`) |
+| Backtest support | **No** — yahooquery does not expose historical financial statements |
+
+### Why use yahooquery?
+
+- More resilient to Yahoo HTML changes than yfinance.
+- Faster for large universes via batch fetching.
+- Provides a working fallback when yfinance rate-limits or breaks.
+
+### Key field normalizations
+
+The nested `all_modules` response is flattened into the same `info` dict that `_fetch_stock()` / `_fetch_etf()` consume.
+
+| Flat info key | yahooquery source path | Normalization |
+|---|---|---|
+| `trailingPE` | `summaryDetail.trailingPE` | none |
+| `forwardPE` | `summaryDetail.forwardPE` | none |
+| `priceToBook` | `defaultKeyStatistics.priceToBook` | none |
+| `pegRatio` | `defaultKeyStatistics.pegRatio` | none |
+| `returnOnEquity` | `financialData.returnOnEquity` | none |
+| `profitMargins` | `defaultKeyStatistics.profitMargins` | none |
+| `debtToEquity` | `financialData.debtToEquity` | passed through (same scale as yfinance) |
+| `annualReportExpenseRatio` | `fundProfile.feesExpensesInvestment.annualReportExpenseRatio` | ×100 (decimal → percentage) |
+| `epsSurprise` | `earnings.earningsChart.quarterly[*].surprisePct` | averaged over available quarters; stored in `info` for cache survival |
+
+### Fallback behavior
+
+1. Tickers are fetched in chunks of 10 via `fetch_batch_yq()`.
+2. If a single chunk fails entirely, every ticker in that chunk is marked as failed.
+3. Failed / missing tickers are collected as `leftovers` and re-fetched with `fetch_asset()` (yfinance) in `recommender.py`.
+4. No user prompt is required; the fallback is automatic.
+
+### Limitations
+
+- **No historical financial statements**: yahooquery only provides current fundamentals. This makes it unsuitable for the `backtest` subcommand, which needs yearly/quarterly `income_stmt`, `balance_sheet`, and `cashflow`.
+- Field availability can vary slightly between batch and single-ticker calls (e.g. `price_to_book` may be missing for some tickers in large batches).
+- Yahoo may change the `all_modules` schema without notice; keep the field mapping tests green.
+
+### Usage
+
+```bash
+investdaytip --data-source yahooquery -n 5 -r us
+investdaytip advisor --data-source yahooquery
+python scripts/compare_data_sources.py -t "AAPL MSFT GOOGL" -n 3
+```
 
 ## FMP Data Source (`--data-source fmp`)
 
@@ -65,7 +121,7 @@ When FMP returns HTTP 429 (Too Many Requests) or a JSON `"Error Message"` contai
 
 ### CLI & Config
 
-- `--data-source {yfinance,fmp}` (default: `yfinance`)
+- `--data-source {yfinance,yahooquery,fmp}` (default: `yfinance`)
 - Requires `FMP_API_KEY` env var (startup prints install instructions if missing)
 - Shows a warning banner: `FMP free tier: 250 requests/day (~60 tickers), 10s timeout per request.`
 - Works with `advisor` subcommand (`investdaytip advisor --data-source fmp`)

@@ -399,7 +399,10 @@ def _fetch_stock(
     else:
         data.dividend_yield = _sanitize_yield(_safe_get(info, "dividendYield"))
 
-    data.eps_surprise = _compute_eps_surprise(earnings_dates)
+    if earnings_dates is not None:
+        data.eps_surprise = _compute_eps_surprise(earnings_dates)
+    else:
+        data.eps_surprise = _safe_get(info, "epsSurprise")
 
     return data
 

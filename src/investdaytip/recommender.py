@@ -26,11 +26,11 @@ from investdaytip.universe import DEFAULT_UNIVERSE
 
 logger = logging.getLogger(__name__)
 
-def _log_fallback(count: int) -> None:
-    """Log that FMP rate-limited tickers will be re-fetched via yfinance."""
+def _log_fallback(source: str, count: int) -> None:
+    """Log that rate-limited/failed tickers will be re-fetched via yfinance."""
     import sys
     sys.stderr.write(
-        f"⚠️  FMP rate limit — continuing with yfinance for {count} ticker{'s' if count != 1 else ''}\n"
+        f"⚠️  {source} — continuing with yfinance for {count} ticker{'s' if count != 1 else ''}\n"
     )
     sys.stderr.flush()
 
@@ -158,7 +158,7 @@ def recommend(
             resolves to ``True`` for the ``"quant"`` model and ``False`` for
             ``"classic"``.
         scoring_model: ``"quant"`` (default) or ``"classic"``.
-        data_source: ``"yfinance"`` (default) or ``"fmp"``.
+        data_source: ``"yfinance"`` (default), ``"yahooquery"`` or ``"fmp"``.
     """
     include_technical = resolve_include_technical(include_technical, scoring_model)
 
@@ -187,73 +187,137 @@ def recommend(
 
         leftovers: list[str] = []
 
-        # ── Pre-flight rate-limit check ───────────────────────────────
-        if data_source == "fmp":
-            try:
-                check_rate_limit()
-            except FmpRateLimitError:
-                leftovers = list(universe)
-            except FmpError:
-                leftovers = list(universe)
+        # ── yahooquery batch path ─────────────────────────────────────
+        if data_source == "yahooquery":
+            from investdaytip.data_source_yahooquery import (
+                check_yahooquery_available,
+                fetch_batch_yq,
+            )
 
-        # ── First pass (FMP or yfinance) ──────────────────────────────
-        if not leftovers:
-            pool = ThreadPoolExecutor(max_workers=max_workers)
-            futures = {pool.submit(_fetcher, t, min_market_cap): t for t in universe}
-            try:
-                for i, fut in enumerate(as_completed(futures), start=1):
-                    ticker = futures[fut]
-                    try:
-                        timeout = FMP_TICKER_TIMEOUT if data_source == "fmp" else None
-                        data = fut.result(timeout=timeout)
-                    except FmpRateLimitError:
-                        leftovers.append(ticker)
-                        logger.warning("FMP rate limit hit for %s", ticker)
-                        continue
-                    except TimeoutError:
-                        logger.warning("Timeout fetching %s (FMP)", ticker)
-                        leftovers.append(ticker)
-                        continue
-                    except Exception:
-                        logger.warning("Failed to fetch %s", ticker, exc_info=True)
-                        continue
-                    try:
-                        scored.append(score_asset(data, model=scoring_model, include_technical=include_technical, si_data=si_data))
-                    except Exception:
-                        logger.warning("Failed to score %s", ticker, exc_info=True)
-                    if progress_cb:
-                        progress_cb(i, total, ticker)
-            except KeyboardInterrupt:
-                pool.shutdown(wait=False, cancel_futures=True)
-                raise
-            finally:
-                pool.shutdown(wait=True)
+            # For larger universes, probe connectivity once before firing many
+            # chunks. If Yahoo's API is unreachable, skip straight to yfinance.
+            if len(universe) > 10 and not check_yahooquery_available():
+                logger.warning("yahooquery availability check failed; falling back to yfinance")
+                _log_fallback("yahooquery", len(universe))
+                leftovers = list(universe)
+                batch_results = {}
+            else:
+                try:
+                    batch_results = fetch_batch_yq(list(universe), progress_cb=progress_cb)
+                except Exception as exc:
+                    logger.warning("yahooquery batch failed entirely: %s", exc)
+                    leftovers = list(universe)
+                    batch_results = {}
 
-        # ── Fallback to yfinance for rate-limited / timed-out tickers ──
-        if leftovers and data_source == "fmp":
-            _log_fallback(len(leftovers))
-            _fetcher = fetch_asset
-            pool = ThreadPoolExecutor(max_workers=max_workers)
-            futures = {pool.submit(_fetcher, t, min_market_cap): t for t in leftovers}
-            try:
-                for i, fut in enumerate(as_completed(futures), start=1):
-                    ticker = futures[fut]
-                    try:
-                        data = fut.result()
-                    except Exception:
-                        logger.warning("Failed to fetch %s", ticker, exc_info=True)
-                        continue
-                    try:
-                        scored.append(score_asset(data, model=scoring_model, include_technical=include_technical, si_data=si_data))
-                    except Exception:
-                        logger.warning("Failed to score %s", ticker, exc_info=True)
-                    if progress_cb:
-                        progress_cb(i, total, ticker)
-            except KeyboardInterrupt:
-                pool.shutdown(wait=False, cancel_futures=True)
-                raise
-            finally:
-                pool.shutdown(wait=True)
+            for ticker in universe:
+                data = batch_results.get(ticker)
+                if data is None:
+                    leftovers.append(ticker)
+                    continue
+                if data.errors:
+                    # Partial failure (e.g. invalid ticker) — fallback to yfinance
+                    leftovers.append(ticker)
+                    continue
+                try:
+                    scored.append(score_asset(data, model=scoring_model, include_technical=include_technical, si_data=si_data))
+                except Exception:
+                    logger.warning("Failed to score %s", ticker, exc_info=True)
+
+            # Fallback any failed tickers to yfinance
+            if leftovers:
+                _log_fallback("yahooquery batch", len(leftovers))
+                _fetcher = fetch_asset
+                pool = ThreadPoolExecutor(max_workers=max_workers)
+                futures = {pool.submit(_fetcher, t, min_market_cap): t for t in leftovers}
+                try:
+                    for i, fut in enumerate(as_completed(futures), start=1):
+                        ticker = futures[fut]
+                        try:
+                            data = fut.result()
+                        except Exception:
+                            logger.warning("Failed to fetch %s", ticker, exc_info=True)
+                            continue
+                        try:
+                            scored.append(score_asset(data, model=scoring_model, include_technical=include_technical, si_data=si_data))
+                        except Exception:
+                            logger.warning("Failed to score %s", ticker, exc_info=True)
+                        if progress_cb:
+                            progress_cb(len(scored) + i, total, ticker)
+                except KeyboardInterrupt:
+                    pool.shutdown(wait=False, cancel_futures=True)
+                    raise
+                finally:
+                    pool.shutdown(wait=True)
+
+        # ── FMP / yfinance path ───────────────────────────────────────
+        else:
+            # ── Pre-flight rate-limit check ───────────────────────────
+            if data_source == "fmp":
+                try:
+                    check_rate_limit()
+                except FmpRateLimitError:
+                    leftovers = list(universe)
+                except FmpError as e:
+                    logger.warning("FMP pre-flight check failed: %s", e)
+
+            # ── First pass ──────────────────────────────────────────────
+            if not leftovers:
+                pool = ThreadPoolExecutor(max_workers=max_workers)
+                futures = {pool.submit(_fetcher, t, min_market_cap): t for t in universe}
+                try:
+                    for i, fut in enumerate(as_completed(futures), start=1):
+                        ticker = futures[fut]
+                        try:
+                            timeout = FMP_TICKER_TIMEOUT if data_source == "fmp" else None
+                            data = fut.result(timeout=timeout)
+                        except FmpRateLimitError:
+                            leftovers.append(ticker)
+                            logger.warning("FMP rate limit hit for %s", ticker)
+                            continue
+                        except TimeoutError:
+                            logger.warning("Timeout fetching %s (FMP)", ticker)
+                            leftovers.append(ticker)
+                            continue
+                        except Exception:
+                            logger.warning("Failed to fetch %s", ticker, exc_info=True)
+                            continue
+                        try:
+                            scored.append(score_asset(data, model=scoring_model, include_technical=include_technical, si_data=si_data))
+                        except Exception:
+                            logger.warning("Failed to score %s", ticker, exc_info=True)
+                        if progress_cb:
+                            progress_cb(i, total, ticker)
+                except KeyboardInterrupt:
+                    pool.shutdown(wait=False, cancel_futures=True)
+                    raise
+                finally:
+                    pool.shutdown(wait=True)
+
+            # ── Fallback to yfinance for FMP rate-limited tickers ────
+            if leftovers and data_source == "fmp":
+                _log_fallback("FMP rate limit", len(leftovers))
+                _fetcher = fetch_asset
+                pool = ThreadPoolExecutor(max_workers=max_workers)
+                futures = {pool.submit(_fetcher, t, min_market_cap): t for t in leftovers}
+                try:
+                    for i, fut in enumerate(as_completed(futures), start=1):
+                        ticker = futures[fut]
+                        try:
+                            data = fut.result()
+                        except Exception:
+                            logger.warning("Failed to fetch %s", ticker, exc_info=True)
+                            continue
+                        try:
+                            scored.append(score_asset(data, model=scoring_model, include_technical=include_technical, si_data=si_data))
+                        except Exception:
+                            logger.warning("Failed to score %s", ticker, exc_info=True)
+                        if progress_cb:
+                            progress_cb(i, total, ticker)
+                except KeyboardInterrupt:
+                    pool.shutdown(wait=False, cancel_futures=True)
+                    raise
+                finally:
+                    pool.shutdown(wait=True)
     finally:
         close_db()
 

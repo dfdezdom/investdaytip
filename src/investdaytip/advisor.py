@@ -501,8 +501,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
                         help="Minimum market cap (default: 0 with tickers, 2B otherwise).")
     parser.add_argument("-s", "--sector", type=str, default=None,
                         help="Filter by sector (case-insensitive).")
-    parser.add_argument("--data-source", choices=["yfinance", "fmp"], default="yfinance",
-                        help="Data source (default: yfinance). FMP requires FMP_API_KEY env var.")
+    parser.add_argument("--data-source", choices=["yfinance", "yahooquery", "fmp"], default="yfinance",
+                        help="Data source (default: yfinance). yahooquery uses Yahoo's internal API (faster, more stable). FMP requires FMP_API_KEY env var.")
     parser.add_argument("--superinvestor", action="store_true",
                         help="Include superinvestor ownership data.")
     parser.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",

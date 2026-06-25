@@ -540,8 +540,8 @@ def main(argv: list[str] | None = None) -> int:
                             help="Filter by sector prefix (case-insensitive).")
 
     data_grp = parser.add_argument_group("Data")
-    data_grp.add_argument("--data-source", choices=["yfinance", "fmp"], default="yfinance",
-                          help="Data source (default: yfinance). FMP requires FMP_API_KEY env var.")
+    data_grp.add_argument("--data-source", choices=["yfinance", "yahooquery", "fmp"], default="yfinance",
+                          help="Data source (default: yfinance). yahooquery uses Yahoo's internal API (faster, more stable). FMP requires FMP_API_KEY env var.")
     data_grp.add_argument("--superinvestor", action="store_true",
                           help="Include superinvestor ownership data.")
     data_grp.add_argument("--no-cache", action="store_true",

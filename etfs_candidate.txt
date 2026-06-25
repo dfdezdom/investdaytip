@@ -1,0 +1,11 @@
+CNYAD0A - iShares MSCI China A UCITS ETF - 36BZ
+CNYVDPA - Amundi MSCI Emerging Markets Asia UCITS ETF EUR (C) - AMEA
+COGSDUA - iShares MSCI Korea UCITS ETF (Acc) - CSKR
+DWAZ0A - iShares Global Aerospace & Defence UCITS ETF - USD (C) - DFND
+DWAZ0A - iShares MSCI AC Far East ex-Japan UCITS ETF - IFFF
+DWAZ0A - iShares ETF Global Clean Energy - IQQH
+DWAZ0A - iShares MSCI Global Semiconductors UCITS ETF - SEC0
+DWAZ0A - WisdomTree Core Physical Gold - WGLD
+DWAZ0A - WisdomTree Artificial Intelligence UCITS ETF - USD (C) - WTI2
+DWAZ0A - Xtrackers Artificial Intelligence & Big Data UCITS ETF 1C - XAIX
+DWAZ0A - Xtrackers MSCI Singapore UCITS ETF 1C - XBAS

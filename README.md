@@ -116,9 +116,11 @@ investdaytip --scoring-model classic # Use the classic Graham/Buffett model inst
 investdaytip --min-market-cap 1B     # Raise min market cap to $1B
 investdaytip --min-market-cap 0      # Disable market-cap filter
 
-investdaytip --data-source fmp        # Use Financial Modeling Prep (requires FMP_API_KEY env var)
+investdaytip --data-source yahooquery  # Use yahooquery (Yahoo internal API, batch-friendly)
+                                       # Falls back to yfinance automatically per ticker
+investdaytip --data-source fmp         # Use Financial Modeling Prep (requires FMP_API_KEY env var)
                                        # Get a free key at https://financialmodelingprep.com/
-investdaytip --no-cache              # Bypass SQLite cache, fetch fresh data
+investdaytip --no-cache                # Bypass SQLite cache, fetch fresh data
 investdaytip --cache-clear           # Purge all cached data before running
 investdaytip --workers 20            # More parallelism
 
@@ -147,7 +149,7 @@ investdaytip --help
 | `--superinvestor` | Include superinvestor ownership data from DataRoma (adds ~80 HTTP requests, shows column in HTML and CLI) | disabled |
 | `--include-technical` | Include RSI + MACD technical indicators in the scoring. **Default is `True` for `quant` and `False` for `classic`.** Use `--no-include-technical` to force-disable. | model-dependent |
 | `--no-include-technical` | Force-disable RSI + MACD technical indicators | disabled |
-| `--data-source {yfinance,fmp}` | Data source (yfinance or FMP) | `yfinance` |
+| `--data-source {yfinance,yahooquery,fmp}` | Data source (yfinance, yahooquery, or FMP) | `yfinance` |
 | `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable; see [Market Cap Classification](#market-cap-classification)) | `0` with tickers, `2B` otherwise |
 | `--no-cache` | Skip SQLite cache, fetch all data live from Yahoo Finance | disabled |
 | `--cache-clear` | Purge the SQLite cache before running | disabled |

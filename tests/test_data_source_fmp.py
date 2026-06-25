@@ -38,53 +38,56 @@ PROFILE = {
     "exchange": "NYSE",
     "currency": "USD",
     "price": 150.0,
-    "mktCap": 10_000_000_000,
+    "marketCap": 10_000_000_000,
     "isEtf": False,
 }
 
 RATIOS_TTM = {
     "symbol": "TEST",
-    "priceEarningsRatio": 25.0,
-    "priceToBookRatio": 5.0,
-    "pegRatio": 1.5,
-    "returnOnEquity": 0.30,
-    "returnOnAssets": 0.12,
-    "netProfitMargin": 0.20,
-    "earningsGrowth": 0.10,
-    "revenueGrowth": 0.08,
-    "debtToEquity": 1.5,
-    "currentRatio": 2.0,
-    "freeCashFlowPerShare": 5.0,
-    "totalSharesOutstanding": 100_000_000,
-    "dividendYield": 0.015,
-    "payoutRatio": 0.30,
+    "priceToEarningsRatioTTM": 25.0,
+    "priceToBookRatioTTM": 5.0,
+    "priceToEarningsGrowthRatioTTM": 1.5,
+    "netProfitMarginTTM": 0.20,
+    "debtToEquityRatioTTM": 1.5,
+    "currentRatioTTM": 2.0,
+    "freeCashFlowPerShareTTM": 5.0,
+    "dividendYieldTTM": 0.015,
+    "dividendPayoutRatioTTM": 0.30,
 }
 
-EARNINGS_SURPRISES = [
-    {"symbol": "TEST", "date": "2025-11-01", "actualEarningResult": 1.10, "estimatedEarning": 1.00, "surprise": 0.10},
-    {"symbol": "TEST", "date": "2025-08-01", "actualEarningResult": 1.05, "estimatedEarning": 1.00, "surprise": 0.05},
-    {"symbol": "TEST", "date": "2025-05-01", "actualEarningResult": 0.98, "estimatedEarning": 1.00, "surprise": -0.02},
-    {"symbol": "TEST", "date": "2025-02-01", "actualEarningResult": 1.02, "estimatedEarning": 1.00, "surprise": 0.02},
-]
+KEY_METRICS_TTM = {
+    "symbol": "TEST",
+    "returnOnEquityTTM": 0.30,
+    "returnOnAssetsTTM": 0.12,
+}
+
+FINANCIAL_GROWTH = {
+    "symbol": "TEST",
+    "date": "2025-09-30",
+    "epsgrowth": 0.10,
+    "revenueGrowth": 0.08,
+}
 
 
-def _responses(history_days: int = 400) -> dict[str, list]:
+def _responses(history_days: int = 400) -> dict[tuple[str, str], list]:
     return {
-        "profile/TEST": [PROFILE],
-        "ratios-ttm/TEST": [RATIOS_TTM],
-        "historical-price-eod/TEST": _mock_history_data(history_days),
-        "earnings-surprises/TEST": EARNINGS_SURPRISES,
+        ("profile", "TEST"): [PROFILE],
+        ("ratios-ttm", "TEST"): [RATIOS_TTM],
+        ("key-metrics-ttm", "TEST"): [KEY_METRICS_TTM],
+        ("financial-growth", "TEST"): [FINANCIAL_GROWTH],
+        ("historical-price-eod/full", "TEST"): _mock_history_data(history_days),
     }
 
 
-def _build_mock_get(responses: dict[str, list]) -> MagicMock:
-    """Build a mock ``_get`` that returns canned data based on URL suffix."""
+def _build_mock_get(responses: dict[tuple[str, str], list]) -> MagicMock:
+    """Build a mock ``_get`` that returns canned data based on endpoint + symbol."""
 
     def side_effect(path: str, params: dict | None = None) -> list[dict]:
-        for suffix, data in responses.items():
-            if suffix in path:
-                return data
-        raise RuntimeError(f"Unexpected _get path: {path}")
+        symbol = (params or {}).get("symbol") if params else None
+        key = (path, symbol or "")
+        if key in responses:
+            return responses[key]
+        raise RuntimeError(f"Unexpected _get path: {path} params: {params}")
 
     mock = MagicMock(side_effect=side_effect)
     return mock
@@ -114,17 +117,18 @@ def test_fetch_asset_basic(mocker):
     assert result.peg_ratio == 1.5
     # Quality
     assert result.return_on_equity == 0.30
+    assert result.return_on_assets == 0.12
     assert result.profit_margin == 0.20
+    assert result.earnings_growth == 0.10
+    assert result.revenue_growth == 0.08
     # Health
     assert result.debt_to_equity == 1.5
     assert result.current_ratio == 2.0
-    # FCF: 5.0 * 100M = 500M
-    assert result.free_cashflow == 500_000_000
+    # FCF: 5.0 * (10B / 150) = 333.33M
+    assert result.free_cashflow == pytest.approx(333_333_333.33, rel=1e-4)
     # Income
     assert result.dividend_yield == 0.015
     assert result.payout_ratio == 0.30
-    # EPS surprise: avg of [10.0, 5.0, -2.0, 2.0] = 3.75
-    assert result.eps_surprise == pytest.approx(3.75)
     # Trend + technicals (from price history)
     assert result.price_vs_sma200 is not None
     assert result.return_1m is not None
@@ -139,8 +143,8 @@ def test_fetch_asset_etf_returns_error(mocker):
     """ETF tickers return a StockData with an error message."""
     profile_etf = dict(PROFILE, isEtf=True)
     responses = {
-        "profile/TEST": [profile_etf],
-        "ratios-ttm/TEST": [RATIOS_TTM],
+        ("profile", "TEST"): [profile_etf],
+        ("ratios-ttm", "TEST"): [RATIOS_TTM],
     }
     mocker.patch("investdaytip.data_source_fmp._get", _build_mock_get(responses))
     mocker.patch.dict(os.environ, {"FMP_API_KEY": "test_key"}, clear=False)
@@ -163,10 +167,10 @@ def test_fetch_asset_missing_api_key(mocker):
 
 def test_fetch_asset_below_market_cap(mocker):
     """Below-threshold market cap returns early with only market_cap set."""
-    small = dict(PROFILE, mktCap=100_000_000, price=10.0)
+    small = dict(PROFILE, marketCap=100_000_000, price=10.0)
     responses = {
-        "profile/TEST": [small],
-        "ratios-ttm/TEST": [RATIOS_TTM],
+        ("profile", "TEST"): [small],
+        ("ratios-ttm", "TEST"): [RATIOS_TTM],
     }
     mocker.patch("investdaytip.data_source_fmp._get", _build_mock_get(responses))
     mocker.patch.dict(os.environ, {"FMP_API_KEY": "test_key"}, clear=False)
@@ -182,7 +186,7 @@ def test_fetch_asset_short_history(mocker):
     """Short history still produces valid StockData (some trend fields None)."""
     short_history = _mock_history_data(30)
     responses = _responses(history_days=30)
-    responses["historical-price-eod/TEST"] = short_history
+    responses[("historical-price-eod/full", "TEST")] = short_history
     mocker.patch("investdaytip.data_source_fmp._get", _build_mock_get(responses))
     mocker.patch.dict(os.environ, {"FMP_API_KEY": "test_key"}, clear=False)
 
@@ -198,20 +202,6 @@ def test_fetch_asset_short_history(mocker):
     # RSI/MACD need >= 35 data points, 30 is too few
     assert result.rsi_14 is None
     assert result.macd_histogram is None
-
-
-def test_fetch_asset_no_earnings_surprises(mocker):
-    """Missing earnings-surprises data leaves eps_surprise as None."""
-    responses = _responses()
-    # Override earnings-surprises endpoint to return empty
-    responses["earnings-surprises/TEST"] = []
-
-    mocker.patch("investdaytip.data_source_fmp._get", _build_mock_get(responses))
-    mocker.patch.dict(os.environ, {"FMP_API_KEY": "test_key"}, clear=False)
-
-    result = fetch_asset("TEST")
-
-    assert result.eps_surprise is None
 
 
 def test_fetch_asset_rate_limit_propagates(mocker):
@@ -263,9 +253,9 @@ def test_recommend_dispatches_to_fmp(mocker, monkeypatch):
 
     # Pre-flight check needs SPY profile responses
     spy_responses = _responses()
-    spy_responses["profile/SPY"] = [dict(PROFILE, symbol="SPY")]
+    spy_responses[("profile", "SPY")] = [dict(PROFILE, symbol="SPY")]
     responses = _responses()
-    responses["profile/SPY"] = [dict(PROFILE, symbol="SPY")]
+    responses[("profile", "SPY")] = [dict(PROFILE, symbol="SPY")]
 
     mocker.patch("investdaytip.data_source_fmp._get", _build_mock_get(responses))
     mocker.patch.dict(os.environ, {"FMP_API_KEY": "test_key"}, clear=False)
