@@ -6,17 +6,20 @@ the multi-factor model a diverse pool for long-term candidates.
 
 DEFAULT_UNIVERSE: list[str] = [
     # Technology
-    "AAPL", "MSFT", "GOOGL", "META", "NVDA", "AVGO", "ORCL", "ADBE",
-    "CRM", "CSCO", "INTC", "AMD", "QCOM", "TXN", "IBM",
+    "AAPL", "ADBE", "AMD", "AVGO", "CRM", "CSCO", "GOOGL", "IBM",
+    "INTC", "META", "MSFT", "MU", "NVDA", "ORCL", "QCOM", "TXN",
     # Consumer
     "AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX", "COST", "WMT", "PG",
     "KO", "PEP", "DIS",
     # Healthcare
-    "JNJ", "UNH", "PFE", "MRK", "ABBV", "LLY", "TMO", "ABT", "DHR",
+    "ABBV", "ABT", "AUPH", "AVAH", "DHR", "INCY", "INDV", "INVA",
+    "JNJ", "LLY", "MRK", "PFE", "TMO", "UNH",
     # Financials
-    "JPM", "BAC", "WFC", "GS", "MS", "V", "MA", "BLK", "AXP",
+    "ALL", "AXP", "BAC", "BLK", "GS", "JPM", "MA", "MS",
+    "SEZL", "THG", "UVE", "V", "WFC",
     # Industrials / Energy / Materials
-    "BA", "CAT", "GE", "HON", "UPS", "XOM", "CVX", "LIN",
+    "BA", "CAT", "CSTM", "CVX", "GE", "HON", "IAG",
+    "LIN", "SHIP", "UPS", "XOM",
     # Communications / Utilities / Real Estate
     "NFLX", "T", "VZ", "NEE", "AMT",
 ]
