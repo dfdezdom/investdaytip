@@ -138,6 +138,7 @@ class TestMacroRegime:
     def test_missing_data_neutral(self, mocker):
         """Missing macro data defaults to neutral score (~50)."""
         mocker.patch("investdaytip.advisor._fetch_index", return_value=None)
+        mocker.patch("investdaytip.advisor.fear_greed_index", return_value=None)
         r = advisor.macro_regime()
         assert r["regime"] == "neutral"
         assert 45 <= r["score"] <= 55

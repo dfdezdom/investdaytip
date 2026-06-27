@@ -369,7 +369,7 @@ def _fetch_stock(
     earnings_dates: pd.DataFrame | None = None,
 ) -> StockData:
     data = StockData(ticker=ticker)
-    data.name = info.get("shortName") or info.get("longName")
+    data.name = info.get("shortName") or info.get("longName") or None
     data.sector = info.get("sector")
     data.currency = info.get("currency")
     data.exchange = info.get("exchange")
@@ -409,7 +409,7 @@ def _fetch_stock(
 
 def _fetch_etf(ticker: str, info: dict, history: pd.DataFrame) -> EtfData:
     data = EtfData(ticker=ticker)
-    data.name = info.get("longName") or info.get("shortName")
+    data.name = info.get("longName") or info.get("shortName") or None
     data.category = info.get("category")
     data.fund_family = info.get("fundFamily")
     data.currency = info.get("currency")
