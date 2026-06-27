@@ -442,3 +442,75 @@ picks = get_recommendations(top_n=5, sector="Financial")
 picks = get_recommendations(top_n=5, region="us", scoring_model="quant")
 picks = get_recommendations(top_n=5, region="us", data_source="fmp")
 ```
+
+## Release Workflow
+
+When the user asks to publish a new version, **do not** run `twine upload`
+manually — the CI handles PyPI publish + GitHub Release automatically.
+
+Steps:
+
+```bash
+# 1. Update version in pyproject.toml and src/investdaytip/__init__.py
+# 2. Add changelog entry in CHANGELOG.md
+# 3. Commit
+git add -A && git commit -m "Bump version to 0.X.0"
+# 4. Tag
+git tag v0.X.0
+# 5. Push tag (triggers CI)
+git push && git push origin v0.X.0
+```
+
+The CI workflow (`.github/workflows/release.yml`) then:
+1. Builds the distribution
+2. Publishes to PyPI via trusted publishing
+3. Creates the GitHub Release with auto-generated notes
+
+## Seeking Alpha XLSX Import
+
+When a user gives you a Seeking Alpha `.xlsx` path (or asks you to analyze tickers
+from a file):
+
+1. **Extract tickers** — use the raw XML method below (openpyxl chokes on Seeking
+   Alpha's conditional formatting). Save the CSV to `seeking_alpha_data/` with the
+   same filename but `.csv` extension.
+2. **Show a preview** — print the ticker count and first few rows (Rank, Symbol, Company Name).
+3. **Ask the user** if they want to run `investdaytip` with those tickers.
+4. **If yes**, build the command and ask for confirmation before executing.
+
+```python
+import zipfile, xml.etree.ElementTree as ET, csv
+from pathlib import Path
+
+src = Path("path/to/file.xlsx")
+dst = Path("seeking_alpha_data") / src.with_suffix(".csv").name
+
+NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+
+with zipfile.ZipFile(src) as z:
+    ss = [
+        si.find(f"{NS}r").find(f"{NS}t").text or ""
+        if si.find(f"{NS}r") is not None
+        else (si.find(f"{NS}t").text or "")
+        for si in ET.fromstring(z.read("xl/sharedStrings.xml")).findall(f"{NS}si")
+    ]
+    sheet = ET.fromstring(z.read("xl/worksheets/sheet1.xml"))
+
+rows = []
+for row in sheet.find(f"{NS}sheetData").findall(f"{NS}row"):
+    cells = []
+    for c in row:
+        v = c.find(f"{NS}v")
+        val = v.text if v is not None else ""
+        if c.get("t") == "s" and val:
+            val = ss[int(val)]
+        cells.append(val)
+    if cells:
+        rows.append(cells)
+
+with open(dst, "w", newline="") as f:
+    csv.writer(f).writerows(rows)
+print(f"{len(rows)} rows -> {dst}")
+tickers = [r[1] for r in rows[1:] if len(r) > 1 and r[1].strip()]
+print(f"Tickers ({len(tickers)}): {' '.join(tickers)}")
+```
