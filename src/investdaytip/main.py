@@ -150,6 +150,21 @@ def _load_tickers_from_file(file_path: str) -> list[str]:
     return out
 
 
+def _split_ticker_args(tickers: list[str] | None) -> list[str] | None:
+    """Split space- or comma-separated tickers within each arg element.
+
+    Allows ``-t "AAPL MSFT GOOGL"`` to work the same as ``-t AAPL MSFT GOOGL``.
+    """
+    if tickers is None:
+        return None
+    result: list[str] = []
+    for t in tickers:
+        for part in t.replace(",", " ").split():
+            if part:
+                result.append(part)
+    return result
+
+
 def _merge_ticker_lists(cli_tickers: list[str] | None, file_tickers: list[str]) -> list[str] | None:
     merged: list[str] = []
     seen: set[str] = set()
@@ -503,8 +518,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="Scoring model to use (default: quant).")
 
     main_grp = parser.add_argument_group("Main options")
-    main_grp.add_argument("-n", "--top", type=int, default=5,
-                          help="Number of recommendations (default: 5).")
+    main_grp.add_argument("-n", "--top", type=int, default=None,
+                          help="Number of recommendations (default: 5, or all if -t tickers are given).")
     main_grp.add_argument("-t", "--tickers", nargs="+", default=None,
                           help="Custom ticker list.")
     main_grp.add_argument(
@@ -596,13 +611,18 @@ def main(argv: list[str] | None = None) -> int:
             Console().print(f"[red]Could not read --tickers-file: {exc}[/red]")
             return 1
 
-    effective_tickers = _merge_ticker_lists(args.tickers, file_tickers)
+    effective_tickers = _merge_ticker_lists(_split_ticker_args(args.tickers), file_tickers)
 
     # When explicit tickers are provided, min_market_cap must default to 0
     # regardless of any other logic. The recommender also handles this, but
     # resolving it here is more explicit and avoids edge cases.
-    if effective_tickers and args.min_market_cap is None:
-        args.min_market_cap = 0.0
+    if effective_tickers:
+        if args.min_market_cap is None:
+            args.min_market_cap = 0.0
+        if args.top is None:
+            args.top = len(effective_tickers)
+    if args.top is None:
+        args.top = 5
 
     # Validate data-source requirements before starting.
     if args.data_source == "fmp":
