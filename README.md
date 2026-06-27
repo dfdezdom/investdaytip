@@ -480,6 +480,19 @@ The `quant` model uses **disqualifying grades**: if any high-impact factor falls
 
 ### ETFs
 
+ETF scoring also switches between two models via `--scoring-model {classic,quant}`. The default is **`quant`**, a momentum-first model.
+
+**`quant`** (default for ETFs when `--scoring-model quant`):
+
+| Factor | Weight | Metrics |
+|---|---|---|
+| **Momentum** | 65% | 1m (15%), 3m (25%), 6m (30%), 12m (30%) returns |
+| **Risk** | 15% | volatility + beta (lower is better) |
+| **Cost** | 12% | expense ratio (lower is better) |
+| **Liquidity** | 8% | AUM (log scale) |
+
+**`classic`** (used when `--scoring-model classic`):
+
 | Pillar | Weight | Metrics |
 |---|---|---|
 | **Returns** | 40% | 3y avg, 5y avg, 12m return |
