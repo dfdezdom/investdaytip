@@ -138,8 +138,8 @@ investdaytip --help
 
 | Flag | Description | Default |
 |---|---|---|
-| `-n, --top N` | Number of recommendations | `5` |
-| `-t, --tickers ...` | Custom ticker list (overrides universe) | curated universe |
+| `-n, --top N` | Number of recommendations (defaults to ticker count when `-t` is used) | `5` |
+| `-t, --tickers ...` | Custom ticker list (overrides universe; quoted space-separated ok) | curated universe |
 | `--tickers-file PATH` | Text file with custom tickers (merged with `--tickers` if both are used) | disabled |
 | `-a, --asset-class {all,stocks,etfs}` | Asset class filter | `all` |
 | `-r, --region {all,us,eu,asia,superinvestor}` `nargs="+"` | Region filter(s) — e.g. `-r us eu` | `all` |

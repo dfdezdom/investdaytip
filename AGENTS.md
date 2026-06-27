@@ -194,6 +194,7 @@ When FMP returns HTTP 429 (Too Many Requests) or a JSON `"Error Message"` contai
 - `--export-html` uses `nargs="?"` with `const=""` — no arg means auto-generated filename `investDayTip[-<tag>]-yyyymmdd-hhmm.html`; tag derived from tickers-file stem (stopwords filtered)
 - `advisor` subcommand duplicates many flags from main parser but some default to `None` for interactive prompts
 - Ticker files: supports newlines, spaces, commas, and `#` comments; `_merge_ticker_lists()` deduplicates case-insensitively preserving first-occurrence casing
+- `-t` quoted strings are split on whitespace (e.g. `-t "AAPL MSFT"` works); `-n` defaults to ticker count when `-t` is used
 - `--min-market-cap` filter: defaults to `0` when explicit tickers are passed (`-t`/`--tickers-file`), `2B` otherwise (e.g. `1B`, `500M`, `0` to disable); applied against native-currency figures, approximate for non-USD. When the filter is active, assets with **missing** market cap are excluded (a missing figure can't satisfy the filter), and history fetch is skipped for them
 - Currency filter keeps assets whose `currency` is `None` (a missing field shouldn't silently drop an otherwise-valid candidate)
 - `-r`/`--region` and `-c`/`--currency` use `nargs="+"` — pass multiple values: `-r us eu`, `-c USD EUR`. Both `str` and `list[str]` accepted programmatically.
