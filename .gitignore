@@ -52,3 +52,6 @@ poetry.lock
 /plan-scoring-dual-model.md
 /portfolio_analysis.py
 
+# Seeking Alpha data exports (XLSX → CSV processed by OpenCode)
+/seeking_alpha_data/
+

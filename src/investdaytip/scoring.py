@@ -21,13 +21,19 @@ Stocks that fail a "disqualifying grade" on any high-impact factor are capped
 at a neutral total score (50), preventing one strong factor from masking a
 serious red flag elsewhere.
 
-**ETF model**:
+**ETF quant model** (default for ETF scoring when ``model="quant"``):
+    Momentum       (65%)  — 1m, 3m, 6m, 12m returns
+    Risk           (15%)  — volatility, beta
+    Cost           (12%)  — expense ratio only (lower=better)
+    Liquidity       (8%)  — AUM (larger = better)
+
+**ETF classic model** (used when ``model="classic"``):
     Returns        (40%)  — 3y, 5y, 12m
     Risk-Adjusted  (25%)  — Sharpe proxy, volatility
     Size/Liquidity (15%)  — AUM
     Cost & Yield   (20%)  — expense ratio (lower=better), dividend yield
 
-Both stock models and the ETF model normalize each metric to 0–100 via
+All models normalize each metric to 0–100 via
 piecewise-linear functions and fall back to a neutral 50 when data is missing.
 """
 
@@ -60,6 +66,13 @@ ETF_WEIGHTS = {
     "risk_adj": 0.25,
     "size": 0.15,
     "cost_yield": 0.20,
+}
+
+ETF_QUANT_WEIGHTS = {
+    "momentum": 0.65,
+    "risk": 0.15,
+    "cost": 0.12,
+    "liquidity": 0.08,
 }
 
 
@@ -443,8 +456,8 @@ def _etf_size_score(d: EtfData) -> tuple[float, list[str]]:
 
 def _etf_cost_yield_score(d: EtfData) -> tuple[float, list[str]]:
     notes: list[str] = []
-    # expense ratio: 0.03% best, 0.75% worst
-    cost = _linear(d.expense_ratio, best=0.0003, worst=0.0075, default=60.0)
+    # expense ratio: yfinance returns percentage value (e.g. 0.03 = 0.03%)
+    cost = _linear(d.expense_ratio, best=0.03, worst=0.75, default=60.0)
     yld = _linear(d.yield_, best=0.04, worst=0.00, default=50.0)
     if d.expense_ratio is not None and d.expense_ratio < 0.001:
         notes.append(f"ultra-low expense ratio ({d.expense_ratio * 100:.2f}%)")
@@ -474,6 +487,90 @@ def score_etf(data: EtfData) -> ScoredAsset:
         asset_type="ETF",
         total=total,
         breakdown={"Returns": ret, "RiskAdj": risk, "Size": size, "Cost/Yield": cy},
+        rationale=rationale,
+    )
+
+
+# ---------------------------------------------------------------------------
+# ETF quant model (default)
+# ---------------------------------------------------------------------------
+
+def _etf_momentum_score(d: EtfData) -> tuple[float, list[str]]:
+    notes: list[str] = []
+    r1m = _linear(d.return_1m, best=0.08, worst=-0.12)
+    r3m = _linear(d.return_3m, best=0.20, worst=-0.25)
+    r6m = _linear(d.return_6m, best=0.30, worst=-0.35)
+    r12 = _linear(d.return_12m, best=0.50, worst=-0.40)
+    score = r1m * 0.15 + r3m * 0.25 + r6m * 0.30 + r12 * 0.30
+    if d.return_12m is not None and d.return_12m > 0.30:
+        notes.append(f"strong 1y return of {d.return_12m * 100:.1f}%")
+    if d.return_6m is not None and d.return_6m > 0.20:
+        notes.append(f"strong 6m return of {d.return_6m * 100:.1f}%")
+    return score, notes
+
+
+def _etf_risk_score_v2(d: EtfData) -> tuple[float, list[str]]:
+    notes: list[str] = []
+    # Wider vol range to accommodate EM and sector ETFs
+    vol = _linear(d.volatility_1y, best=0.10, worst=0.70)
+    beta = _linear(d.beta_3y, best=0.5, worst=2.5, default=60.0)
+    score = vol * 0.50 + beta * 0.50
+    if d.volatility_1y is not None and d.volatility_1y < 0.15:
+        notes.append(f"low volatility ({d.volatility_1y * 100:.1f}%)")
+    if d.beta_3y is not None and d.beta_3y < 0.8:
+        notes.append(f"low beta ({d.beta_3y:.2f})")
+    return score, notes
+
+
+def _etf_cost_score_v2(d: EtfData) -> tuple[float, list[str]]:
+    notes: list[str] = []
+    # yfinance returns expense ratio as the percentage value (e.g. 0.03 = 0.03%)
+    score = _linear(d.expense_ratio, best=0.03, worst=1.50, default=60.0)
+    if d.expense_ratio is not None and d.expense_ratio < 0.10:
+        notes.append(f"low expense ratio ({d.expense_ratio:.2f}%)")
+    elif d.expense_ratio is not None and d.expense_ratio > 1.00:
+        notes.append(f"high expense ratio ({d.expense_ratio:.2f}%)")
+    return score, notes
+
+
+def _etf_liquidity_score_v2(d: EtfData) -> tuple[float, list[str]]:
+    notes: list[str] = []
+    if d.total_assets is None or d.total_assets <= 0:
+        return 50.0, notes
+    log_aum = math.log10(d.total_assets)
+    score = _linear(log_aum, best=12.0, worst=8.0)
+    if d.total_assets >= 10_000_000_000:
+        notes.append(f"large AUM of ${d.total_assets / 1e9:.1f}B")
+    return score, notes
+
+
+def score_etf_quant(data: EtfData) -> ScoredAsset:
+    momentum, m_notes = _etf_momentum_score(data)
+    risk, r_notes = _etf_risk_score_v2(data)
+    cost, c_notes = _etf_cost_score_v2(data)
+    liquidity, l_notes = _etf_liquidity_score_v2(data)
+
+    total = (
+        momentum * ETF_QUANT_WEIGHTS["momentum"]
+        + risk * ETF_QUANT_WEIGHTS["risk"]
+        + cost * ETF_QUANT_WEIGHTS["cost"]
+        + liquidity * ETF_QUANT_WEIGHTS["liquidity"]
+    )
+
+    rationale = m_notes + r_notes + c_notes + l_notes
+    if not rationale:
+        rationale.append("Limited data available; score based on neutral defaults.")
+
+    return ScoredAsset(
+        data=data,
+        asset_type="ETF",
+        total=total,
+        breakdown={
+            "Momentum": round(momentum, 1),
+            "Risk": round(risk, 1),
+            "Cost": round(cost, 1),
+            "Liquidity": round(liquidity, 1),
+        },
         rationale=rationale,
     )
 
@@ -510,5 +607,7 @@ def score_asset(
     si_data: dict | None = None,
 ) -> ScoredAsset:
     if isinstance(data, EtfData):
+        if model == "quant":
+            return score_etf_quant(data)
         return score_etf(data)
     return score_stock(data, model=model, include_technical=include_technical, si_data=si_data)

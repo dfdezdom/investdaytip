@@ -96,6 +96,8 @@ class EtfData:
     nav: Optional[float] = None
     # Trend / risk (computed from price history)
     return_1m: Optional[float] = None
+    return_3m: Optional[float] = None
+    return_6m: Optional[float] = None
     return_12m: Optional[float] = None
     price_vs_sma200: Optional[float] = None
     sma200_slope: Optional[float] = None
@@ -235,6 +237,18 @@ def _compute_eps_surprise(
     return float(recent["surprise"].mean())
 
 
+def _period_return(history: pd.DataFrame, periods_back: int) -> Optional[float]:
+    """Return the simple return over *periods_back* trading days."""
+    if history is None or history.empty or "Close" not in history:
+        return None
+    close = history["Close"].dropna()
+    if len(close) < periods_back + 1:
+        return None
+    past = float(close.iloc[-periods_back - 1])
+    price = float(close.iloc[-1])
+    return (price / past) - 1.0 if past > 0 else None
+
+
 def _trend_metrics(
     history: pd.DataFrame,
 ) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float], Optional[float], Optional[float]]:
@@ -346,6 +360,9 @@ def _apply_history_common(
     data.price_vs_sma200 = pvs
     data.return_1m = r1m
     data.return_12m = r12
+    if isinstance(data, EtfData) and history is not None and not history.empty:
+        data.return_3m = _period_return(history, 63)
+        data.return_6m = _period_return(history, 126)
     data.sma200_slope = slope
     data.daily_change = daily
     if include_volatility and isinstance(data, EtfData):

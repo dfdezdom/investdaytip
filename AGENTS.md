@@ -163,7 +163,7 @@ When FMP returns HTTP 429 (Too Many Requests) or a JSON `"Error Message"` contai
 - `_ttm_dividend_yield(dividends, price)` — computes a stock's trailing-twelve-month dividend yield from `Ticker.dividends` (summed over the last 365 days) divided by the current price; used as the primary yield source because yfinance's `dividendYield` can be wrong by 100x for tickers like AAPL and V. Falls back to `_sanitize_yield(info["dividendYield"])` when raw dividends are unavailable
 - `_technical_indicators(close, high, low)` — returns `(rsi_14, macd_histogram, ema_cross, adx_14, stochastic_k)`. EMA cross is `(EMA50 - EMA200) / close` (positive = bullish). ADX uses Wilder's smoothing (14-period). All 5 indicators contribute to `_technical_score()`: RSI 20%, MACD 30%, EMA cross 25%, ADX 15%, Stochastic %K 10%
 - `_suppress_stderr()` context manager wraps **every** yfinance call — without it, yfinance spams stderr
-- Asset type dispatch: `score_asset()` → `score_stock()` / `score_etf()` via `isinstance`
+- Asset type dispatch: `score_asset()` → `score_stock()` / `score_etf()` via `isinstance`; `model` param controls ETF scoring too (`quant` → `score_etf_quant()`, `classic` → `score_etf()`)
 - `ScoredAsset` unified output; `ScoredStock = ScoredAsset` backwards-compatible alias
 - Universe export naming: US + EU use `DEFAULT_` prefix (`DEFAULT_UNIVERSE`, `DEFAULT_EU_ETF_UNIVERSE`), Asia does not (`ASIA_UNIVERSE`, `ASIA_ETF_UNIVERSE`), Superinvestor uses `SUPERINVESTOR_UNIVERSE`
 - `_build_universe()` accepts `currency` param; when `currency != "all"` and `region == "all"`, it derives region from currency (USD→us, EUR→eu, JPY→asia) to reduce API calls. It deduplicates the merged pools case-insensitively (overlapping universes share tickers like `VXUS`/`IEMG`)
@@ -218,8 +218,10 @@ When FMP returns HTTP 429 (Too Many Requests) or a JSON `"Error Message"` contai
 
 ### ETF Data Specifics
 - Expense ratio has 3 fallback sources: `annualReportExpenseRatio` → `netExpenseRatio` → `funds_data.fund_overview`
+- yfinance returns expense ratios as percentage values (e.g. `0.03` = 0.03%); thresholds in scoring use this format directly
 - Sharpe proxy: `(return_12m - RISK_FREE_RATE) / volatility_1y` where `RISK_FREE_RATE = 0.045`
 - `EtfData.sector` returns `category`; `EtfData.market_cap` returns `total_assets` (AUM)
+- `EtfData` stores `return_3m` and `return_6m` (computed from price history in `_apply_history_common`) for the quant model's momentum factor
 
 ### URL Building (html_export)
 - `_normalize_exchange_hint()` maps yfinance exchange codes: NMS/NGM/NCM→NASDAQ, NYQ→NYSE, ASE/PCX→NYSEARCA
@@ -253,7 +255,22 @@ Two stock-scoring models are available, selectable via `--scoring-model {classic
   - Five technical indicators (RSI-14, MACD histogram, EMA 50/200 cross, ADX-14, Stochastic %K) blended into Trend (45% sub-weight) via `--include-technical`; opt-in for `classic`
   - `resolve_include_technical(include_technical, scoring_model)` centralizes the default: `None` → `True` for `quant`, `False` for `classic`
 
-**ETFs** always use the existing model: Returns 40%, RiskAdj 25%, Size 15%, Cost/Yield 20%.
+Two ETF-scoring models are also available, controlled by the same `--scoring-model` flag:
+
+- **`quant`** (default for ETFs when `--scoring-model quant`) — Momentum-first five-factor model:
+  - Momentum 65% — 1M(15%), 3M(25%), 6M(30%), 12M(30%) returns
+  - Risk 15% — volatility + beta (lower is better)
+  - Cost 12% — expense ratio only (lower is better)
+  - Liquidity 8% — log-scale AUM
+  - Disqualifying grades cap the total when risk or cost is extreme
+  - `return_3m` and `return_6m` are computed from price history in `_apply_history_common()`
+  - Validated against Seeking Alpha Quant Ratings: **r = +0.645**, Top-5 alpha +16.1% vs SPY (1Y)
+
+- **`classic`** (used when `--scoring-model classic`) — Original model:
+  - Returns 40% — 3Y(35%), 5Y(40%), 12M(25%)
+  - RiskAdj 25% — Sharpe ratio + volatility
+  - Size 15% — log-scale AUM
+  - Cost/Yield 20% — expense ratio (65%) + dividend yield (35%)
 
 CLI examples:
 
@@ -264,6 +281,9 @@ investdaytip backtest -n 5 -r us --scoring-model classic
 investdaytip advisor --scoring-model classic
 investdaytip --data-source fmp -n 5 -r us          # FMP data source
 investdaytip advisor --data-source fmp             # FMP in advisor mode
+investdaytip -a etfs -n 5 -r us                    # ETF quant (default)
+investdaytip -a etfs -n 5 -r us --scoring-model classic  # ETF classic
+investdaytip -a etfs -c EUR                       # Euro-currency ETFs (quant)
 ```
 
 Programmatic API:
@@ -272,6 +292,8 @@ Programmatic API:
 from investdaytip import get_recommendations
 get_recommendations(top_n=5, region="us")                         # quant (default)
 get_recommendations(top_n=5, region="us", scoring_model="classic")  # classic
+get_recommendations(top_n=5, region="us", asset_class="etfs")       # ETF quant (default)
+get_recommendations(top_n=5, region="us", asset_class="etfs", scoring_model="classic")  # ETF classic
 ```
 
 When validating a new or changed scoring model, run backtest baselines for **both** models on the same universe and compare:
