@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.9.0 (2026-06-27)
+
+### Features
+
+- **`-t` accepts quoted space-separated tickers** — `-t "AAPL MSFT GOOGL"` now works the same as `-t AAPL MSFT GOOGL`. `_split_ticker_args()` splits any arg element on whitespace and commas before merging.
+- **`-n` defaults to ticker count when `-t` is used** — explicit tickers no longer require `-n` to see all of them. The default is now `len(tickers)` when custom tickers are provided, falling back to `5` for universe scans.
+
 ## v0.7.1 (2026-06-20)
 
 ### Fixes
