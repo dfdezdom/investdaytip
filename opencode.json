@@ -3,9 +3,6 @@
   "lsp": true,
   "plugin": ["@warp-dot-dev/opencode-warp"],
   "instructions": ["AGENTS.md"],
-  "skills": {
-    "paths": [".opencode/skills"]
-  },
   "command": {
     "test": {
       "template": "source .venv/bin/activate && pytest -q",

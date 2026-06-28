@@ -1,5 +1,7 @@
 ---
-description: Backtest-driven scoring validation workflow. Use when the user asks to validate a scoring change, compare backtest baselines, or run the scoring_baseline.py script.
+name: backtest-validation
+description: Validate scoring changes with before/after backtest comparisons using scoring_baseline.py
+license: MIT
 ---
 
 # Backtest Validation
@@ -34,5 +36,4 @@ investdaytip backtest:compare baseline-before.json baseline-after.json
 - Use `--no-cache` to avoid stale cached financials skewing results.
 - Use the **same** ticker list, `top_n`, `period`, and `interval-months` for both runs.
 - Run on a representative subset (3-5 well-known US large-caps) for speed.
-- The script stores config + all metrics in a JSON file for reproducible comparisons.
-- Prefer shorter periods (e.g., `2y` or `3y`) when validating financial-statement-driven scoring, because yfinance annual financial statements may return NaN for the oldest fiscal year.
+- Prefer shorter periods (e.g., `2y` or `3y`) when validating financial-statement-driven scoring.

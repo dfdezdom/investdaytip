@@ -1,5 +1,7 @@
 ---
-description: Guide for switching between data sources (yfinance, yahooquery, FMP). Use when the user asks about data sources, rate limits, or wants to change --data-source.
+name: data-source-switch
+description: Guide for switching between yfinance, yahooquery, and FMP data sources
+license: MIT
 ---
 
 # Data Source Switch
@@ -10,25 +12,20 @@ description: Guide for switching between data sources (yfinance, yahooquery, FMP
 |--------|------|----------|-------------|
 | **yfinance** | `--data-source yfinance` (default) | Universal, ETFs, backtest | Slower for large universes, rate limits |
 | **yahooquery** | `--data-source yahooquery` | Large stock universes, speed | No backtest, no ETFs |
-| **FMP** | `--data-source fmp` | When yfinance fails / rate-limited | Requires `FMP_API_KEY`, 250 req/day free tier, no ETFs |
+| **FMP** | `--data-source fmp` | When yfinance fails / rate-limited | Requires `FMP_API_KEY`, 250 req/day, no ETFs |
 
 ## Key differences
 
 ### yahooquery
 - Batch fetches in chunks of 10, 5 parallel workers
 - Automatic per-ticker fallback to yfinance on failure
-- **Does not support** backtest (no historical financial statements)
-- **Does not support** ETFs
-- Faster and more stable than yfinance for stock universes
+- Does not support backtest or ETFs
 
 ### FMP
 - 4 API calls per ticker (profile, ratios-ttm, historical-price-eod, earnings-surprises)
 - Free tier: 250 requests/day ≈ 60 tickers
-- Pre-flight rate-limit check before batch
-- Auto-fallback to yfinance on HTTP 429
-- 10s per-request timeout, 2 retries on network errors
-- **Does not support** ETFs
-- **Does not support** backtest
+- Pre-flight rate-limit check, auto-fallback on HTTP 429
+- Does not support backtest or ETFs
 
 ## Switching
 
@@ -37,13 +34,12 @@ description: Guide for switching between data sources (yfinance, yahooquery, FMP
 investdaytip -n 5 -r us --data-source yahooquery
 investdaytip -n 5 -r us --data-source fmp
 investdaytip advisor --data-source yahooquery
-investdaytip backtest -n 5 -r us   # always uses yfinance
+investdaytip backtest -n 5 -r us   # always yfinance
 ```
 
 ### Programmatic API
 ```python
 get_recommendations(top_n=5, region="us", data_source="yahooquery")
-get_recommendations(top_n=5, region="us", data_source="fmp")
 ```
 
 ## Common issues

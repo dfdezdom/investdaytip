@@ -1,15 +1,18 @@
 ---
-description: Import Seeking Alpha XLSX files to extract tickers and run InvestDayTip analysis. Use when the user provides a .xlsx path or wants to analyze tickers from a file.
+name: seeking-alpha-import
+description: Extract tickers from Seeking Alpha XLSX files using raw XML parsing and run InvestDayTip analysis
+license: MIT
 ---
 
 # Seeking Alpha XLSX Import
 
 ## Workflow
 
-1. **Extract tickers** — use the raw XML method (openpyxl chokes on Seeking Alpha's conditional formatting). Save to `seeking_alpha_data/<name>.csv`.
-2. **Show a preview** — print the ticker count and first few rows (Rank, Symbol, Company Name).
-3. **Ask the user** if they want to run `investdaytip` with those tickers.
-4. **If yes**, build the command and ask for confirmation before executing.
+1. Extract tickers using raw XML method (openpyxl chokes on conditional formatting)
+2. Save CSV to `seeking_alpha_data/<name>.csv`
+3. Show ticker count and preview
+4. Ask user if they want to run `investdaytip` with those tickers
+5. Build command and confirm before executing
 
 ## Extraction code
 
@@ -19,7 +22,6 @@ from pathlib import Path
 
 src = Path("path/to/file.xlsx")
 dst = Path("seeking_alpha_data") / src.with_suffix(".csv").name
-
 NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 
 with zipfile.ZipFile(src) as z:
@@ -33,13 +35,7 @@ with zipfile.ZipFile(src) as z:
 
 rows = []
 for row in sheet.find(f"{NS}sheetData").findall(f"{NS}row"):
-    cells = []
-    for c in row:
-        v = c.find(f"{NS}v")
-        val = v.text if v is not None else ""
-        if c.get("t") == "s" and val:
-            val = ss[int(val)]
-        cells.append(val)
+    cells = [v.find(f"{NS}v").text or "" if (v := c.find(f"{NS}v")) is not None else "" for c in row]
     if cells:
         rows.append(cells)
 
@@ -52,8 +48,4 @@ print(f"Tickers ({len(tickers)}): {' '.join(tickers)}")
 
 ## After extraction
 
-Ask the user:
-- Which region(s) to analyze
-- Asset class (stocks / etfs)
-- `investdaytip` flags (`--scoring-model`, `--data-source`, etc.)
-- Number of picks (`-n`)
+Ask user for: region(s), asset class, flags (`--scoring-model`, `--data-source`), number of picks.
