@@ -1,5 +1,68 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "lsp": true,
-  "plugin": ["@warp-dot-dev/opencode-warp"]
+  "plugin": ["@warp-dot-dev/opencode-warp"],
+  "instructions": ["AGENTS.md"],
+  "command": {
+    "test": {
+      "template": "source .venv/bin/activate && pytest -q",
+      "description": "Run all tests"
+    },
+    "test:file": {
+      "template": "source .venv/bin/activate && pytest -q {0}",
+      "description": "Run tests in a specific file: test:file <path>"
+    },
+    "test:kw": {
+      "template": "source .venv/bin/activate && pytest -q -k \"{0}\"",
+      "description": "Run tests matching keyword: test:kw <expression>"
+    },
+    "lint": {
+      "template": "source .venv/bin/activate && ruff check src tests",
+      "description": "Run ruff linter on src and tests"
+    },
+    "typecheck": {
+      "template": "source .venv/bin/activate && mypy",
+      "description": "Run mypy type checker"
+    },
+    "check": {
+      "template": "source .venv/bin/activate && ruff check src tests && mypy && pytest -q",
+      "description": "Run lint + typecheck + tests (full pre-commit check)"
+    },
+    "preview": {
+      "template": "./preview.sh",
+      "description": "Start HTTP preview server on localhost:8000 for HTML reports"
+    },
+    "backtest:run": {
+      "template": "source .venv/bin/activate && python scripts/scoring_baseline.py run --tag {0} -r us -n 2 -t \"AAPL MSFT GOOGL\" --period 5y --interval-months 3 --min-market-cap 0",
+      "description": "Run backtest baseline: backtest:run <tag>"
+    },
+    "backtest:compare": {
+      "template": "source .venv/bin/activate && python scripts/scoring_baseline.py compare {0} {1}",
+      "description": "Compare two backtest baselines: backtest:compare <before.json> <after.json>"
+    },
+    "coverage": {
+      "template": "source .venv/bin/activate && pytest --cov=investdaytip -q",
+      "description": "Run tests with coverage report"
+    },
+    "cli:help": {
+      "template": "source .venv/bin/activate && python -m investdaytip.main --help",
+      "description": "Show CLI help"
+    },
+    "cli:run": {
+      "template": "source .venv/bin/activate && python -m investdaytip.main {0}",
+      "description": "Run CLI with args: cli:run <args>"
+    }
+  },
+  "permission": {
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "bash": "allow",
+    "webfetch": "allow",
+    "websearch": "allow",
+    "skill": "allow",
+    "edit": "ask",
+    "write": "ask"
+  }
 }
