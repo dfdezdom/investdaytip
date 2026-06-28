@@ -55,3 +55,6 @@ poetry.lock
 # Seeking Alpha data exports (XLSX → CSV processed by OpenCode)
 /seeking_alpha_data/
 
+# Analysis workspace
+/analisis/
+
