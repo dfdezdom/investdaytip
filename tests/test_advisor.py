@@ -97,6 +97,7 @@ class TestMacroRegime:
             }
             return vals.get(ticker)
         mocker.patch("investdaytip.advisor._fetch_index", side_effect=_fetch)
+        mocker.patch("investdaytip.advisor._fetch_trend", return_value=None)
         r = advisor.macro_regime()
         assert r["regime"] == "healthy"
         assert r["score"] >= 70
@@ -114,6 +115,7 @@ class TestMacroRegime:
             }
             return vals.get(ticker)
         mocker.patch("investdaytip.advisor._fetch_index", side_effect=_fetch)
+        mocker.patch("investdaytip.advisor._fetch_trend", return_value=None)
         r = advisor.macro_regime()
         assert r["regime"] == "danger"
         assert r["score"] < 25
@@ -131,6 +133,7 @@ class TestMacroRegime:
             }
             return vals.get(ticker)
         mocker.patch("investdaytip.advisor._fetch_index", side_effect=_fetch)
+        mocker.patch("investdaytip.advisor._fetch_trend", return_value=None)
         r = advisor.macro_regime()
         assert r["regime"] == "warning"
         assert 25 <= r["score"] < 45
@@ -138,6 +141,7 @@ class TestMacroRegime:
     def test_missing_data_neutral(self, mocker):
         """Missing macro data defaults to neutral score (~50)."""
         mocker.patch("investdaytip.advisor._fetch_index", return_value=None)
+        mocker.patch("investdaytip.advisor._fetch_trend", return_value=None)
         mocker.patch("investdaytip.advisor.fear_greed_index", return_value=None)
         r = advisor.macro_regime()
         assert r["regime"] == "neutral"
@@ -225,11 +229,14 @@ class TestAdvisorMain:
 
         mocker.patch("investdaytip.advisor.macro_regime", return_value={
             "vix": {"vix": 15.0, "vxn": 18.0, "regime": "bullish"},
+            "vix_trend": None,
             "yield": {"y10": 4.5, "y2": 4.0, "spread": 0.5},
-            "move": 80.0, "dxy": 100.0,
+            "move": 80.0, "move_trend": None,
+            "dxy": 100.0, "dxy_trend": None,
             "fear_greed": {"score": 50.0, "rating": "neutral"},
             "regime": "healthy", "label": "Healthy", "score": 75,
             "action": "buy", "description": "Favorable conditions.",
+            "preferred_sectors": ["Technology", "Financials"],
         })
         mocker.patch("investdaytip.advisor.bubble_risk", return_value={
             "level": "low", "pct_rank": 45.0, "note": "Normal volatility.",

@@ -18,6 +18,7 @@ from typing import Iterable, Optional
 import yfinance as yf
 from yfinance.exceptions import YFRateLimitError
 
+from investdaytip import cache as cache_mod
 from investdaytip.data_source import _suppress_stderr
 from investdaytip.dataroma import fetch_superinvestor_universe, get_superinvestor_data
 from investdaytip.html_export import export_recommendations_html
@@ -41,7 +42,17 @@ VIX_BEARISH = 35
 def _fetch_index(ticker: str) -> Optional[float]:
     """Fetch latest close of any index via yfinance.
     Retries up to 3 times with backoff on rate-limit errors.
+    Results cached for 15 minutes (``TTL_PRICES``).
     """
+    cache_key = f"{ticker}:index_close"
+    if cache_mod.enabled:
+        cached = cache_mod.get_db().get(cache_key)
+        if cached is not None:
+            try:
+                return float(cached)
+            except (TypeError, ValueError):
+                pass
+
     delays = [15, 45, 90]
     for attempt in range(len(delays) + 1):
         try:
@@ -56,6 +67,8 @@ def _fetch_index(ticker: str) -> Optional[float]:
         if hist is not None and not hist.empty and "Close" in hist:
             val = float(hist["Close"].iloc[-1])
             if math.isfinite(val):
+                if cache_mod.enabled:
+                    cache_mod.get_db().set(cache_key, str(val), 900)
                 return val
         return None
     return None
@@ -181,8 +194,35 @@ def _fetch_dxy() -> Optional[float]:
     return _fetch_index("DX-Y.NYB")
 
 
+def _fetch_trend(ticker: str) -> Optional[float]:
+    """5-day % change for an index. Cached for 15 minutes."""
+    cache_key = f"{ticker}:index_trend"
+    if cache_mod.enabled:
+        cached = cache_mod.get_db().get(cache_key)
+        if cached is not None:
+            try:
+                return float(cached)
+            except (TypeError, ValueError):
+                pass
+
+    with _suppress_stderr():
+        t = yf.Ticker(ticker)
+        hist = t.history(period="5d", interval="1d")
+    if hist is not None and not hist.empty and "Close" in hist:
+        closes = hist["Close"].dropna()
+        if len(closes) >= 2:
+            first, last = closes.iloc[0], closes.iloc[-1]
+            if math.isfinite(first) and math.isfinite(last) and first != 0:
+                change = (last - first) / first * 100
+                if cache_mod.enabled:
+                    cache_mod.get_db().set(cache_key, str(change), 900)
+                return round(change, 2)
+    return None
+
+
 def macro_regime() -> dict:
-    """Composite macro regime combining VIX, yield curve, bond vol and DXY.
+    """Composite macro regime combining VIX, yield curve, bond vol, DXY,
+    Fear & Greed (incl. sub-indicators), and 5-day trends.
 
     Returns a 0-100 macro health score and a regime label.
     """
@@ -190,6 +230,11 @@ def macro_regime() -> dict:
     yield_data = _fetch_yield_curve()
     move = _fetch_bond_volatility()
     dxy = _fetch_dxy()
+
+    # Trends
+    vix_trend = _fetch_trend("^VIX") if vix_data["vix"] is not None else None
+    move_trend = _fetch_trend("^MOVE") if move is not None else None
+    dxy_trend = _fetch_trend("DX-Y.NYB") if dxy is not None else None
 
     score = 50  # neutral
 
@@ -229,18 +274,41 @@ def macro_regime() -> dict:
         elif dxy < 95:
             score += 5
 
-    # Fear & Greed impact
+    # Fear & Greed composite impact
     fg = fear_greed_index()
     fg_score = fg["score"] if fg and fg.get("score") is not None else None
     if fg_score is not None:
         if fg_score < 25:
-            score += 10  # extreme fear — contrarian buy
+            score += 10
         elif fg_score < 45:
-            score += 5   # fear — mildly oversold
+            score += 5
         elif fg_score > 75:
-            score -= 10  # extreme greed — complacency risk
+            score -= 10
         elif fg_score > 55:
-            score -= 5   # greed — mildly overbought
+            score -= 5
+
+    # F&G sub-indicators
+    fg_subs = (fg or {}).get("sub_indicators", {})
+    put_call = fg_subs.get("put_call_options", {}).get("score")
+    if put_call is not None:
+        if put_call < 25:
+            score += 3  # excessive put buying = fear = contrarian buy
+        elif put_call > 75:
+            score -= 3  # excessive call buying = greed = contrarian sell
+
+    junk_bond = fg_subs.get("junk_bond_demand", {}).get("score")
+    if junk_bond is not None:
+        if junk_bond < 25:
+            score -= 5  # credit stress
+        elif junk_bond > 75:
+            score -= 3  # chasing yield = complacency
+
+    safe_haven = fg_subs.get("safe_haven_demand", {}).get("score")
+    if safe_haven is not None:
+        if safe_haven > 75:
+            score += 3  # flight to safety = fear
+        elif safe_haven < 25:
+            score -= 3  # no safe haven demand = complacency
 
     score = max(0, min(100, score))
 
@@ -261,6 +329,15 @@ def macro_regime() -> dict:
         label = "🔴 Macro danger"
         desc = "Severe macro stress. Consider raising cash or hedging."
 
+    # Sector rotation guidance based on regime
+    _rotation_map = {
+        "healthy":   ["Technology", "Financials", "Consumer Cyclical", "Communication Services"],
+        "neutral":   ["Healthcare", "Technology", "Industrials"],
+        "warning":   ["Healthcare", "Utilities", "Consumer Staples", "Energy"],
+        "danger":    ["Utilities", "Healthcare", "Consumer Staples", "Cash"],
+    }
+    preferred_sectors = _rotation_map.get(regime, [])
+
     return {
         "score": score,
         "regime": regime,
@@ -268,10 +345,14 @@ def macro_regime() -> dict:
         "description": desc,
         "action": action,
         "vix": vix_data,
+        "vix_trend": vix_trend,
         "yield": yield_data,
         "move": move,
+        "move_trend": move_trend,
         "dxy": dxy,
+        "dxy_trend": dxy_trend,
         "fear_greed": fg,
+        "preferred_sectors": preferred_sectors,
     }
 
 
@@ -308,6 +389,7 @@ def portfolio_review(
     strong = [s for s in results if s.total >= 60]
 
     sectors = set()
+    sector_counts: dict[str, int] = {}
     for s in results:
         sec = (
             getattr(s.data, "sector", None)
@@ -315,6 +397,23 @@ def portfolio_review(
             or "Unknown"
         )
         sectors.add(sec)
+        sector_counts[sec] = sector_counts.get(sec, 0) + 1
+
+    concentration_warnings: list[str] = []
+    n = len(results)
+    if n < 5:
+        concentration_warnings.append(
+            f"Only {n} holdings — consider at least 5-10 for adequate diversification."
+        )
+    if n >= 3:
+        for sec, count in sector_counts.items():
+            pct = count / n * 100
+            if pct > 50:
+                concentration_warnings.append(
+                    f"{sec}: {count}/{n} holdings ({pct:.0f}%) — sector over-concentration risk."
+                )
+
+    avg_score = sum(s.total for s in results) / n if n else 0.0
 
     return {
         "results": results,
@@ -322,8 +421,10 @@ def portfolio_review(
         "moderate_positions": moderate,
         "strong_positions": strong,
         "sectors": sorted(sectors),
-        "count": len(results),
+        "count": n,
+        "avg_score": round(avg_score, 1),
         "tickers": tickers,
+        "concentration_warnings": concentration_warnings,
     }
 
 
@@ -351,6 +452,7 @@ def run_comprehensive(
     scoring_model: str = "quant",
     include_technical: bool | None = None,
     data_source: str = "yfinance",
+    superinvestor: bool = False,
 ) -> dict:
     """Run analysis across multiple region×asset_class combinations.
 
@@ -373,6 +475,8 @@ def run_comprehensive(
         min_market_cap: Minimum market cap / AUM in native currency.
             Tickers below this threshold skip expensive history fetches.
             Pass ``0`` to disable. Supports human-readable values via CLI.
+        superinvestor: Include DataRoma superinvestor ownership data
+            (warms cache via ~80 HTTP requests).
 
     Returns:
         dict with keys:
@@ -386,7 +490,7 @@ def run_comprehensive(
     result: dict = {
         "macro": macro_regime(),
         "bubble": bubble_risk(),
-        "portfolio": portfolio_review(portfolio_path, min_market_cap, scoring_model, include_technical),
+        "portfolio": portfolio_review(portfolio_path, min_market_cap, scoring_model, include_technical, data_source),
         "recommendations": {},
         "errors": [],
         "html_reports": [],
@@ -409,6 +513,13 @@ def run_comprehensive(
             t.upper() for t in _load_tickers_from_file(str(portfolio_path_obj))
         }
 
+    # Warm superinvestor cache if requested and not already cached
+    if superinvestor and not get_superinvestor_data():
+        try:
+            fetch_superinvestor_universe()
+        except Exception as exc:
+            result["errors"].append(f"Superinvestor data unavailable: {exc}")
+
     for region in regions:
         ccy = currency_map.get(region, "all")
         for ac in asset_classes:
@@ -428,6 +539,7 @@ def run_comprehensive(
                     r for r in recs
                     if r.data.ticker.upper() not in portfolio_tickers
                 ]
+                _apply_risk_tilt(filtered, risk)
                 result["recommendations"][key] = filtered
 
                 # export HTML for this combination
@@ -436,7 +548,6 @@ def run_comprehensive(
                 dest = (
                     f"advisor_recommendations/advisor_{region}_{ac}_{timestamp}.html"
                 )
-                from investdaytip.sentiment import fear_greed_index
                 out = export_recommendations_html(
                     filtered,
                     dest,
@@ -446,6 +557,7 @@ def run_comprehensive(
                     currency=ccy,
                     tickers=None,
                     include_technical=include_technical,
+                    include_superinvestor=superinvestor,
                     fear_greed=fear_greed_index(),
                     scoring_model=scoring_model,
                 )
@@ -463,8 +575,55 @@ def run_comprehensive(
 
 
 # ---------------------------------------------------------------------------
+# Risk-based score adjustment
+# ---------------------------------------------------------------------------
+
+_DEFENSIVE_SECTORS = {"Healthcare", "Utilities", "Consumer Staples", "Consumer Defensive"}
+_GROWTH_SECTORS = {"Technology", "Financials", "Consumer Cyclical", "Communication Services"}
+
+
+def _apply_risk_tilt(results: list, risk: str) -> None:
+    """Adjust scores in-place based on risk profile × sector affinity.
+
+    Conservative: small boost to defensives, slight penalty to growth,
+                  cap unknown-sector picks at neutral.
+    Aggressive:   small boost to growth, slight penalty to defensives.
+    Moderate:     no change.
+    """
+    if risk == "moderate":
+        return
+
+    for s in results:
+        sec = (
+            getattr(s.data, "sector", None)
+            or getattr(s.data, "category", None)
+            or ""
+        )
+        if risk == "conservative":
+            if sec in _DEFENSIVE_SECTORS:
+                s.total = min(100.0, s.total + 5)
+            elif sec in _GROWTH_SECTORS:
+                s.total = max(0.0, s.total - 3)
+            elif not sec or sec == "Unknown":
+                s.total = min(s.total, 50.0)
+        elif risk == "aggressive":
+            if sec in _GROWTH_SECTORS:
+                s.total = min(100.0, s.total + 5)
+            elif sec in _DEFENSIVE_SECTORS:
+                s.total = max(0.0, s.total - 3)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
+def _trend_arrow(change: float | None) -> str:
+    if change is None:
+        return ""
+    if abs(change) < 0.5:
+        return "→"
+    return "↑" if change > 0 else "↓"
+
 
 def _fmt_risk_profile(profile: str) -> str:
     icons = {"conservative": "🛡️", "moderate": "⚖️", "aggressive": "🚀"}
@@ -505,8 +664,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
                         help="Data source (default: yfinance). yahooquery uses Yahoo's internal API (faster, more stable). FMP requires FMP_API_KEY env var.")
     parser.add_argument("--superinvestor", action="store_true",
                         help="Include superinvestor ownership data.")
-    parser.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",
-                        help="Scoring model to use (default: quant).")
+    parser.add_argument("--scoring-model", choices=["classic", "quant"], default=None,
+                        help="Scoring model (default: quant, classic for conservative).")
     parser.add_argument("-n", "--top", type=int, default=10,
                         help="Number of buy recommendations to show (default: 10).")
     adv_tech = parser.add_mutually_exclusive_group()
@@ -519,7 +678,6 @@ def advisor_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cache-clear", action="store_true",
                         help="Clear all cached data.")
     args = parser.parse_args(argv)
-    args.include_technical = resolve_include_technical(args.include_technical, args.scoring_model)
 
     if args.data_source == "fmp":
         import os as _os
@@ -578,7 +736,14 @@ def advisor_main(argv: list[str] | None = None) -> int:
             default="moderate",
         )
 
-    console.print(f"\nRisk profile: [bold]{_fmt_risk_profile(risk)}[/bold]\n")
+    # Resolve scoring model: conservative defaults to classic, others to quant
+    if args.scoring_model is None:
+        args.scoring_model = "classic" if risk == "conservative" else "quant"
+    args.include_technical = resolve_include_technical(args.include_technical, args.scoring_model)
+    console.print(
+        f"\nRisk profile: [bold]{_fmt_risk_profile(risk)}[/bold]  "
+        f"Scoring: [bold]{args.scoring_model}[/bold]\n"
+    )
 
     # ── Market analysis ────────────────────────────────────
     with console.status("[bold green]Analyzing market..."):
@@ -617,14 +782,18 @@ def advisor_main(argv: list[str] | None = None) -> int:
         elif macro["dxy"] < 95:
             dxy_note = " (weak)"
 
+    def _arrow(v):
+        a = _trend_arrow(v)
+        return f" {a}" if a else ""
+
     market_table = Table(title="📈 Market Analysis", show_lines=True)
     market_table.add_column("Indicator", style="bold cyan")
     market_table.add_column("Value")
-    market_table.add_row("VIX (S&P 500)", vix_str)
+    market_table.add_row("VIX (S&P 500)", f"{vix_str}{_arrow(macro['vix_trend'])}")
     market_table.add_row("VXN (Nasdaq 100)", vxn_str)
     market_table.add_row("10Y−2Y Spread", f"{yield_str} {yield_note}".strip())
-    market_table.add_row("MOVE Index", f"{move_str}{move_note}")
-    market_table.add_row("DXY", f"{dxy_str}{dxy_note}")
+    market_table.add_row("MOVE Index", f"{move_str}{_arrow(macro['move_trend'])}{move_note}")
+    market_table.add_row("DXY", f"{dxy_str}{_arrow(macro['dxy_trend'])}{dxy_note}")
     fg = macro.get("fear_greed")
     if fg and fg.get("score") is not None:
         fg_score = fg["score"]
@@ -640,6 +809,10 @@ def advisor_main(argv: list[str] | None = None) -> int:
     market_table.add_row(
         "Bubble risk",
         f"{bubble['level'].upper()} — {bubble['note']}",
+    )
+    market_table.add_row(
+        "Preferred sectors",
+        ", ".join(macro.get("preferred_sectors", [])),
     )
     console.print(market_table)
 
@@ -702,6 +875,13 @@ def advisor_main(argv: list[str] | None = None) -> int:
 
             console.print(port_table)
 
+            # Portfolio aggregate score
+            avg = review.get("avg_score")
+            if avg is not None:
+                avg_color = "green" if avg >= 60 else "yellow" if avg >= 40 else "red"
+                console.print(f"\nPortfolio health: [bold {avg_color}]{avg:.1f}/100[/bold {avg_color}]"
+                              f"  ({review['count']} holdings)")
+
             # Sell recommendations
             if review["weak_positions"]:
                 console.print("\n[bold red]⚠️  Weak positions (consider selling):[/bold red]")
@@ -723,6 +903,13 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 console.print("\n[bold yellow]📌 Missing sectors:[/bold yellow]")
                 for sec in sorted(missing):
                     console.print(f"  • [yellow]{sec}[/yellow]")
+
+            # Concentration warnings
+            cw = review.get("concentration_warnings", [])
+            if cw:
+                console.print("\n[bold yellow]⚖️  Concentration warnings:[/bold yellow]")
+                for w in cw:
+                    console.print(f"  • [yellow]{w}[/yellow]")
 
     # ── Buy recommendations (always interactive) ──────────
     macro_action = macro["action"]
@@ -860,11 +1047,11 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 console.print(f"[yellow]No {label} picks found — showing all.[/yellow]")
 
     if new_results:
+        _apply_risk_tilt(new_results, risk)
         _render(new_results, console, include_superinvestor=args.superinvestor, include_technical=args.include_technical)
         Path("advisor_recommendations").mkdir(parents=True, exist_ok=True)
         dest = f"advisor_recommendations/recommendations_advisor_{datetime.now():%Y%m%d-%H%M}.html"
         try:
-            from investdaytip.sentiment import fear_greed_index
             out = export_recommendations_html(
                 new_results, dest, top_n=args.top,
                 asset_class=ac, region=reg,
