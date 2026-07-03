@@ -742,7 +742,27 @@ def advisor_main(argv: list[str] | None = None) -> int:
 
     vix = macro["vix"]
     vix_str = f"{vix['vix']:.2f}" if vix["vix"] is not None else "N/A"
+    vix_note = ""
+    if vix["vix"] is not None:
+        if vix["vix"] <= 15:
+            vix_note = " (bullish)"
+        elif vix["vix"] <= 25:
+            vix_note = " (neutral)"
+        elif vix["vix"] <= 35:
+            vix_note = " (bearish)"
+        else:
+            vix_note = " (crash)"
     vxn_str = f"{vix['vxn']:.2f}" if vix["vxn"] is not None else "N/A"
+    vxn_note = ""
+    if vix["vxn"] is not None:
+        if vix["vxn"] <= 20:
+            vxn_note = " (calm)"
+        elif vix["vxn"] <= 30:
+            vxn_note = " (neutral)"
+        elif vix["vxn"] <= 40:
+            vxn_note = " (elevated)"
+        else:
+            vxn_note = " (panic)"
 
     yd = macro["yield"]
     if yd.get("y10") is not None and yd.get("y2") is not None:
@@ -761,6 +781,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
             move_note = " (elevated)"
         elif macro["move"] < 60:
             move_note = " (calm)"
+        else:
+            move_note = " (normal)"
 
     dxy_str = f"{macro['dxy']:.2f}" if macro["dxy"] is not None else "N/A"
     dxy_note = ""
@@ -779,8 +801,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
     market_table = Table(title="📈 Market Analysis", show_lines=True)
     market_table.add_column("Indicator", style="bold cyan")
     market_table.add_column("Value")
-    market_table.add_row("VIX (S&P 500)", f"{vix_str}{_arrow(macro['vix_trend'])}")
-    market_table.add_row("VXN (Nasdaq 100)", vxn_str)
+    market_table.add_row("VIX (S&P 500)", f"{vix_str}{vix_note}{_arrow(macro['vix_trend'])}")
+    market_table.add_row("VXN (Nasdaq 100)", f"{vxn_str}{vxn_note}")
     market_table.add_row("10Y−2Y Spread", f"{yield_str} {yield_note}".strip())
     market_table.add_row("MOVE Index", f"{move_str}{_arrow(macro['move_trend'])}{move_note}")
     market_table.add_row("DXY", f"{dxy_str}{_arrow(macro['dxy_trend'])}{dxy_note}")
