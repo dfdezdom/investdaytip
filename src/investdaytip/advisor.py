@@ -222,7 +222,11 @@ def _fetch_trend(ticker: str) -> Optional[float]:
 
 def macro_regime() -> dict:
     """Composite macro regime combining VIX, yield curve, bond vol, DXY,
-    Fear & Greed (incl. sub-indicators), and 5-day trends.
+    Fear & Greed, and 5-day trends.
+
+    Five equally-weighted factors (VIX, yield curve, MOVE, DXY, F&G),
+    each contributing ±10. A trend modifier (±3) captures improving or
+    worsening momentum.
 
     Returns a 0-100 macro health score and a regime label.
     """
@@ -238,77 +242,63 @@ def macro_regime() -> dict:
 
     score = 50  # neutral
 
-    # VIX impact
+    # 1. VIX impact (±10) — lower volatility = healthier
     if vix_data["regime"] == "crash":
-        score -= 20
-    elif vix_data["regime"] == "bearish":
         score -= 10
+    elif vix_data["regime"] == "bearish":
+        score -= 5
     elif vix_data["regime"] == "bullish":
         score += 10
 
-    # Yield curve impact
+    # 2. Yield curve impact (±10) — positive slope = healthier
     spread = yield_data.get("spread")
     if spread is not None:
         if spread < 0:
-            score -= 20
-        elif spread < 0.5:
             score -= 10
+        elif spread < 0.5:
+            score -= 5
         elif spread > 1.0:
-            score += 5
+            score += 10
 
-    # MOVE impact
+    # 3. MOVE impact (±10) — lower bond vol = healthier
     if move is not None:
         if move > 120:
-            score -= 15
-        elif move > 100:
             score -= 10
+        elif move > 100:
+            score -= 5
         elif move < 60:
-            score += 5
+            score += 10
 
-    # DXY impact
+    # 4. DXY impact (±10) — weaker dollar = healthier for risk assets
     if dxy is not None:
         if dxy > 105:
             score -= 10
         elif dxy > 100:
             score -= 5
         elif dxy < 95:
-            score += 5
+            score += 10
 
-    # Fear & Greed composite impact
+    # 5. Fear & Greed impact (±10) — contrarian: fear = opportunity
+    # Sub-indicators are NOT double-counted; the composite already reflects them.
     fg = fear_greed_index()
     fg_score = fg["score"] if fg and fg.get("score") is not None else None
     if fg_score is not None:
         if fg_score < 25:
-            score += 10
+            score += 10  # extreme fear = contrarian buy
         elif fg_score < 45:
-            score += 5
+            score += 5   # fear = mild opportunity
         elif fg_score > 75:
-            score -= 10
+            score -= 10  # extreme greed = contrarian sell
         elif fg_score > 55:
-            score -= 5
+            score -= 5   # greed = caution
 
-    # F&G sub-indicators
-    fg_subs = (fg or {}).get("sub_indicators", {})
-    put_call = fg_subs.get("put_call_options", {}).get("score")
-    if put_call is not None:
-        if put_call < 25:
-            score += 3  # excessive put buying = fear = contrarian buy
-        elif put_call > 75:
-            score -= 3  # excessive call buying = greed = contrarian sell
-
-    junk_bond = fg_subs.get("junk_bond_demand", {}).get("score")
-    if junk_bond is not None:
-        if junk_bond < 25:
-            score -= 5  # credit stress
-        elif junk_bond > 75:
-            score -= 3  # chasing yield = complacency
-
-    safe_haven = fg_subs.get("safe_haven_demand", {}).get("score")
-    if safe_haven is not None:
-        if safe_haven > 75:
-            score += 3  # flight to safety = fear
-        elif safe_haven < 25:
-            score -= 3  # no safe haven demand = complacency
+    # 6. Trend modifier (±3) — improving trends add, deteriorating subtract
+    if vix_trend is not None:
+        score += 1 if vix_trend < 0 else -1 if vix_trend > 0 else 0
+    if move_trend is not None:
+        score += 1 if move_trend < 0 else -1 if move_trend > 0 else 0
+    if dxy_trend is not None:
+        score += 1 if dxy_trend < 0 else -1 if dxy_trend > 0 else 0
 
     score = max(0, min(100, score))
 
@@ -803,6 +793,28 @@ def advisor_main(argv: list[str] | None = None) -> int:
     else:
         fg_str = "N/A"
     market_table.add_row("Fear & Greed", fg_str)
+
+    # F&G sub-indicators
+    _FG_DISPLAY: dict[str, str] = {
+        "market_momentum": "├ Market Momentum",
+        "stock_price_strength": "├ Stock Price Strength",
+        "stock_price_breadth": "├ Stock Price Breadth",
+        "put_call_options": "├ Put/Call Options",
+        "market_volatility": "├ Market Volatility",
+        "junk_bond_demand": "├ Junk Bond Demand",
+        "safe_haven_demand": "├ Safe Haven Demand",
+    }
+    fg_subs = (fg or {}).get("sub_indicators", {})
+    for key, label in _FG_DISPLAY.items():
+        sub = fg_subs.get(key)
+        if sub and sub.get("score") is not None:
+            s = sub["score"]
+            r = (sub.get("rating") or "").capitalize()
+            icon = "🟢" if s < 25 else "🟡" if s < 45 else "⚪" if s < 56 else "🟠" if s < 76 else "🔴"
+            market_table.add_row(f"[dim]{label}[/dim]", f"{icon} {s:.1f} — {r}")
+        else:
+            market_table.add_row(f"[dim]{label}[/dim]", "[dim]N/A[/dim]")
+
     market_table.add_row("Macro Regime", macro["label"])
     market_table.add_row("Score", f"{macro['score']}/100")
     market_table.add_row("Signal", f"[bold]{macro['action'].upper()}[/bold]")
