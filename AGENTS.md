@@ -252,6 +252,7 @@ Two stock-scoring models are available, selectable via `--scoring-model {classic
 
 - **`quant`** (default) — Seeking-Alpha-inspired five-factor model:
   - Value 25%, Growth 20%, Profitability 25%, Momentum 15%, EPS Revisions 15%
+  - Momentum uses **12-1 momentum** (12m return excluding the most recent month, derived from `return_12m`/`return_1m`; falls back to raw 12m when `return_1m` is missing) — the last month is short-term reversal, not momentum. Validated via factor-IC + before/after backtests (2026-07-17): alpha +0.5pp and Sharpe +0.03 on the 5y wide universe, never worse on 3y/standard configs.
   - EPS Revisions uses the average EPS surprise (Reported EPS vs Estimate) over the last four reported quarters; `lxml` is required for yfinance to expose this data.
   - Disqualifying grades cap the total score at neutral when a factor falls into red-flag territory
   - Uses absolute thresholds (peer-relative scoring is left for a future iteration)
@@ -345,15 +346,34 @@ comparable.)
 
 | Metric | Value |
 |---|---|
-| Snapshots | 15 |
-| Cumulative Return | 169.64% |
-| Benchmark Return | 125.83% (SPY) |
-| Alpha | 2.39% |
-| Sharpe | 0.51 |
-| Benchmark Sharpe | 0.59 |
-| Win Rate 6M | 53.3% |
-| Win Rate 12M | 53.3% |
+| Snapshots | 17 |
+| Cumulative Return | 187.91% |
+| Benchmark Return | 126.25% (SPY) |
+| Alpha | 3.06% |
+| Sharpe | 0.52 |
+| Benchmark Sharpe | 0.54 |
+| Win Rate 6M | 56.2% |
+| Win Rate 12M | 56.2% |
 | Max Drawdown | 34.13% |
+
+### Factor-IC analysis (diagnose before tuning)
+
+`scripts/factor_ic.py` computes per-snapshot cross-sectional Spearman IC of
+every factor and candidate metric vs forward 6M returns. Run it **before**
+proposing weight changes — a factor with mean IC ≤ 0 adds noise, not signal:
+
+```bash
+python scripts/factor_ic.py -t "AAPL MSFT GOOGL ..." --period 5y --no-cache
+```
+
+Always pass `--no-cache` when changing `--period`: the cached price history has
+no notion of period and would silently poison the run with a shorter window.
+Findings from the 2026-07-17 run (26 US mega-caps): profit margin is the most
+robust signal (IC ≈ +0.12); 12-1 momentum beats raw 12m in both 3y and 5y
+windows; raw 3m/6m momentum, 52w-high proximity, low-vol tilt, and a Value
+weight cut (25%→15%) were all **tested and rejected** — univariate factor ICs
+do not capture factor interactions, so every change still needs the
+before/after backtest below.
 
 ### Validation workflow
 

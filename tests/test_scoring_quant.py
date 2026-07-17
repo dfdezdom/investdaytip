@@ -101,6 +101,35 @@ def test_quant_include_technical_changes_momentum():
     assert s_with.breakdown["Momentum"] != s_without.breakdown["Momentum"]
 
 
+def test_quant_momentum_excludes_last_month():
+    """12-1 momentum: a hot last month must not inflate the Momentum factor.
+
+    Both stocks share the same 12m return; the one whose gains all came in the
+    last month (short-term-reversal territory) must score lower on Momentum.
+    """
+    steady = _base_data()
+    steady.return_12m = 0.20
+    steady.return_1m = 0.01  # gains spread over the year
+    recent_spike = _base_data()
+    recent_spike.return_12m = 0.20
+    recent_spike.return_1m = 0.20  # all gains concentrated in the last month
+
+    scorer = QuantStockScorer()
+    m_steady, _ = scorer._momentum_score(steady)
+    m_spike, _ = scorer._momentum_score(recent_spike)
+    assert m_steady > m_spike
+
+
+def test_quant_momentum_falls_back_to_raw_12m_without_1m():
+    """Without a 1m return, the 12m return is used as-is (no crash)."""
+    data = _base_data()
+    data.return_1m = None
+    data.return_12m = 0.20
+    scorer = QuantStockScorer()
+    momentum, _ = scorer._momentum_score(data)
+    assert 0 <= momentum <= 100
+
+
 def test_quant_is_default_model():
     """Calling score_stock without an explicit model uses the quant model."""
     base = _base_data()

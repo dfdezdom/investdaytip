@@ -9,7 +9,7 @@ Two stock scoring models are available, selectable via ``model=``:
     Value            (25%)  — P/E, P/B, PEG, FCF yield
     Growth           (20%)  — earnings growth, revenue growth
     Profitability    (25%)  — ROE, ROA, profit margin
-    Momentum         (15%)  — 12m return, vs SMA200, SMA200 slope
+    Momentum         (15%)  — 12-1 momentum (12m ex last month), vs SMA200, SMA200 slope
     EPS Revisions    (15%)  — average EPS surprise vs analyst estimates
 
 **``classic``** — Graham/Buffett + momentum:
@@ -326,10 +326,21 @@ class QuantStockScorer:
     def _momentum_score(self, d: StockData) -> tuple[float, list[str]]:
         notes: list[str] = []
         pvs = _linear(d.price_vs_sma200, best=0.15, worst=-0.20)
-        r12 = _linear(d.return_12m, best=0.30, worst=-0.20)
+        # 12-1 momentum: exclude the most recent month from the 12m return.
+        # The latest month is dominated by short-term reversal, not momentum
+        # (Jegadeesh & Titman); factor-IC analysis on the US mega-cap universe
+        # confirms return_12m_ex_1m beats raw return_12m as a predictor.
+        r12_raw = d.return_12m
+        if (
+            r12_raw is not None
+            and d.return_1m is not None
+            and d.return_1m > -0.99
+        ):
+            r12_raw = (1.0 + r12_raw) / (1.0 + d.return_1m) - 1.0
+        r12 = _linear(r12_raw, best=0.30, worst=-0.20)
         slope = _linear(d.sma200_slope, best=0.10, worst=-0.10)
-        if d.return_12m is not None and d.return_12m > 0.10:
-            notes.append(f"12-month return of {d.return_12m * 100:.1f}%")
+        if r12_raw is not None and r12_raw > 0.10:
+            notes.append(f"12-1 momentum return of {r12_raw * 100:.1f}%")
         if d.price_vs_sma200 is not None and d.price_vs_sma200 > 0:
             notes.append(f"trading {d.price_vs_sma200 * 100:.1f}% above 200d SMA")
         return (pvs * 0.35) + (r12 * 0.40) + (slope * 0.25), notes
