@@ -138,3 +138,18 @@ class TestRecommend:
         tickers = {s.data.ticker for s in out}
         assert "AAA" in tickers
         assert "BBB" in tickers
+
+
+class TestErrorsSkip:
+    def test_error_dataclass_not_scored(self, mocker):
+        """Fetch returning error StockData must be skipped, not scored as neutral 50."""
+        def _fake_fetch(ticker, min_market_cap=0.0):
+            d = StockData(ticker=ticker)
+            d.errors.append("fetch failed")
+            return d
+
+        mocker.patch("investdaytip.recommender.fetch_asset", side_effect=_fake_fetch)
+        mocker.patch("investdaytip.recommender.close_db")
+
+        out = recommend(tickers=["XXX"], top_n=5, min_market_cap=0)
+        assert len(out) == 0

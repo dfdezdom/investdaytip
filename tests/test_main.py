@@ -57,3 +57,32 @@ def test_parse_min_market_cap_plain_float():
 
 def test_parse_min_market_cap_zero():
     assert _parse_min_market_cap("0") == 0.0
+
+
+# ── Advisor subcommand flags ────────────────────────────────────────────────
+
+
+def test_advisor_subcommand_accepts_data_source_flags(mocker):
+    """`investdaytip advisor --data-source fmp -n 5` must reach advisor_main.
+
+    main() calls parser.parse_args() before dispatching, so the adv subparser
+    must accept every flag advisor_main's own parser defines (AGENTS.md
+    documents these invocations).
+    """
+    import investdaytip.advisor as adv
+    from investdaytip.main import main
+
+    fake = mocker.patch.object(adv, "advisor_main", return_value=0)
+    rc = main(["advisor", "--data-source", "fmp", "-n", "5", "--include-technical"])
+    assert rc == 0
+    fake.assert_called_once_with(["--data-source", "fmp", "-n", "5", "--include-technical"])
+
+
+def test_advisor_subcommand_accepts_no_include_technical(mocker):
+    import investdaytip.advisor as adv
+    from investdaytip.main import main
+
+    fake = mocker.patch.object(adv, "advisor_main", return_value=0)
+    rc = main(["advisor", "--data-source", "yahooquery", "--no-include-technical"])
+    assert rc == 0
+    fake.assert_called_once_with(["--data-source", "yahooquery", "--no-include-technical"])

@@ -179,3 +179,49 @@ class TestLinear:
     def test_inverted_direction_lower_is_better(self):
         assert _linear(0.2, best=0.2, worst=2.0) == 100.0
         assert _linear(2.0, best=0.2, worst=2.0) == 0.0
+
+
+# =========================================================================
+# Negative-ratio guards — negative D/E / P/E / P/B / PEG → None → neutral 50
+# =========================================================================
+
+def test_classic_negative_de_gets_neutral_debt_score():
+    """Distressed company with negative D/E (negative equity) → neutral debt sub-score."""
+    d = StockData(
+        ticker="DISTR", currency="USD",
+        debt_to_equity=-50.0,  # yfinance: -50.0 = negative equity
+        return_on_equity=0.05, profit_margin=0.10,
+        earnings_growth=0.05, revenue_growth=0.05,
+        price_vs_sma200=0.10,
+        return_12m=0.10, sma200_slope=0.05,
+    )
+    s = score_stock(d, model="classic")
+    # Without the guard, lower-is-better _linear(-0.5, best=0.2, worst=2.0) → 100.
+    # With the guard, de=None → debt=_linear(None)=50. Score should be far below 100.
+    assert s.total < 90
+
+
+def test_classic_negative_peg_gets_neutral():
+    """Negative PEG (declining earnings growth estimate) → neutral, not perfect."""
+    d = StockData(
+        ticker="NEGPEG", currency="USD",
+        trailing_pe=20.0, price_to_book=3.0, peg_ratio=-1.5,
+        return_on_equity=0.10, profit_margin=0.10,
+        earnings_growth=0.05, revenue_growth=0.05,
+        return_12m=0.10, sma200_slope=0.05,
+    )
+    s = score_stock(d, model="classic")
+    assert s.total < 85  # PEG alone would not bump it to 100 anymore
+
+
+def test_classic_negative_pe_pb_give_neutral():
+    """Negative P/E or P/B (loss-making / negative-equity) → neutral."""
+    d = StockData(
+        ticker="NEG", currency="USD",
+        trailing_pe=-5.0, price_to_book=-0.5, peg_ratio=1.0,
+        return_on_equity=0.10, profit_margin=0.10,
+        earnings_growth=0.05, revenue_growth=0.05,
+        return_12m=0.10, sma200_slope=0.05,
+    )
+    s = score_stock(d, model="classic")
+    assert s.total < 85  # negative ratios no longer inflate value score

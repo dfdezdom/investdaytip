@@ -265,6 +265,11 @@ def _run_backtest_cli(args: argparse.Namespace) -> int:
     from investdaytip.recommender import _build_universe
 
     console = Console()
+    if args.interval_months < 1:
+        console.print(
+            f"[red]--interval-months must be >= 1 (got {args.interval_months}).[/red]"
+        )
+        return 2
     region_str = ", ".join(args.region) if isinstance(args.region, list) else args.region
     console.print(
         f"[bold cyan]InvestDayTip Backtest[/bold cyan] — "
@@ -285,7 +290,18 @@ def _run_backtest_cli(args: argparse.Namespace) -> int:
     region = args.region[0] if isinstance(args.region, list) else args.region
     currency = args.currency[0] if isinstance(args.currency, list) else args.currency
     if args.tickers:
-        all_tickers = list(set(args.tickers))
+        # Split quoted tickers ("AAPL MSFT" → ["AAPL", "MSFT"]) and
+        # case-insensitively deduplicate (preserving first-casing), matching
+        # the main command's behaviour.
+        raw = _split_ticker_args(args.tickers) or []
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for t in raw:
+            if t.upper() not in seen:
+                seen.add(t.upper())
+                deduped.append(t)
+        args.tickers = deduped
+        all_tickers = list(deduped)
     else:
         universe = _build_universe(None, "stocks", region, currency)
         all_tickers = list(universe)
@@ -473,6 +489,15 @@ def main(argv: list[str] | None = None) -> int:
                      help="Include superinvestor ownership data.")
     adv.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",
                      help="Scoring model to use (default: quant).")
+    adv.add_argument("--data-source", choices=["yfinance", "yahooquery", "fmp"], default="yfinance",
+                     help="Data source (default: yfinance). FMP requires FMP_API_KEY env var.")
+    adv.add_argument("-n", "--top", type=int, default=10,
+                     help="Number of buy recommendations to show (default: 10).")
+    adv_tech = adv.add_mutually_exclusive_group()
+    adv_tech.add_argument("--include-technical", action="store_true", dest="include_technical",
+                          default=None, help="Include RSI and MACD in scoring (default: True for quant, False for classic).")
+    adv_tech.add_argument("--no-include-technical", action="store_false", dest="include_technical",
+                          default=None, help="Exclude RSI and MACD from scoring.")
     adv.add_argument("--no-cache", action="store_true",
                      help="Bypass SQLite cache.")
     adv.add_argument("--cache-clear", action="store_true",
@@ -635,7 +660,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
         Console().print(
-            "[yellow]FMP free tier: 250\u202frequests/day (~60\u202ftickers), "
+            "[yellow]FMP free tier: 250\u202frequests/day (~40\u202ftickers), "
             "10\u202fs timeout per request.[/yellow]"
         )
 

@@ -64,6 +64,9 @@ def _fetch_index(ticker: str) -> Optional[float]:
                 time.sleep(delays[attempt])
                 continue
             return None
+        except Exception:
+            logger.warning("Failed to fetch index %s", ticker, exc_info=True)
+            return None
         if hist is not None and not hist.empty and "Close" in hist:
             val = float(hist["Close"].iloc[-1])
             if math.isfinite(val):
@@ -145,6 +148,9 @@ def bubble_risk() -> dict:
                 time.sleep(delays[attempt])
                 continue
             return {"level": "unknown", "pct_rank": None, "note": "Rate limited fetching VIX."}
+        except Exception:
+            logger.warning("Failed to fetch VIX history", exc_info=True)
+            return {"level": "unknown", "pct_rank": None, "note": "Could not fetch VIX history."}
     if hist is None or hist.empty or "Close" not in hist:
         return {"level": "unknown", "pct_rank": None, "note": "No historical VIX data."}
 
@@ -205,9 +211,13 @@ def _fetch_trend(ticker: str) -> Optional[float]:
             except (TypeError, ValueError):
                 pass
 
-    with _suppress_stderr():
-        t = yf.Ticker(ticker)
-        hist = t.history(period="5d", interval="1d")
+    try:
+        with _suppress_stderr():
+            t = yf.Ticker(ticker)
+            hist = t.history(period="5d", interval="1d")
+    except Exception:
+        logger.warning("Failed to fetch trend for %s", ticker, exc_info=True)
+        return None
     if hist is not None and not hist.empty and "Close" in hist:
         closes = hist["Close"].dropna()
         if len(closes) >= 2:
@@ -530,6 +540,8 @@ def run_comprehensive(
                     if r.data.ticker.upper() not in portfolio_tickers
                 ]
                 _apply_risk_tilt(filtered, risk)
+                # Keep rows ordered by the adjusted score.
+                filtered.sort(key=lambda s: s.total, reverse=True)
                 result["recommendations"][key] = filtered
 
                 # export HTML for this combination
@@ -568,8 +580,10 @@ def run_comprehensive(
 # Risk-based score adjustment
 # ---------------------------------------------------------------------------
 
-_DEFENSIVE_SECTORS = {"Healthcare", "Utilities", "Consumer Staples", "Consumer Defensive"}
-_GROWTH_SECTORS = {"Technology", "Financials", "Consumer Cyclical", "Communication Services"}
+# Sector names follow yfinance's taxonomy (e.g. "Financial Services",
+# "Consumer Defensive" — not "Financials"/"Consumer Staples").
+_DEFENSIVE_SECTORS = {"Healthcare", "Utilities", "Consumer Defensive"}
+_GROWTH_SECTORS = {"Technology", "Financial Services", "Consumer Cyclical", "Communication Services"}
 
 
 def _apply_risk_tilt(results: list, risk: str) -> None:
@@ -930,8 +944,11 @@ def advisor_main(argv: list[str] | None = None) -> int:
                     console.print(f"  • [yellow]{ticker}[/yellow] — {err}")
 
             # Sector gaps
-            _all_sectors = {"Technology", "Financials", "Healthcare",
-                            "Energy", "Consumer", "Utilities", "Real Estate"}
+            # yfinance sector taxonomy ("Financial Services", "Consumer
+            # Cyclical"/"Consumer Defensive" — not "Financials"/"Consumer").
+            _all_sectors = {"Technology", "Financial Services", "Healthcare",
+                            "Energy", "Consumer Cyclical", "Consumer Defensive",
+                            "Utilities", "Real Estate"}
             missing = _all_sectors - set(review["sectors"])
             if missing:
                 console.print("\n[bold yellow]📌 Missing sectors:[/bold yellow]")
@@ -1050,10 +1067,15 @@ def advisor_main(argv: list[str] | None = None) -> int:
             )
             return 1
 
-        new_results = [
+        # Apply the risk tilt BEFORE truncating to top-N so boosted candidates
+        # can enter the cut, then re-sort by the adjusted score.
+        filtered = [
             r for r in candidates
             if r.data.ticker.upper() not in portfolio_tickers
-        ][: args.top]
+        ]
+        _apply_risk_tilt(filtered, risk)
+        filtered.sort(key=lambda s: s.total, reverse=True)
+        new_results = filtered[: args.top]
 
         # Filter by target sector if requested
         if target_sector and target_sector != "No":
@@ -1081,7 +1103,6 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 console.print(f"[yellow]No {label} picks found — showing all.[/yellow]")
 
     if new_results:
-        _apply_risk_tilt(new_results, risk)
         _render(new_results, console, include_superinvestor=args.superinvestor, include_technical=args.include_technical)
         Path("advisor_recommendations").mkdir(parents=True, exist_ok=True)
         dest = f"advisor_recommendations/recommendations_advisor_{datetime.now():%Y%m%d-%H%M}.html"

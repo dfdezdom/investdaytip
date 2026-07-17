@@ -123,3 +123,18 @@ class TestFearGreedIndex:
         assert result is not None
         assert result["score"] == 82.0
         assert result["rating"] == "extreme greed"
+
+
+def test_http_client_exception_is_swallowed(mocker):
+    """http.client.HTTPException (IncompleteRead, BadStatusLine, etc.)
+    must not crash the pipeline — _fetch_fear_greed_json returns None."""
+    import http.client
+
+    from investdaytip.sentiment import fear_greed_index
+
+    mocker.patch(
+        "investdaytip.sentiment.urlopen",
+        side_effect=http.client.IncompleteRead(b"partial"),
+    )
+    result = fear_greed_index()
+    assert result is None

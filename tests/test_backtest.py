@@ -588,3 +588,159 @@ class TestInterpretBacktest:
         text = _interpret_backtest(r)
         assert "no significant advantage" in text
         assert "Near-random" in text
+
+
+# =========================================================================
+# Alpha annualization (Fix: each chained snapshot return spans 6 months)
+# =========================================================================
+
+
+class TestComputeMetricsAlpha:
+    @staticmethod
+    def _snap(r6, b6):
+        return type("_", (), {
+            "avg_return_6m": r6, "avg_return_12m": None,
+            "benchmark_return_6m": b6, "benchmark_return_12m": None,
+        })()
+
+    def test_alpha_annualizes_over_chained_6m_windows(self):
+        # 4 snapshots × 6-month chained returns = 2 years, regardless of the
+        # interval between snapshot dates.
+        snaps = [self._snap(0.10, 0.05)] * 4
+        m = _compute_metrics(snaps)
+        expected = ((1.10 ** 4) / (1.05 ** 4)) ** (1.0 / 2.0) - 1.0
+        assert m["alpha"] == pytest.approx(expected, abs=1e-9)
+
+    def test_alpha_matches_documented_baseline(self):
+        # AGENTS.md baseline: 15 snapshots, cum 248.57%, bench 124.54% → alpha 6.04%.
+        r6 = 3.4857 ** (1.0 / 15.0) - 1.0
+        b6 = 2.2454 ** (1.0 / 15.0) - 1.0
+        snaps = [self._snap(r6, b6)] * 15
+        m = _compute_metrics(snaps)
+        assert m["cumulative_return"] == pytest.approx(2.4857, abs=1e-3)
+        assert m["benchmark_cumulative_return"] == pytest.approx(1.2454, abs=1e-3)
+        assert m["alpha"] == pytest.approx(0.0604, abs=1e-3)
+
+
+# =========================================================================
+# Sign guards on recomputed ratios (negative denominators → None, like yfinance)
+# =========================================================================
+
+
+class TestBuildHistoricalStockDataSignGuards:
+    _QD = ["2024-12-31", "2023-12-31", "2022-12-31", "2021-12-31", "2020-12-31"]
+
+    def _build(self, inc_rows, bs_rows):
+        dates = pd.date_range("2023-01-01", "2024-12-31", freq="D")
+        history = pd.DataFrame(
+            {"Close": np.linspace(100, 150, len(dates))}, index=dates
+        )
+        info = {"shortName": "Test Inc", "sector": "Technology", "currency": "USD"}
+        return _build_historical_stock_data(
+            ticker="TEST",
+            info=info,
+            price_history=history,
+            snapshot_date=datetime(2024, 6, 15),
+            balance_sheet=_fin_df(bs_rows, self._QD),
+            income_stmt=_fin_df(inc_rows, self._QD),
+            cash_flow=_fin_df({"Free Cash Flow": [50, 40, 35, 30, 25]}, self._QD),
+            dividends=pd.Series(dtype=float),
+            quarter_date=datetime(2024, 3, 31),
+        )
+
+    # FY2023 column (index 1) is the one used for quarter_date=2024-03-31.
+    _BASE_BS = {
+        "Stockholders Equity": [1000, 900, 800, 700, 600],
+        "Total Debt": [200, 170, 150, 130, 110],
+        "Current Assets": [500, 440, 400, 360, 320],
+        "Current Liabilities": [200, 180, 160, 140, 120],
+        "Ordinary Shares Number": [100, 100, 100, 100, 100],
+    }
+
+    def test_negative_eps_gives_none_pe(self):
+        sd = self._build(
+            {
+                "Net Income": [100, -80, 70, 60, 50],
+                "Total Revenue": [1000, 850, 800, 750, 700],
+                "Basic EPS": [1.0, -0.8, 0.7, 0.6, 0.5],
+            },
+            self._BASE_BS,
+        )
+        assert sd.trailing_pe is None
+        # ROE with positive equity and negative NI stays meaningful (negative).
+        assert sd.return_on_equity is not None and sd.return_on_equity < 0
+
+    def test_negative_equity_gives_none_ratios(self):
+        bs = dict(self._BASE_BS, **{"Stockholders Equity": [1000, -900, 800, 700, 600]})
+        sd = self._build(
+            {
+                "Net Income": [100, -80, 70, 60, 50],
+                "Total Revenue": [1000, 850, 800, 750, 700],
+                "Basic EPS": [1.0, 0.8, 0.7, 0.6, 0.5],
+            },
+            bs,
+        )
+        # ni < 0 and equity < 0 must not sign-flip into a large positive ROE.
+        assert sd.return_on_equity is None
+        assert sd.price_to_book is None
+        assert sd.debt_to_equity is None
+        # EPS-based P/E still computable (positive EPS, positive price).
+        assert sd.trailing_pe is not None and sd.trailing_pe > 0
+
+    def test_zero_debt_is_zero_not_none(self):
+        bs = dict(self._BASE_BS, **{"Total Debt": [200, 0.0, 150, 130, 110]})
+        sd = self._build(
+            {
+                "Net Income": [100, 80, 70, 60, 50],
+                "Total Revenue": [1000, 850, 800, 750, 700],
+                "Basic EPS": [1.0, 0.8, 0.7, 0.6, 0.5],
+            },
+            bs,
+        )
+        assert sd.debt_to_equity == 0.0
+
+
+# =========================================================================
+# Benchmark / interval validation
+# =========================================================================
+
+
+class TestBenchmarkEmptyHistory:
+    def test_empty_benchmark_history_returns_error(self, mocker):
+        """An empty/None benchmark history → error result (not silent all-zeros)."""
+        import pandas as pd
+
+        from investdaytip.backtest import BacktestResult, run_backtest
+
+        fake_data = {
+            "SPY": {"history": pd.DataFrame()},  # empty!
+            "TEST": {"history": pd.DataFrame({"Close": [100.0, 101.0]},
+                                             index=pd.DatetimeIndex([
+                                                 "2024-01-02", "2024-01-03"
+                                             ]))},
+        }
+        mocker.patch("investdaytip.backtest._fetch_all_data", return_value=fake_data)
+
+        result = run_backtest(
+            tickers=["TEST"], top_n=2, period="1y",
+            interval_months=3, min_market_cap=0, benchmark="SPY",
+        )
+        assert isinstance(result, BacktestResult)
+        assert result.snapshots == []
+        assert any("benchmark" in e.lower() for e in (result.errors or []))
+
+
+class TestIntervalMonthsValidation:
+    def test_interval_months_zero_raises(self):
+        import datetime as dt
+
+        from investdaytip.backtest import _generate_snapshot_dates
+        with pytest.raises(ValueError, match="interval_months must be >= 1"):
+            _generate_snapshot_dates(dt.datetime(2024, 1, 1), interval_months=0)
+
+    def test_interval_months_negative_raises(self):
+        import datetime as dt
+
+        from investdaytip.backtest import _generate_snapshot_dates
+        with pytest.raises(ValueError, match="interval_months must be >= 1"):
+            _generate_snapshot_dates(dt.datetime(2024, 1, 1), interval_months=-3)

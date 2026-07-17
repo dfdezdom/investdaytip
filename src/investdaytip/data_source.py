@@ -369,12 +369,12 @@ def _apply_history_common(
         data.volatility_1y = vol
         if r12 is not None and vol is not None and vol > 0:
             data.sharpe_proxy = (r12 - RISK_FREE_RATE) / vol
-    if history is not None and not history.empty:
+    if history is not None and not history.empty and "Close" in history:
         close = history["Close"].dropna()
         rsi, macd = _technical_indicators(close)
         data.rsi_14 = rsi
         data.macd_histogram = macd
-    if data.current_price is None and history is not None and not history.empty:
+    if data.current_price is None and history is not None and not history.empty and "Close" in history:
         data.current_price = float(history["Close"].iloc[-1])
 
 
@@ -521,11 +521,36 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> AssetData:
     assert info is not None
     quote_type = (info.get("quoteType") or "").upper()
 
+    # ── Early exit: market-cap threshold ─────────────────────────────────
+    if min_market_cap > 0:
+        raw = (
+            info.get("totalAssets") if quote_type == "ETF"
+            else info.get("marketCap")
+        )
+        try:
+            if raw is not None and float(raw) < min_market_cap:
+                # Below threshold — skip the expensive history/dividends fetch.
+                data = (
+                    _fetch_etf(ticker, info, pd.DataFrame())
+                    if quote_type == "ETF"
+                    else _fetch_stock(ticker, info, pd.DataFrame())
+                )
+                data.errors.append("market cap below threshold — history skipped")
+                if info_fetched_fresh:
+                    cache_info_set(ticker, info)
+                return data
+        except (TypeError, ValueError):
+            pass
+
     # ── Step 2: get / fetch price history ────────────────────────────────
     history_str = cache_history_get(ticker)
     if history_str is not None:
-        history = pd.read_json(StringIO(history_str))
-    else:
+        try:
+            history = pd.read_json(StringIO(history_str))
+        except Exception:
+            logging.warning("Corrupt history cache for %s — refetching", ticker)
+            history_str = None
+    if history_str is None:
         try:
             with _suppress_stderr():
                 if t is None:

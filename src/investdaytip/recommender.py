@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Callable, Iterable, Literal, cast
 
 from investdaytip.asia_etf_universe import ASIA_ETF_UNIVERSE
@@ -61,7 +62,13 @@ def _build_universe(
     currency: str | list[str] = "all",
 ) -> list[str]:
     if tickers:
-        return list(tickers)
+        seen_keys: set[str] = set()
+        deduped: list[str] = []
+        for t in tickers:
+            if t.upper() not in seen_keys:
+                seen_keys.add(t.upper())
+                deduped.append(t)
+        return deduped
 
     regions = [region] if isinstance(region, str) else region
     currencies = [currency] if isinstance(currency, str) else currency
@@ -229,6 +236,7 @@ def recommend(
                 _fetcher = fetch_asset
                 pool = ThreadPoolExecutor(max_workers=max_workers)
                 futures = {pool.submit(_fetcher, t, min_market_cap): t for t in leftovers}
+                initial = len(scored)
                 try:
                     for i, fut in enumerate(as_completed(futures), start=1):
                         ticker = futures[fut]
@@ -237,12 +245,15 @@ def recommend(
                         except Exception:
                             logger.warning("Failed to fetch %s", ticker, exc_info=True)
                             continue
+                        if data.errors:
+                            logger.info("Skipping %s: %s", ticker, "; ".join(data.errors))
+                            continue
                         try:
                             scored.append(score_asset(data, model=scoring_model, include_technical=include_technical, si_data=si_data))
                         except Exception:
                             logger.warning("Failed to score %s", ticker, exc_info=True)
                         if progress_cb:
-                            progress_cb(len(scored) + i, total, ticker)
+                            progress_cb(initial + i, total, ticker)
                 except KeyboardInterrupt:
                     pool.shutdown(wait=False, cancel_futures=True)
                     raise
@@ -258,7 +269,10 @@ def recommend(
                 except FmpRateLimitError:
                     leftovers = list(universe)
                 except FmpError as e:
-                    logger.warning("FMP pre-flight check failed: %s", e)
+                    # FMP unavailable (network down, invalid API key, ...) —
+                    # fall back to yfinance for the whole universe.
+                    logger.warning("FMP pre-flight check failed: %s — falling back to yfinance", e)
+                    leftovers = list(universe)
 
             # ── First pass ──────────────────────────────────────────────
             if not leftovers:
@@ -274,12 +288,17 @@ def recommend(
                             leftovers.append(ticker)
                             logger.warning("FMP rate limit hit for %s", ticker)
                             continue
-                        except TimeoutError:
+                        except (TimeoutError, FuturesTimeoutError):
+                            # concurrent.futures.TimeoutError only aliases the
+                            # builtin from Python 3.11; catch both for 3.10.
                             logger.warning("Timeout fetching %s (FMP)", ticker)
                             leftovers.append(ticker)
                             continue
                         except Exception:
                             logger.warning("Failed to fetch %s", ticker, exc_info=True)
+                            continue
+                        if data.errors:
+                            logger.info("Skipping %s: %s", ticker, "; ".join(data.errors))
                             continue
                         try:
                             scored.append(score_asset(data, model=scoring_model, include_technical=include_technical, si_data=si_data))
@@ -295,10 +314,11 @@ def recommend(
 
             # ── Fallback to yfinance for FMP rate-limited tickers ────
             if leftovers and data_source == "fmp":
-                _log_fallback("FMP rate limit", len(leftovers))
+                _log_fallback("FMP rate limit / unavailable", len(leftovers))
                 _fetcher = fetch_asset
                 pool = ThreadPoolExecutor(max_workers=max_workers)
                 futures = {pool.submit(_fetcher, t, min_market_cap): t for t in leftovers}
+                initial = len(scored)
                 try:
                     for i, fut in enumerate(as_completed(futures), start=1):
                         ticker = futures[fut]
@@ -307,12 +327,15 @@ def recommend(
                         except Exception:
                             logger.warning("Failed to fetch %s", ticker, exc_info=True)
                             continue
+                        if data.errors:
+                            logger.info("Skipping %s: %s", ticker, "; ".join(data.errors))
+                            continue
                         try:
                             scored.append(score_asset(data, model=scoring_model, include_technical=include_technical, si_data=si_data))
                         except Exception:
                             logger.warning("Failed to score %s", ticker, exc_info=True)
                         if progress_cb:
-                            progress_cb(i, total, ticker)
+                            progress_cb(initial + i, total, ticker)
                 except KeyboardInterrupt:
                     pool.shutdown(wait=False, cancel_futures=True)
                     raise

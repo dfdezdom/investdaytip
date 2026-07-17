@@ -181,7 +181,11 @@ def _as_row(index: int, s: ScoredAsset) -> dict[str, Any]:
   rsi_value = getattr(d, "rsi_14", None)
   macd_value = getattr(d, "macd_histogram", None)
   # Stocks expose dividend_yield; ETFs expose yield_.
-  div_yield = getattr(d, "dividend_yield", None) or getattr(d, "yield_", None)
+  # Use an explicit None-check so legitimate 0.0 yields aren't lost
+  # (AGENTS.md: "an `or` chain would discard a legitimate 0.0").
+  div_yield = getattr(d, "dividend_yield", None)
+  if div_yield is None:
+      div_yield = getattr(d, "yield_", None)
   return {
     "rank": index,
     "asset_type": s.asset_type.lower(),
@@ -300,8 +304,10 @@ def export_recommendations_html(
         "scoring_model": scoring_model,
     }
 
-    rows_json = json.dumps(rows, ensure_ascii=True)
-    metadata_json = json.dumps(metadata, ensure_ascii=True)
+    # Neutralize "</" (notably "</script>") so untrusted strings (user-supplied
+    # tickers, company names) cannot break out of the <script> block below.
+    rows_json = json.dumps(rows, ensure_ascii=True).replace("</", "<\\/")
+    metadata_json = json.dumps(metadata, ensure_ascii=True).replace("</", "<\\/")
     initial_rows_html = _render_initial_rows(rows, include_superinvestor=include_superinvestor, include_technical=include_technical, column_count=col_count)
 
     # Build optional column sections
@@ -516,7 +522,6 @@ def export_recommendations_html(
           <option value=\"us\">US</option>
           <option value=\"eu\">EU</option>
           <option value=\"asia\">Asia</option>
-          <option value=\"superinvestor\">Superinvestors</option>
         </select>
       </label>
       <label>Min score
@@ -607,7 +612,7 @@ def export_recommendations_html(
         const icon = fgIcons[fg.rating] || "⚪";
         chips.push(`Fear & Greed: ${{icon}} ${{fg.score}} (${{fg.rating}})`);
       }}
-      $("runParams").innerHTML = chips.map(c => `<span class=\"chip\">${{c}}</span>`).join("");
+      $("runParams").innerHTML = chips.map(c => `<span class=\"chip\">${{escapeHtml(c)}}</span>`).join("");
       const when = new Date(metadata.generated_at).toLocaleString();
       $("generatedAt").textContent = `Generated: ${{when}} · Rows: ${{metadata.row_count}}`;
     }}
@@ -833,7 +838,7 @@ def export_backtest_html(
         f"Snapshots: {result.total_snapshots}"
     )
     if tickers:
-        meta_rows += f" · Tickers: {', '.join(tickers)}"
+        meta_rows += f" · Tickers: {escape(', '.join(tickers))}"
 
     rows_html = _render_backtest_rows(result)
 

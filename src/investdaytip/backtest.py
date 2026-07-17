@@ -13,6 +13,7 @@ from __future__ import annotations
 import calendar
 import logging
 import math
+import re
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -123,6 +124,11 @@ def _generate_snapshot_dates(
     interval_months: int = 3,
 ) -> list[datetime]:
     """Generate quarterly snapshot dates going backward from *end*."""
+    if interval_months < 1:
+        raise ValueError(
+            f"interval_months must be >= 1 (got {interval_months}); "
+            "non-positive values never advance the snapshot date"
+        )
     if start is None:
         start = end - timedelta(days=365 * 5)
     dates: list[datetime] = []
@@ -261,9 +267,7 @@ def _forward_return(
 # ── Aggregated metrics ──────────────────────────────────────────────────────
 
 
-def _compute_metrics(
-    snapshots: list[BacktestSnapshot], interval_months: int = 3
-) -> dict[str, float]:
+def _compute_metrics(snapshots: list[BacktestSnapshot]) -> dict[str, float]:
     """Compute aggregate metrics from a list of snapshots."""
     if not snapshots:
         return {
@@ -323,8 +327,10 @@ def _compute_metrics(
     # Max drawdown
     dd = _max_drawdown(cum_values)
 
-    # Alpha (annualized excess return)
-    years = max(len(snapshots) * interval_months / 12.0, 1.0)
+    # Alpha (annualized excess return). Each chained snapshot return spans
+    # 6 months (the forward-return window), regardless of how far apart the
+    # snapshot dates are, so the annualization denominator is total_6m / 2.
+    years = max(total_6m / 2.0, 1.0)
     alpha = ((cum / bench_cum) ** (1.0 / years) - 1.0) if bench_cum > 0 else 0.0
 
     return {
@@ -446,28 +452,47 @@ def _build_historical_stock_data(
 
     fcf = _latest_value_before(cash_flow, quarter_date, "FreeCashFlow")
 
-    # Debt/Equity: yfinance reports as percentage, divide by 100
+    # Debt/Equity: yfinance reports as percentage, divide by 100.
+    # Negative equity makes the ratio meaningless (and sign flips can clamp
+    # to a perfect score in the scorers), so it is treated as missing — the
+    # same way yfinance reports None for unusable ratios in the live path.
     debt_to_equity = (
-        (total_debt / equity) * 100.0 if (total_debt and equity and equity != 0) else None
+        (total_debt / equity) * 100.0
+        if (total_debt is not None and equity is not None and equity > 0)
+        else None
     )
 
     current_ratio = (
-        curr_assets / curr_liab if (curr_assets and curr_liab and curr_liab != 0) else None
+        curr_assets / curr_liab
+        if (curr_assets is not None and curr_liab is not None and curr_liab > 0)
+        else None
     )
 
-    # Trailing P/E
-    trailing_pe = (price / eps) if (price and eps and eps != 0) else None
+    # Trailing P/E (meaningless for loss-making companies → None, like yfinance)
+    trailing_pe = (
+        (price / eps) if (price is not None and eps is not None and eps > 0) else None
+    )
 
-    # Price/Book
-    bvps = equity / shares if (equity and shares and shares != 0) else None
-    price_to_book = (price / bvps) if (price and bvps and bvps != 0) else None
+    # Price/Book (meaningless with negative equity → None)
+    bvps = (
+        equity / shares
+        if (equity is not None and equity > 0 and shares is not None and shares > 0)
+        else None
+    )
+    price_to_book = (
+        (price / bvps) if (price is not None and bvps is not None and bvps > 0) else None
+    )
 
-    # ROE / ROA
-    roe = (ni / equity) if (ni and equity and equity != 0) else None
-    roa = (ni / total_assets) if (ni and total_assets and total_assets != 0) else None
+    # ROE / ROA (ROE with negative equity sign-flips → None)
+    roe = (ni / equity) if (ni is not None and equity is not None and equity > 0) else None
+    roa = (
+        (ni / total_assets)
+        if (ni is not None and total_assets is not None and total_assets > 0)
+        else None
+    )
 
     # Profit margin
-    profit_margin = (ni / rev) if (ni and rev and rev != 0) else None
+    profit_margin = (ni / rev) if (ni is not None and rev is not None and rev > 0) else None
 
     # Market cap
     market_cap = (price * shares) if (price and shares) else None
@@ -805,12 +830,13 @@ def run_backtest(
         all_tickers = list(set(universe + [benchmark]))
         data = _fetch_all_data(all_tickers, period, max_workers, on_progress=on_progress)
 
-        if benchmark not in data or "history" not in data.get(benchmark, {}):
+        bench_history = data.get(benchmark, {}).get("history")
+        if bench_history is None or bench_history.empty:
             return BacktestResult(
                 snapshots=[], errors=[f"Could not fetch benchmark {benchmark}"]
             )
 
-        benchmark_history = data[benchmark]["history"]
+        benchmark_history = bench_history
 
         # Determine date range
         latest_common = _latest_common_end(data)
@@ -818,9 +844,11 @@ def run_backtest(
             return BacktestResult(snapshots=[], errors=["No historical data available"])
 
         end_date = latest_common - timedelta(days=reporting_lag_days)
-        # Need at least 12 months of history before first snapshot (for trend)
-        # and at least 12 months after last snapshot (for forward return)
-        start_date = end_date - timedelta(days=int(365.25 * 4.5))
+        # Use the yfinance period to determine the snapshot window instead of
+        # a hard-coded 4.5 years.  "max" → 20-year window.
+        parsed = re.match(r"(\d+)y", period)
+        window_years = 20.0 if period == "max" else (float(parsed.group(1)) if parsed else 5.0)
+        start_date = end_date - timedelta(days=int(365.25 * window_years))
         snap_dates = _generate_snapshot_dates(
             end_date, start_date, interval_months
         )
@@ -916,7 +944,7 @@ def run_backtest(
                 )
             )
 
-        metrics = _compute_metrics(snapshots, interval_months)
+        metrics = _compute_metrics(snapshots)
 
         return BacktestResult(
             snapshots=snapshots,

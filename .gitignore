@@ -58,3 +58,4 @@ poetry.lock
 # Analysis workspace
 /analisis/
 
+seeking_alpha_health

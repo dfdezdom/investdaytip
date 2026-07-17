@@ -270,3 +270,56 @@ def test_export_html_includes_yield_column(tmp_path):
     assert "Yield" in html
     assert "0.54%" in html
     assert "2.80%" in html
+
+
+# ── HTML/JS injection hardening ─────────────────────────────────────────────
+
+
+def test_export_html_neutralizes_script_breakout_in_tickers(tmp_path):
+    """A ticker containing </script> must not break out of the JSON <script> block."""
+    out = tmp_path / "xss.html"
+    export_recommendations_html(
+        [], str(out), top_n=5, asset_class="all",
+        tickers=["AAPL</script><script>alert(1)</script>"],
+    )
+    html = out.read_text(encoding="utf-8")
+    assert "</script><script>alert(1)</script>" not in html
+    assert "<\\/script>" in html
+
+
+def test_export_html_neutralizes_script_breakout_in_rows(tmp_path):
+    """A company name containing </script> must not break out of rows_json."""
+    stock = ScoredAsset(
+        data=StockData(
+            ticker="EVIL",
+            name="Bad</script><script>alert(1)</script>",
+            sector="Tech",
+            currency="USD",
+        ),
+        asset_type="STOCK",
+        total=50.0,
+        breakdown={},
+        rationale=[],
+    )
+    out = tmp_path / "xss_rows.html"
+    export_recommendations_html([stock], str(out), top_n=5, asset_class="all", tickers=None)
+    html = out.read_text(encoding="utf-8")
+    assert "Bad</script><script>alert(1)</script>" not in html
+
+
+def test_render_params_chips_are_escaped(tmp_path):
+    """renderParams() builds chips from untrusted strings via innerHTML —
+    they must go through escapeHtml()."""
+    out = tmp_path / "chips.html"
+    export_recommendations_html([], str(out), top_n=5, asset_class="all", tickers=None)
+    html = out.read_text(encoding="utf-8")
+    assert "escapeHtml(c)" in html
+
+
+def test_export_backtest_html_escapes_tickers(tmp_path):
+    result = _make_backtest_sample()
+    out = tmp_path / "bt_xss.html"
+    export_backtest_html(result, str(out), tickers=["<img/src=x/onerror=alert(1)>"])
+    html = out.read_text(encoding="utf-8")
+    assert "<img/src=x/onerror=alert(1)>" not in html
+    assert "&lt;img/src=x/onerror=alert(1)&gt;" in html

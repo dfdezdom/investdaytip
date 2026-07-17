@@ -11,11 +11,13 @@ with the following endpoints per ticker:
                                current ratio, div yield, payout ratio, FCF/share
   - ``key-metrics-ttm``      — ROE, ROA
   - ``financial-growth``     — earnings growth, revenue growth
+  - ``earnings-surprises``   — actual vs estimated EPS (EPS Revisions factor)
   - ``historical-price-eod`` — OHLCV for 2 years (trend + technicals)
 """
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import math
@@ -29,10 +31,10 @@ from urllib.request import Request, urlopen
 import pandas as pd
 
 from investdaytip.cache import (
+    cache_fmp_info_get,
+    cache_fmp_info_set,
     cache_history_get,
     cache_history_set,
-    cache_info_get,
-    cache_info_set,
 )
 from investdaytip.data_source import (
     StockData,
@@ -95,11 +97,19 @@ def _get(path: str, params: dict[str, str] | None = None) -> list[dict]:
                 time.sleep(FMP_RETRY_DELAYS[attempt])
                 continue
             raise FmpError(f"FMP request failed (HTTP {exc.code}): {exc}") from exc
-        except URLError as exc:
+        except (URLError, http.client.HTTPException, OSError) as exc:
+            # URLError covers DNS/refusal; http.client.HTTPException covers
+            # IncompleteRead/BadStatusLine; OSError covers reset/timeout.
             if attempt < len(FMP_RETRY_DELAYS):
                 time.sleep(FMP_RETRY_DELAYS[attempt])
                 continue
             raise FmpError(f"FMP request failed: {exc}") from exc
+        except json.JSONDecodeError as exc:
+            # Empty body or an HTML error page instead of JSON.
+            if attempt < len(FMP_RETRY_DELAYS):
+                time.sleep(FMP_RETRY_DELAYS[attempt])
+                continue
+            raise FmpError(f"FMP returned invalid JSON for {path}: {exc}") from exc
 
         if isinstance(data, dict) and "Error Message" in data:
             msg: str = data["Error Message"]
@@ -115,16 +125,24 @@ def _get(path: str, params: dict[str, str] | None = None) -> list[dict]:
 
 
 def _history_to_df(data: list[dict]) -> pd.DataFrame:
-    """Convert FMP historical-price-eod response to a DataFrame."""
+    """Convert FMP historical-price-eod response to a DataFrame.
+
+    Uses ``adjClose`` when present and rescales OHLC by the same factor, so
+    trend/momentum metrics are computed on split- and dividend-adjusted
+    prices (matching yfinance's ``auto_adjust=True`` behaviour).
+    """
     records: list[dict] = []
     for entry in data:
         try:
+            raw_close = float(entry["close"])
+            adj_close = float(entry.get("adjClose") or raw_close)
+            factor = adj_close / raw_close if raw_close > 0 else 1.0
             records.append({
                 "Date": entry["date"],
-                "Open": float(entry["open"]),
-                "High": float(entry["high"]),
-                "Low": float(entry["low"]),
-                "Close": float(entry["close"]),
+                "Open": float(entry["open"]) * factor,
+                "High": float(entry["high"]) * factor,
+                "Low": float(entry["low"]) * factor,
+                "Close": adj_close,
                 "Volume": int(entry.get("volume", 0)),
             })
         except (KeyError, TypeError, ValueError):
@@ -142,14 +160,15 @@ def _history_to_df(data: list[dict]) -> pd.DataFrame:
 
 def _fetch_and_cache_profile(ticker: str) -> dict | None:
     """Return cached profile dict or fetch fresh."""
-    cached = cache_info_get(ticker)
+    cached = cache_fmp_info_get(ticker)
     if cached is not None and "profile" in cached:
         return cached["profile"]
     try:
         data = _get("profile", {"symbol": ticker})
         profile = data[0] if data else {}
-        # Store under info key for reuse by _fetch_and_cache_fundamentals
-        cache_info_set(ticker, {"profile": profile})
+        # Store under the FMP-specific info key for reuse by
+        # _fetch_and_cache_fundamentals
+        cache_fmp_info_set(ticker, {"profile": profile})
         return profile
     except FmpRateLimitError:
         raise
@@ -164,7 +183,7 @@ def _fetch_and_cache_fundamentals(ticker: str) -> dict | None:
     before calling this.  Returns the full info dict on success, ``None``
     on failure.
     """
-    cached = cache_info_get(ticker)
+    cached = cache_fmp_info_get(ticker)
     if cached is not None and "ratios_ttm" in cached:
         return cached
 
@@ -180,7 +199,7 @@ def _fetch_and_cache_fundamentals(ticker: str) -> dict | None:
 
     profile = (cached or {}).get("profile") or {}
     info = {"profile": profile, "ratios_ttm": ratios}
-    cache_info_set(ticker, info)
+    cache_fmp_info_set(ticker, info)
     return info
 
 
@@ -212,6 +231,42 @@ def _fetch_and_cache_financial_growth(ticker: str) -> dict:
         raise
     except FmpError:
         return {}
+
+
+def _fetch_and_cache_eps_surprise(ticker: str) -> Optional[float]:
+    """Average EPS surprise (%) over the last four reported quarters.
+
+    Uses FMP's ``earnings-surprises`` endpoint (actual vs estimated EPS) with
+    the same semantics as yfinance's ``Surprise(%)``:
+    ``(actual - estimated) / abs(estimated) * 100``.  Feeds the quant model's
+    EPS Revisions factor.  Cached inside the FMP info entry (a stored ``None``
+    marks "fetched but unavailable").
+    """
+    cached = cache_fmp_info_get(ticker)
+    if cached is not None and "eps_surprise" in cached:
+        return cached["eps_surprise"]
+
+    try:
+        data = _get("earnings-surprises", {"symbol": ticker})
+    except FmpRateLimitError:
+        raise
+    except FmpError:
+        return None
+
+    entries = sorted(data, key=lambda x: x.get("date", ""), reverse=True)
+    surprises: list[float] = []
+    for entry in entries[:4]:
+        actual = _safe_float(entry, "actualEarningResult")
+        estimated = _safe_float(entry, "estimatedEarning")
+        if actual is None or estimated is None or estimated == 0:
+            continue
+        surprises.append((actual - estimated) / abs(estimated) * 100.0)
+    surprise = sum(surprises) / len(surprises) if surprises else None
+
+    info = dict(cached or {})
+    info["eps_surprise"] = surprise
+    cache_fmp_info_set(ticker, info)
+    return surprise
 
 
 def _shares_outstanding(profile: dict, price: float | None) -> Optional[float]:
@@ -358,8 +413,11 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> StockData:
     data.earnings_growth = _safe_float(growth, "epsgrowth")
     data.revenue_growth = _safe_float(growth, "revenueGrowth")
 
-    # Health
-    data.debt_to_equity = _safe_float(ratios, "debtToEquityRatioTTM")
+    # Health — FMP reports D/E as a pure ratio (1.5 == 1.5x) while yfinance
+    # uses a percentage (152.0 == 1.52x); convert to the yfinance scale so the
+    # scorers (which divide by 100) see consistent units across data sources.
+    de = _safe_float(ratios, "debtToEquityRatioTTM")
+    data.debt_to_equity = de * 100.0 if de is not None else None
     data.current_ratio = _safe_float(ratios, "currentRatioTTM")
 
     # FCF: compute from FCF/share * shares outstanding
@@ -371,6 +429,9 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> StockData:
     # Income
     data.dividend_yield = _safe_float(ratios, "dividendYieldTTM")
     data.payout_ratio = _safe_float(ratios, "dividendPayoutRatioTTM")
+
+    # EPS surprise (quant model's EPS Revisions factor)
+    data.eps_surprise = _fetch_and_cache_eps_surprise(ticker)
 
     # Trend + technicals from price history
     _apply_history_common(data, history)

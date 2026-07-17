@@ -10,6 +10,8 @@ import pytest
 
 from investdaytip.cache import (
     CacheDB,
+    cache_fmp_info_get,
+    cache_fmp_info_set,
     cache_history_get,
     cache_history_set,
     cache_info_get,
@@ -83,12 +85,36 @@ class TestCacheHelpers:
         clear_cache()
         assert cache_info_get("T") is None
 
+    def test_fmp_info_uses_isolated_cache_key(self, enabled_temp_cache):
+        """FMP's {"profile", "ratios_ttm"} schema must not poison the shared
+        yfinance-style ``{ticker}:info`` entry (and vice versa)."""
+        fmp_info = {"profile": {"companyName": "Apple"}, "ratios_ttm": {"peTTM": 30.0}}
+        cache_fmp_info_set("AAPL", fmp_info)
+        assert cache_fmp_info_get("AAPL") == fmp_info
+        assert cache_info_get("AAPL") is None
+
+        yf_info = {"quoteType": "EQUITY", "trailingPE": 30.0}
+        cache_info_set("MSFT", yf_info)
+        assert cache_info_get("MSFT") == yf_info
+        assert cache_fmp_info_get("MSFT") is None
+
+    def test_fmp_info_roundtrip_and_disabled(self, enabled_temp_cache):
+        cache_fmp_info_set("TEST", {"profile": {"x": 1}})
+        assert cache_fmp_info_get("TEST") == {"profile": {"x": 1}}
+        # Corrupt JSON tolerated
+        from investdaytip.cache import _cache_key, get_db
+
+        get_db().set(_cache_key("BROKEN", "fmp_info"), "{not json", ttl=300)
+        assert cache_fmp_info_get("BROKEN") is None
+
     def test_close_all_closes_connections(self, tmp_path):
         db = CacheDB(tmp_path / "closeall.db")
         db.set("k", "v", ttl=300)
         assert db.get("k") == "v"
         db.close_all()
-        # A fresh connection is lazily recreated on next access.
+        # close_all() drops the calling thread's connection and clears the
+        # tracked list but does NOT prevent future access (a fresh connection
+        # is lazily recreated on the next _connect() call).
         assert db.get("k") == "v"
         db.close_all()
 

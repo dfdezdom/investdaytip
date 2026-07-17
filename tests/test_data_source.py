@@ -48,7 +48,7 @@ def stock_info() -> dict:
     }
 
 
-def test_fetch_asset_below_market_cap_still_fetches_history(mocker, stock_info):
+def test_fetch_asset_below_market_cap_skips_history(mocker, stock_info):
     stock_info["marketCap"] = 500_000_000  # $500M — below $2B default
     mock = _mock_ticker(stock_info)
     mocker.patch("investdaytip.data_source.yf.Ticker", return_value=mock)
@@ -58,8 +58,9 @@ def test_fetch_asset_below_market_cap_still_fetches_history(mocker, stock_info):
     assert isinstance(result, StockData)
     assert result.ticker == "BIGC"
     assert result.market_cap == 500_000_000
-    mock.history.assert_called_once()
-    assert result.current_price is not None
+    # History must be skipped for below-threshold tickers (optimization).
+    mock.history.assert_not_called()
+    assert any("threshold" in e.lower() for e in (result.errors or []))
 
 
 def test_fetch_asset_fetches_history_above_market_cap(mocker, stock_info):

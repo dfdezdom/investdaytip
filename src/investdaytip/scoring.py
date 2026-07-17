@@ -123,6 +123,17 @@ def _linear(value: Optional[float], best: float, worst: float, *, default: float
     return _clamp(pct)
 
 
+def _non_negative(value: Optional[float]) -> Optional[float]:
+    """Return *value* unless it is negative, in which case return ``None``.
+
+    Negative valuation ratios (P/E, P/B, PEG, D/E) are not "extremely cheap" —
+    they signal losses or negative equity.  Feeding them into a lower-is-better
+    ``_linear`` would clamp to a *perfect* 100 for distressed companies, so
+    they are treated as missing data (neutral score) instead.
+    """
+    return value if (value is not None and value >= 0.0) else None
+
+
 # ---------------------------------------------------------------------------
 # Helpers shared by both stock scorers
 # ---------------------------------------------------------------------------
@@ -156,12 +167,12 @@ class ClassicStockScorer:
 
     def _value_score(self, d: StockData) -> tuple[float, list[str]]:
         notes: list[str] = []
-        pe = _linear(d.trailing_pe, best=10, worst=40)
-        pb = _linear(d.price_to_book, best=1.0, worst=6.0)
-        peg = _linear(d.peg_ratio, best=0.8, worst=3.0)
-        if d.trailing_pe is not None and d.trailing_pe < 20:
+        pe = _linear(_non_negative(d.trailing_pe), best=10, worst=40)
+        pb = _linear(_non_negative(d.price_to_book), best=1.0, worst=6.0)
+        peg = _linear(_non_negative(d.peg_ratio), best=0.8, worst=3.0)
+        if d.trailing_pe is not None and 0 <= d.trailing_pe < 20:
             notes.append(f"attractive P/E of {d.trailing_pe:.1f}")
-        if d.peg_ratio is not None and d.peg_ratio < 1.5:
+        if d.peg_ratio is not None and 0 <= d.peg_ratio < 1.5:
             notes.append(f"PEG of {d.peg_ratio:.2f} suggests growth at reasonable price")
         return (pe * 0.45) + (pb * 0.20) + (peg * 0.35), notes
 
@@ -183,7 +194,13 @@ class ClassicStockScorer:
         notes: list[str] = []
         # yfinance reports debtToEquity as a percentage (e.g. 45.3 == 0.453x), so
         # divide by 100 to get the ratio compared against best=0.2x / worst=2.0x.
-        de = d.debt_to_equity / 100.0 if d.debt_to_equity is not None else None
+        # Negative D/E (negative stockholders' equity) is a distress signal, not
+        # "zero leverage" — treat it as missing rather than a perfect score.
+        de = (
+            d.debt_to_equity / 100.0
+            if (d.debt_to_equity is not None and d.debt_to_equity >= 0)
+            else None
+        )
         debt = _linear(de, best=0.2, worst=2.0)
         liq = _linear(d.current_ratio, best=2.5, worst=1.0)
         fcf = 50.0
@@ -237,7 +254,7 @@ class ClassicStockScorer:
 
         if si_data is None:
             si_data = get_superinvestor_data()
-        si_count = si_data.get(data.ticker, {}).get("manager_count")
+        si_count = si_data.get(data.ticker.upper(), {}).get("manager_count")
 
         return ScoredAsset(
             data=data,
@@ -268,17 +285,17 @@ class QuantStockScorer:
 
     def _value_score(self, d: StockData) -> tuple[float, list[str]]:
         notes: list[str] = []
-        pe = _linear(d.trailing_pe, best=10, worst=40)
-        pb = _linear(d.price_to_book, best=1.0, worst=6.0)
-        peg = _linear(d.peg_ratio, best=0.8, worst=3.0)
+        pe = _linear(_non_negative(d.trailing_pe), best=10, worst=40)
+        pb = _linear(_non_negative(d.price_to_book), best=1.0, worst=6.0)
+        peg = _linear(_non_negative(d.peg_ratio), best=0.8, worst=3.0)
 
         fcf_yield = 50.0
         if d.free_cashflow is not None and d.market_cap is not None and d.market_cap > 0:
             fcf_yield = _linear(d.free_cashflow / d.market_cap, best=0.10, worst=0.00, default=50.0)
 
-        if d.trailing_pe is not None and d.trailing_pe < 20:
+        if d.trailing_pe is not None and 0 <= d.trailing_pe < 20:
             notes.append(f"attractive P/E of {d.trailing_pe:.1f}")
-        if d.peg_ratio is not None and d.peg_ratio < 1.5:
+        if d.peg_ratio is not None and 0 <= d.peg_ratio < 1.5:
             notes.append(f"PEG of {d.peg_ratio:.2f} suggests growth at reasonable price")
         if fcf_yield > 70:
             notes.append("strong free cash flow yield")
@@ -402,7 +419,7 @@ class QuantStockScorer:
 
         if si_data is None:
             si_data = get_superinvestor_data()
-        si_count = si_data.get(data.ticker, {}).get("manager_count")
+        si_count = si_data.get(data.ticker.upper(), {}).get("manager_count")
 
         return ScoredAsset(
             data=data,
@@ -544,6 +561,13 @@ def _etf_liquidity_score_v2(d: EtfData) -> tuple[float, list[str]]:
     return score, notes
 
 
+# Thresholds below which the ETF risk or cost factor is a disqualifying red
+# flag (extreme volatility/beta or an extreme expense ratio), capping the
+# total score at neutral — mirrors QuantStockScorer's disqualifying grades.
+_ETF_DISQUALIFY_RISK = 20.0
+_ETF_DISQUALIFY_COST = 15.0
+
+
 def score_etf_quant(data: EtfData) -> ScoredAsset:
     momentum, m_notes = _etf_momentum_score(data)
     risk, r_notes = _etf_risk_score_v2(data)
@@ -557,7 +581,19 @@ def score_etf_quant(data: EtfData) -> ScoredAsset:
         + liquidity * ETF_QUANT_WEIGHTS["liquidity"]
     )
 
+    disqualified = False
+    if risk < _ETF_DISQUALIFY_RISK:
+        disqualified = True
+        r_notes.append("risk flagged as disqualifying")
+    if cost < _ETF_DISQUALIFY_COST:
+        disqualified = True
+        c_notes.append("cost flagged as disqualifying")
+    if disqualified:
+        total = min(total, 50.0)
+
     rationale = m_notes + r_notes + c_notes + l_notes
+    if disqualified and total <= 50.0:
+        rationale = ["Disqualifying factor(s) capped score at neutral"] + rationale
     if not rationale:
         rationale.append("Limited data available; score based on neutral defaults.")
 

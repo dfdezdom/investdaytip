@@ -68,6 +68,17 @@ FINANCIAL_GROWTH = {
     "revenueGrowth": 0.08,
 }
 
+EARNINGS_SURPRISES = [
+    {"date": "2025-10-30", "symbol": "TEST",
+     "actualEarningResult": 1.10, "estimatedEarning": 1.00},
+    {"date": "2025-07-30", "symbol": "TEST",
+     "actualEarningResult": 0.95, "estimatedEarning": 1.00},
+    {"date": "2025-04-30", "symbol": "TEST",
+     "actualEarningResult": 1.05, "estimatedEarning": 1.00},
+    {"date": "2025-01-30", "symbol": "TEST",
+     "actualEarningResult": 1.20, "estimatedEarning": 1.10},
+]
+
 
 def _responses(history_days: int = 400) -> dict[tuple[str, str], list]:
     return {
@@ -75,6 +86,7 @@ def _responses(history_days: int = 400) -> dict[tuple[str, str], list]:
         ("ratios-ttm", "TEST"): [RATIOS_TTM],
         ("key-metrics-ttm", "TEST"): [KEY_METRICS_TTM],
         ("financial-growth", "TEST"): [FINANCIAL_GROWTH],
+        ("earnings-surprises", "TEST"): EARNINGS_SURPRISES,
         ("historical-price-eod/full", "TEST"): _mock_history_data(history_days),
     }
 
@@ -121,8 +133,9 @@ def test_fetch_asset_basic(mocker):
     assert result.profit_margin == 0.20
     assert result.earnings_growth == 0.10
     assert result.revenue_growth == 0.08
-    # Health
-    assert result.debt_to_equity == 1.5
+    # Health — FMP's pure ratio (1.5x) is now scaled to yfinance's
+    # percentage convention (150.0 == 1.5x) for consistent scoring.
+    assert result.debt_to_equity == 150.0
     assert result.current_ratio == 2.0
     # FCF: 5.0 * (10B / 150) = 333.33M
     assert result.free_cashflow == pytest.approx(333_333_333.33, rel=1e-4)
@@ -303,3 +316,54 @@ def test_recommend_preflight_rate_limit_auto_fallback(mocker):
     assert len(results) == 1
     assert results[0].data.ticker == "AAPL"
     assert results[0].data.name == "Apple YF"
+
+
+def test_recommend_preflight_fmp_error_auto_fallback(mocker):
+    """Pre-flight FmpError (FMP down / invalid key) falls back to yfinance.
+
+    AGENTS.md: 'FMP unavailable (network, API key invalid) → caught by
+    pre-flight, all tickers fallback to yfinance'.
+    """
+    from investdaytip.data_source_fmp import FmpError
+    from investdaytip.recommender import recommend
+
+    def raise_error(*args: object, **kwargs: object) -> list[dict]:
+        raise FmpError("FMP unavailable")
+
+    mocker.patch("investdaytip.data_source_fmp._get", side_effect=raise_error)
+    mocker.patch.dict(os.environ, {"FMP_API_KEY": "test_key"}, clear=False)
+    mocker.patch("investdaytip.recommender.get_superinvestor_data", return_value={})
+    mocker.patch("investdaytip.recommender._log_fallback")  # silence log
+
+    data = StockData(ticker="AAPL", name="Apple YF", sector="Technology")
+    fetch = mocker.patch("investdaytip.recommender.fetch_asset", return_value=data)
+
+    results = recommend(
+        tickers=["AAPL"],
+        top_n=5,
+        min_market_cap=0,
+        scoring_model="classic",
+        data_source="fmp",
+    )
+
+    assert len(results) == 1
+    assert results[0].data.ticker == "AAPL"
+    assert results[0].data.name == "Apple YF"
+    fetch.assert_called_once()
+
+
+def test_fetch_asset_caches_under_fmp_key_only(mocker, enabled_temp_cache):
+    """FMP-cached info must not leak into the shared yfinance info cache key."""
+    from investdaytip.cache import cache_fmp_info_get, cache_info_get
+
+    mocker.patch("investdaytip.data_source_fmp._get", _build_mock_get(_responses()))
+    mocker.patch.dict(os.environ, {"FMP_API_KEY": "test_key"}, clear=False)
+
+    fetch_asset("TEST")
+
+    fmp_cached = cache_fmp_info_get("TEST")
+    assert fmp_cached is not None
+    assert "profile" in fmp_cached
+    assert fmp_cached["profile"]["companyName"] == "Test Corp"
+    # The shared yfinance-style info key stays untouched.
+    assert cache_info_get("TEST") is None

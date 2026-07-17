@@ -112,9 +112,9 @@ class CacheDB:
     def close_all(self) -> None:
         """Close every connection opened by any thread (incl. workers).
 
-        Safe to call from the main thread after a worker pool has been torn
-        down. ``threading.local`` references on dead threads are cleared as
-        their objects are garbage-collected.
+        Only connections owned by the *calling* thread can be closed
+        synchronously; cross-thread connections raise ``ProgrammingError``
+        and are left to be garbage-collected along with their thread.
         """
         with self._conns_lock:
             conns = list(self._all_conns)
@@ -122,7 +122,8 @@ class CacheDB:
         for conn in conns:
             try:
                 conn.close()
-            except sqlite3.Error:
+            except sqlite3.ProgrammingError:
+                # Connection lives in another thread — harmless to defer.
                 pass
         # Drop this thread's local reference if it was among the closed set.
         if getattr(self._local, "conn", None) is not None:
@@ -174,6 +175,31 @@ def cache_info_set(ticker: str, info: dict[str, Any]) -> None:
     if not enabled:
         return
     get_db().set(_cache_key(ticker, "info"), json.dumps(info), TTL_FUNDAMENTALS)
+
+
+def cache_fmp_info_get(ticker: str) -> dict[str, Any] | None:
+    """Return cached FMP ``info`` dict or None.
+
+    FMP stores a ``{"profile": ..., "ratios_ttm": ...}`` schema that is
+    incompatible with the flat yfinance-style ``info`` dict, so it uses its
+    own cache key to avoid poisoning the shared ``{ticker}:info`` entry.
+    """
+    if not enabled:
+        return None
+    raw = get_db().get(_cache_key(ticker, "fmp_info"))
+    if raw is None:
+        return None
+    try:
+        return json.loads(raw)
+    except Exception:
+        return None
+
+
+def cache_fmp_info_set(ticker: str, info: dict[str, Any]) -> None:
+    """Store FMP ``info`` dict under the FMP-specific cache key."""
+    if not enabled:
+        return
+    get_db().set(_cache_key(ticker, "fmp_info"), json.dumps(info), TTL_FUNDAMENTALS)
 
 
 def cache_history_get(ticker: str) -> str | None:

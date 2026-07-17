@@ -170,3 +170,34 @@ def test_quant_eps_revisions_does_not_use_growth():
     s = score_stock(base, model="quant")
     assert s.breakdown["EPS Revisions"] > 90.0
     assert s.breakdown["Growth"] < 20.0
+
+
+def test_quant_negative_peg_gets_neutral():
+    """Negative PEG in quant model → neutral value PEG sub-score."""
+    d = StockData(
+        ticker="NEGPEG", currency="USD",
+        trailing_pe=20.0, price_to_book=3.0, peg_ratio=-1.5,
+        return_on_equity=0.15, profit_margin=0.15,
+        return_on_assets=0.08, earnings_growth=0.10, revenue_growth=0.10,
+        market_cap=10_000_000_000,
+        price_vs_sma200=0.10,
+        return_12m=0.20, sma200_slope=0.08,
+    )
+    s = score_stock(d, model="quant")
+    assert s.total < 90  # PEG negative → neutral, not perfect 100
+    assert s.breakdown["Value"] < 100
+
+
+def test_quant_negative_pe_pb_give_neutral():
+    """Negative P/E or P/B in quant model → neutral value sub-scores."""
+    d = StockData(
+        ticker="NEG", currency="USD",
+        trailing_pe=-10.0, price_to_book=-0.5, peg_ratio=1.0,
+        return_on_equity=0.15, profit_margin=0.15,
+        return_on_assets=0.08, earnings_growth=0.10, revenue_growth=0.10,
+        market_cap=10_000_000_000,
+        price_vs_sma200=0.10,
+        return_12m=0.20, sma200_slope=0.08,
+    )
+    s = score_stock(d, model="quant")
+    assert s.total < 90

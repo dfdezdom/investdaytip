@@ -7,6 +7,7 @@ proper error handling so a failure never crashes the pipeline.
 
 from __future__ import annotations
 
+import http.client
 import json
 import math
 from typing import Any
@@ -50,7 +51,8 @@ def _fetch_fear_greed_json() -> dict[str, Any] | None:
         with urlopen(req, timeout=15) as resp:
             raw = resp.read().decode("utf-8")
         return json.loads(raw)
-    except (URLError, OSError, json.JSONDecodeError, ValueError, TimeoutError):
+    except (URLError, OSError, http.client.HTTPException,
+            json.JSONDecodeError, ValueError, TimeoutError):
         return None
 
 

@@ -26,7 +26,9 @@ MANAGERS_URL = "https://www.dataroma.com/m/managers.php"
 HOLDINGS_URL = "https://www.dataroma.com/m/holdings.php?m={code}"
 
 TTL_SUPERINVESTOR = 86400 * 7  # 7 days (quarterly data)
-CACHE_KEY = "superinvestor:holdings:v2"  # v2: GOOG merged into GOOGL
+# v2: GOOG merged into GOOGL; v3: share-class dots normalized to Yahoo dashes
+# (BRK.B → BRK-B) and keys uppercased.
+CACHE_KEY = "superinvestor:holdings:v3"
 
 
 def _fetch(url: str) -> str:
@@ -137,8 +139,12 @@ def fetch_superinvestor_universe(
                 try:
                     holdings = fetch_manager_holdings(code)
                     for ticker, pct in holdings.items():
-                        aggregate[ticker] = aggregate.get(ticker, 0) + 1
-                        weights[ticker] = weights.get(ticker, 0.0) + pct
+                        # DataRoma is US-only (13F), so dots only appear in
+                        # share classes (BRK.B) which Yahoo writes with a
+                        # dash (BRK-B). Normalize to Yahoo's convention.
+                        sym = ticker.replace(".", "-").upper()
+                        aggregate[sym] = aggregate.get(sym, 0) + 1
+                        weights[sym] = weights.get(sym, 0.0) + pct
                     logger.debug("Fetched %s (%s) — %d tickers", name, code, len(holdings))
                     break
                 except Exception as exc:
@@ -147,15 +153,21 @@ def fetch_superinvestor_universe(
                         time.sleep(5)
                     else:
                         logger.warning("Exhausted retries for %s", name)
-                # Polite delay between successful requests
-                time.sleep(0.5)
+            # Polite delay between manager requests
+            time.sleep(0.5)
 
         data = {
             "aggregate": aggregate,
             "weights": weights,
             "manager_count": len(managers),
         }
-        get_db().set(CACHE_KEY, json.dumps(data), TTL_SUPERINVESTOR)
+        if aggregate:
+            get_db().set(CACHE_KEY, json.dumps(data), TTL_SUPERINVESTOR)
+        else:
+            logger.warning(
+                "DataRoma returned no holdings (page structure changed?) — "
+                "not caching the empty result"
+            )
 
     # Normalizar tickers duplicados: GOOG → GOOGL (defensa contra cache v1 o corrupta)
     aggregate = data.get("aggregate", {})

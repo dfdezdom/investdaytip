@@ -99,31 +99,34 @@ python scripts/compare_data_sources.py -t "AAPL MSFT GOOGL" -n 3
 ## FMP Data Source (`--data-source fmp`)
 
 Financial Modeling Prep is an alternative data source selectable via `--data-source fmp`.
-It uses 4 FMP endpoints per stock ticker (ETFs are **not** supported):
+It uses 6 FMP endpoints per stock ticker (ETFs are **not** supported):
 
 | Endpoint | Field | Used For |
 |---|---|---|
 | `profile/{ticker}` | name, sector, exchange, currency, market cap, price | ETF check, market-cap filter, basic fields |
-| `ratios-ttm/{ticker}` | PE, PB, PEG, ROE, ROA, profit margin, D/E, current ratio, div yield, payout ratio, FCF/share | Valuation, quality, health, income — **all scoring fields** |
-| `historical-price-eod/{ticker}` | OHLCV for 2 years | Trend indicators, RSI, MACD |
+| `ratios-ttm/{ticker}` | PE, PB, PEG, profit margin, D/E, current ratio, div yield, payout ratio, FCF/share | Valuation, quality, health, income |
+| `key-metrics-ttm/{ticker}` | ROE, ROA | Quality |
+| `financial-growth/{ticker}` | earnings growth, revenue growth | Quality |
+| `historical-price-eod/{ticker}` | OHLCV for 2 years (split/dividend-adjusted via `adjClose`) | Trend indicators, RSI, MACD |
 | `earnings-surprises/{ticker}` | EPS surprise over last 4 quarters | `quant` model EPS Revisions factor |
 
-**Free tier limits:** 250 requests/day → ~60 tickers/day (4 calls/ticker).
+**Free tier limits:** 250 requests/day → ~40 tickers/day (6 calls/ticker).
 
 ### Rate-Limit Handling & Automatic Fallback
 
-When FMP returns HTTP 429 (Too Many Requests) or a JSON `"Error Message"` containing "limit":
+When FMP returns HTTP 429 (Too Many Requests) or a JSON `"Error Message"` containing "limit", or
+when FMP is unreachable (`URLError`, `OSError`, `http.client.HTTPException`, invalid JSON):
 
 1. **Pre-flight check** (`check_rate_limit()`) sends a single `profile/SPY` request before the batch starts. If rate-limited, all tickers go directly to the fallback.
 2. **During fetch** (`recommend()` loop), per-ticker `FmpRateLimitError` is caught and that ticker is added to `leftovers`.
-3. **Automatic fallback** — remaining tickers are re-fetched with yfinance (no user prompt).
-4. A message is printed to stderr: `⚠️  FMP rate limit — continuing with yfinance for N tickers`
+3. **Automatic fallback** — remaining tickers are re-fetched with yfinance (no user prompt). If the pre-flight itself raises a non-rate-limit `FmpError` (FMP down, invalid key), the entire universe falls back to yfinance.
+4. A message is printed to stderr: `⚠️  FMP rate limit / unavailable — continuing with yfinance for N tickers`
 
 ### CLI & Config
 
 - `--data-source {yfinance,yahooquery,fmp}` (default: `yfinance`)
 - Requires `FMP_API_KEY` env var (startup prints install instructions if missing)
-- Shows a warning banner: `FMP free tier: 250 requests/day (~60 tickers), 10s timeout per request.`
+- Shows a warning banner: `FMP free tier: 250 requests/day (~40 tickers), 10s timeout per request.`
 - Works with `advisor` subcommand (`investdaytip advisor --data-source fmp`)
 - Supported in programmatic API: `get_recommendations(data_source="fmp")`
 
@@ -171,8 +174,9 @@ When FMP returns HTTP 429 (Too Many Requests) or a JSON `"Error Message"` contai
 
 ### Caching
 - `CacheDB` in `cache.py`: SQLite with `threading.local()` per-thread connections, WAL mode, write lock via `threading.Lock`
-- Six cache entry types:
-  - `{ticker}:info` (fundamentals, TTL 1d)
+- Seven cache entry types:
+  - `{ticker}:info` (fundamentals, TTL 1d — flat yfinance-style dict)
+  - `{ticker}:fmp_info` (FMP `{"profile", "ratios_ttm"}` schema, TTL 1d) — separate key so FMP's incompatible schema never poisons the shared yfinance-style `info` entry (and vice versa)
   - `{ticker}:history` (prices, TTL 15min)
   - `{ticker}:balance_sheet` / `{ticker}:income_stmt` / `{ticker}:cash_flow` (financials, TTL 7d)
   - `{ticker}:dividends` (dividends, TTL 7d)
@@ -334,18 +338,22 @@ on the same ticker universe and configuration.  This keeps improvements objectiv
 ### Baseline example
 
 Config: `AAPL MSFT GOOGL`, top 2, US, 5y, 3-month intervals, min-market-cap 0
+(regenerated 2026-07-17 after the alpha-annualization fix — alpha annualizes
+over the chained 6-month windows: `years = total_6m / 2`. Baselines generated
+before that fix inflated alpha ~2× at `interval_months=3` and are **not**
+comparable.)
 
 | Metric | Value |
 |---|---|
 | Snapshots | 15 |
-| Cumulative Return | 248.57% |
-| Benchmark Return | 124.54% (SPY) |
-| Alpha | 6.04% |
-| Sharpe | 0.52 |
-| Benchmark Sharpe | 0.43 |
+| Cumulative Return | 169.64% |
+| Benchmark Return | 125.83% (SPY) |
+| Alpha | 2.39% |
+| Sharpe | 0.51 |
+| Benchmark Sharpe | 0.59 |
 | Win Rate 6M | 53.3% |
-| Win Rate 12M | 66.7% |
-| Max Drawdown | 41.47% |
+| Win Rate 12M | 53.3% |
+| Max Drawdown | 34.13% |
 
 ### Validation workflow
 
