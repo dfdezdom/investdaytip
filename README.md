@@ -381,7 +381,7 @@ The generated report includes filters for:
 
 - Text search (ticker/name/sector)
 - Asset class (`stock` / `etf`)
-- Region (`us` / `eu` / `asia` / `superinvestor`)
+- Region (`us` / `eu` / `asia`)
 - Minimum score
 - Minimum 1M return (%)
 - Minimum 1Y return (%)
@@ -615,7 +615,7 @@ src/investdaytip/
 ├── recommender.py         # Concurrent orchestration
 ├── cache.py               # SQLite caching layer (per-thread connections, WAL mode)
 ├── data_source.py         # yfinance wrapper + dataclasses (StockData / EtfData)
-├── data_source_fmp.py     # FMP wrapper (alternative data source, 4 endpoints/ticker)
+├── data_source_fmp.py     # FMP wrapper (alternative data source, 6 endpoints/ticker)
 ├── scoring.py             # Pure scoring functions (score_stock, score_etf)
 ├── sentiment.py           # CNN Fear & Greed Index fetch
 ├── universe.py            # US stock universe
@@ -677,7 +677,7 @@ ruff check src tests      # lint
 mypy                      # type-check
 ```
 
-**176 tests** across 12 test files. The scoring engine is purely functional
+**335 tests** across 16 test files. The scoring engine is purely functional
 and tested without network calls; an autouse guard in `tests/conftest.py` fails
 fast if a test reaches yfinance unmocked. Integration tests mock the full
 `recommend()` → `main()` → export pipeline.
