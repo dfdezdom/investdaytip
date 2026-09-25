@@ -4,7 +4,7 @@ DEFAULT_ETF_UNIVERSE: list[str] = [
     # Broad US market
     "VTI", "ITOT", "SCHB",
     # S&P 500
-    "VOO", "SPY", "IVV", "SPLG",
+    "VOO", "SPY", "IVV", "SPYM",
     # Growth / Tech
     "QQQ", "QQQM", "VUG", "SCHG", "VGT", "XLK",
     # Value / Dividend

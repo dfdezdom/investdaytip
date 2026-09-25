@@ -24,5 +24,5 @@ DEFAULT_EU_UNIVERSE: list[str] = [
     # Switzerland (SIX, .SW)
     "NESN.SW", "RO.SW", "NOVN.SW", "ZURN.SW", "ABBN.SW", "UHR.SW",
     # Belgium / Ireland / Nordics
-    "ABI.BR", "CRH.L", "NOVO-B.CO", "EQNR.OL", "VOLV-B.ST",
+    "ABI.BR", "NOVO-B.CO", "EQNR.OL", "VOLV-B.ST",
 ]
