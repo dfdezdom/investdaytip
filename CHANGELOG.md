@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.10.0 (2026-09-25)
+
+### Features
+
+- **12-1 momentum in the quant stock model** — the Momentum factor (15%) now uses the 12-month return *excluding* the most recent month, since the last month is short-term reversal rather than momentum. Falls back to the raw 12m return when `return_1m` is missing. Validated with before/after backtests (26 US mega-caps, 3y + 5y + standard config): alpha +0.5-0.7pp, Sharpe +0.01-0.03, no regressions. **Scores and rankings differ from 0.9.0.**
+- **Advisor overhaul** — `macro_regime()` now scores five equally-weighted factors (VIX, yield curve, MOVE, DXY, CNN Fear & Greed) with a ±3 trend modifier, and prints the sub-indicators and 5-day trends in the table. New portfolio analysis: risk tilt, concentration and sector rotation, plus macro result caching between runs.
+- **`scripts/factor_ic.py`** — per-snapshot cross-sectional Spearman IC of every factor / candidate metric vs forward 6M returns, so weight changes are diagnosed before they are tuned.
+- **OpenCode agent tooling** — `.opencode/` config with the advisor subagent, commands, permissions and skills (incl. the Seeking Alpha XLSX import workflow).
+
+### Fixes
+
+- **28 bugs across all layers** — critical ones: advisor CLI missing `--data-source`/`-n`/`--include-technical` flags; an FMP pre-flight error no longer blocks the automatic yfinance fallback; FMP and yfinance info caches no longer poison each other (isolated `fmp_info` cache key); backtest alpha was ~2x inflated at `interval_months < 6`; HTML/JS injection via raw JSON in `<script>` and `innerHTML`.
+- **Distressed companies no longer get a perfect Value score** — negative P/E, P/B, PEG and D/E are treated as missing (neutral 50) instead of clamping to 100, in both the classic and quant models, for stocks and ETFs.
+- **mypy clean** — `_fetch_batch_chunk` annotates `data` as `AssetData` (was inferred as `EtfData`).
+
+### Docs
+
+- **README** — 6 FMP endpoints, 335 tests, quant ETF scoring model.
+- **AGENTS.md** — release workflow, Seeking Alpha import, factor-IC validation workflow, regenerated scoring baselines.
+
 ## v0.9.0 (2026-06-27)
 
 ### Features
