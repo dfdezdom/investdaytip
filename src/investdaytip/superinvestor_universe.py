@@ -16,7 +16,7 @@ SUPERINVESTOR_UNIVERSE: list[str] = [
     "MDLN", "META", "MGM", "MKL", "MRK", "MSFT", "NFLX", "NU",
     "NVDA", "OXY", "PDD", "PEP", "PFE", "PM",
     "PYPL", "QSR", "RACE", "REGN", "RKT", "RPRX", "RTX", "SCHW",
-    "SGI", "SGOV", "SHW", "SLB", "SNX", "SPGI", "SUNB", "SYK",
+    "SGI", "SHW", "SLB", "SNX", "SPGI", "SUNB", "SYK",
     "TDG", "TMO", "TRU", "TSLA", "TSM", "TSN",     "UBER", "UHAL",
     "UNH", "USB", "V", "VMC", "VST", "WAT", "WTW", "ZBH",
 ]

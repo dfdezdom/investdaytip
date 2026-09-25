@@ -20,6 +20,15 @@ def test_infer_region_from_ticker_suffixes():
     assert infer_region_from_ticker("AAPL") == "us"
     assert infer_region_from_ticker("SAP.DE") == "eu"
     assert infer_region_from_ticker("7203.T") == "asia"
+    # Belgium (.BR) is in the EU universe — it must not fall through to "us".
+    assert infer_region_from_ticker("ABI.BR") == "eu"
+
+
+def test_exchange_mapping_covers_belgium():
+    from investdaytip.html_export import _exchange_mapping
+
+    assert _exchange_mapping("ABI.BR") == ("BRU", "EURONEXT")
+    assert _google_finance_url("ABI.BR") == "https://www.google.com/finance/quote/ABI:BRU?hl=en"
 
 
 def test_colspan_matches_header_column_count(tmp_path):

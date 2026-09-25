@@ -12,14 +12,14 @@ DEFAULT_UNIVERSE: list[str] = [
     "AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX", "COST", "WMT", "PG",
     "KO", "PEP", "DIS",
     # Healthcare
-    "ABBV", "ABT", "AUPH", "AVAH", "DHR", "INCY", "INDV", "INVA",
+    "ABBV", "ABT", "DHR", "INCY", "INDV",
     "JNJ", "LLY", "MRK", "PFE", "TMO", "UNH",
     # Financials
     "ALL", "AXP", "BAC", "BLK", "GS", "JPM", "MA", "MS",
-    "SEZL", "THG", "UVE", "V", "WFC",
+    "SEZL", "THG", "V", "WFC",
     # Industrials / Energy / Materials
     "BA", "CAT", "CRH", "CSTM", "CVX", "GE", "HON", "IAG",
-    "LIN", "SHIP", "UPS", "XOM",
+    "LIN", "UPS", "XOM",
     # Communications / Utilities / Real Estate
     "NFLX", "T", "VZ", "NEE", "AMT",
 ]

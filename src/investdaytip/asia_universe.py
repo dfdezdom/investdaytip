@@ -69,7 +69,7 @@ ASIA_UNIVERSE: list[str] = [
     "012330.KS",  # Hyundai Mobis
     "066570.KS",  # LG Electronics
     "035720.KS",  # Kakao Corp
-    "088980.KS",  # Celltrion
+    "068270.KS",  # Celltrion
     "207940.KS",  # SamsungBio
     "316140.KS",  # Woori Financial Group
     
