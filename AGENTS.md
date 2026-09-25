@@ -29,6 +29,7 @@ the convention is `Optional[...]` for dataclass fields, not `X | None`.
 | Orchestration | `recommender.py` | builds universe, ThreadPoolExecutor fetches, scores, filters, sorts |
 | Data fetching | `data_source.py` | yfinance wrapper, dataclasses (`StockData` / `EtfData` / `AssetData`). **All network I/O lives here.** |
 | Yahooquery data source | `data_source_yahooquery.py` | yahooquery batch wrapper, maps `all_modules` to yfinance-style `info`, yfinance fallback |
+| StockFit PIT source | `data_source_stockfit.py` | StockFit annual statements with `dateFiled` for look-ahead-free backtests (`backtest --pit-source stockfit`) |
 | FMP data source | `data_source_fmp.py` | FMP wrapper, `fetch_asset()` alternative, 4 endpoints/ticker, rate-limit auto-fallback to yfinance |
 | Caching | `cache.py` | SQLite cache with per-thread connections, WAL mode, write lock |
 | Scoring | `scoring.py` | pure functions only — no I/O, no side effects |
@@ -155,6 +156,76 @@ when FMP is unreachable (`URLError`, `OSError`, `http.client.HTTPException`, inv
 - The pre-flight check calls `_get("profile/SPY")` — the mock must include this path
 - `FmpRateLimitError` tests: mock `_get` with `side_effect`, mock `fetch_asset` (yfinance) for the fallback pass
 
+## StockFit PIT Data Source (`backtest --pit-source stockfit`)
+
+Point-in-time fundamentals for the `backtest` subcommand, sourced from
+StockFit (Second Dot LLC, `api.stockfit.io`): SEC annual filings together with
+their acceptance dates (`dateFiled`), so every snapshot uses exactly the data
+that was public on that date instead of a fixed reporting lag.
+
+| Aspect | Value |
+|---|---|
+| Env var | `STOCKFIT_API_KEY` — only required when the flag is used (fail-fast check before any fetch) |
+| CLI | `investdaytip backtest --pit-source stockfit` (choices: `none` (default), `stockfit`) |
+| API param | `run_backtest(..., pit_source="stockfit")` |
+| Endpoints | 3/ticker: `financials/income-statement`, `financials/balance-sheet`, `financials/cash-flow-statement` (`period=annual&limit=12`) |
+| Scope | US-listed **stocks only**; per-ticker soft failure → that ticker falls back to the classic fixed-lag path; if **all** tickers fail the run aborts with an error (never silently degrades) |
+| Rate limit | in-process cross-thread limiter ≈460 req/min (Professional tier = 500/min) |
+| Errors | `StockfitError` / `StockfitRateLimitError` (subclass of the former); HTTP 404 and API `{"error": ...}` → empty series (soft) |
+
+### Key behaviors
+
+- **Entity-stitching auto-fallback** — when the ticker's resolved entity has
+  <3 annual periods (holdco reorgs: XOM resolves to `ExxonMobil Holdings Corp`,
+  CIK 2115436, empty history), `_search_queries()` derives up to 3 search
+  strings from the profile name (full name → first word → camel-split first
+  fragment: "ExxonMobil Holdings Corp" → "Exxon"), queries
+  `lookup/search?includeDelisted=true`, probes ≤5 candidate CIKs
+  (`type == "stock"`, current CIK excluded, deduped) and keeps the **longest**
+  series (XOM → CIK 34088, 12+ FYs). Verified live: `stitched=True`.
+- **Shares fallback** — balance sheets without `sharesOutstanding` (e.g. FLWS
+  reports none) derive basic shares as `netIncome / eps` from the same filing;
+  non-positive results → `None`.
+- **Shared derivation path** — `_build_pit_stock_data()` and
+  `_build_historical_stock_data()` both end in `_derive_stock_data()`, so a
+  PIT-vs-classic comparison changes only the data source, never the math.
+- **Definitional differences vs yfinance** — StockFit `totalDebt` excludes
+  lease liabilities that yfinance's `TotalDebt` includes (AAPL FY2022 D/E:
+  221% vs 261%); StockFit serves 12 FYs where yfinance annual statements cover
+  ~5 with the oldest column often `NaN` — so PIT has real fundamentals at old
+  snapshots where the classic path scores neutral.
+
+### Validation (2026-09-25, before/after on identical configs)
+
+Full US universe, 5y, 3-month intervals, top-5, min-cap 0:
+
+| Metric | classic | PIT | Δ |
+|---|---|---|---|
+| Alpha | 6.85% | 6.54% | −0.31pp (flat) |
+| Sharpe | 0.74 | **0.85** | **+0.11** |
+| Max drawdown | 23.99% | **11.00%** | **−13pp** |
+| Win rate 12M | 50.0% | **56.2%** | **+6.2pp** |
+| Cumulative | 398.9% | 387.4% | −11.5pp |
+
+→ AGENTS "Consider" outcome: risk-adjusted metrics improve, alpha flat →
+shipped as **opt-in** (needs a StockFit key; default path byte-identical).
+A 6-ticker toy subset (`AAPL MSFT GOOGL JPM XOM FLWS`) instead showed a large
+regression (alpha +5.6% → −7.8%) driven by 3 FLWS picks whose *filed* FY2021
+fundamentals looked excellent (PE 14.8, ROE 23%) before a −71% crash —
+subset results dominated by 2-3 value picks are noise; always validate on the
+full universe. In that run classic vs PIT picks were **identical for all
+2024-2025 snapshots** (where yfinance data is complete) and differed only
+2021-2023 (where classic fundamentals are `NaN`/None).
+
+### Testing
+
+- `tests/test_data_source_stockfit_pit.py` — mocks `investdaytip.data_source_stockfit._get`
+  (same pattern as FMP; never HTTP): parsing, happy-path fetch, entity
+  stitching (exact-name and short-query variants), look-ahead gating of
+  `pit_fact_asof`, shares-from-EPS, per-ticker degradation guards, CLI wiring.
+- The XOM reorg is the regression case for stitching; keep the
+  `_search_queries("ExxonMobil Holdings Corp")` assertions green.
+
 ## Conventions & Gotchas
 
 - `from __future__ import annotations` in every annotated module (not in `__init__.py` or universe files)
@@ -210,6 +281,8 @@ when FMP is unreachable (`URLError`, `OSError`, `http.client.HTTPException`, inv
 ### Backtest Module
 - Stocks only (no ETF support); banner says `(stocks only)` at runtime
 - Uses **annual fiscal-year** financial data via `t.income_stmt`, `t.balance_sheet`, `t.cashflow` (yearly properties) — quarterly data (`get_income_stmt(freq="quarterly")`) only returns 5 quarters which is insufficient
+- `--pit-source stockfit` (default `none`) swaps fundamentals for StockFit point-in-time filings — exact `dateFiled` knowledge dates instead of the fixed `--lag-days` assumption; see the StockFit section. Per-ticker degradation to classic; aborts if every ticker fails.
+- Classic and PIT builders share `_derive_stock_data()` — the math is identical, only the input selection differs
 - Internal dict key is `cash_flow` (underscore), matching the cache key; yfinance property is `t.cashflow` (no underscore) — cache read uses `"cash_flow"` to match the write
 - `--cache-clear` and `--no-cache` flags are supported on the backtest subcommand (cache is disabled by default during backtest for reproducibility)
 - Progress bar uses `TimeElapsedColumn` (not default `TimeRemainingColumn`) so elapsed time counts up and never resets to 0
