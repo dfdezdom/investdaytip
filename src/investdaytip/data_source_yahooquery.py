@@ -346,7 +346,7 @@ def _fetch_batch_chunk(tickers: list[str]) -> dict[str, AssetData]:
             info = cached_info
             quote_type = (info.get("quoteType") or "").upper()
             if quote_type == "ETF":
-                data = _fetch_etf(tk, info, history)
+                data: AssetData = _fetch_etf(tk, info, history)
             else:
                 data = _fetch_stock(tk, info, history)
             results[tk] = data
