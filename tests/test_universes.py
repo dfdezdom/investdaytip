@@ -67,3 +67,18 @@ def test_asia_etf_invalid_symbols_removed():
 def test_no_duplicate_alphabet_in_superinvestor():
     assert "GOOG" not in SUPERINVESTOR_UNIVERSE, "GOOG should be merged into GOOGL"
     assert "GOOGL" in SUPERINVESTOR_UNIVERSE
+
+
+def test_delisted_and_renamed_symbols_removed():
+    """Symbols Yahoo no longer resolves — regression guard (verified 2026-09-25).
+
+    Both were caught by a full-universe sweep against the Yahoo chart endpoint:
+    they return a one-key ``info`` dict and an empty history.
+    """
+    # SPLG was renamed SPYM on 2025-10-31 (State Street rebrand).
+    assert "SPLG" not in DEFAULT_ETF_UNIVERSE
+    assert "SPYM" in DEFAULT_ETF_UNIVERSE
+
+    # CRH plc delisted from London and Dublin; it trades on NYSE as CRH.
+    assert "CRH.L" not in DEFAULT_EU_UNIVERSE
+    assert "CRH" in DEFAULT_UNIVERSE

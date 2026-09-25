@@ -121,6 +121,7 @@ def _exchange_mapping(ticker: str, exchange_hint: str | None = None) -> tuple[st
   us_overrides = {
     # Unsuffixed US tickers are ambiguous; these overrides fix known NYSE symbols.
     "HWM": ("NYSE", "NYSE"),
+    "CRH": ("NYSE", "NYSE"),
   }
   if suffix == "" and base in us_overrides:
     return us_overrides[base]

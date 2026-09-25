@@ -459,7 +459,30 @@ for idx in ['^VIX', '^VXN', '^TNX', '2YY=F', '^MOVE', 'DX-Y.NYB']:
     assert not yf.Ticker(idx).history(period='5d').empty
 ```
 
-**Last verified: 2025-06-06** — All fields present and functional.
+**Last verified: 2026-09-25** — All fields present and functional. Findings from that run:
+
+- `annualReportExpenseRatio` is now `None` in yfinance `info` — `netExpenseRatio` is the field that actually resolves (the `_first()` chain in `_fetch_etf()` covers it, so ETF expense ratios still work).
+- `funds_data.fund_overview` now only returns `categoryName`, `family`, `legalType`, so the expense-ratio backfill inside `_enrich_etf_info()` is dead code (harmless — guarded and only reached when both `info` fields are missing).
+
+### Dead-ticker sweep
+
+Besides the field checks, run a full-universe sweep to catch delisted/renamed symbols — a dead ticker returns a **one-key `info` dict** (`{"trailingPegRatio": None}`) and an **empty history**:
+
+```python
+import yfinance as yf
+# batch of 60; a live ticker has >= 1 non-NaN Close row
+data = yf.download(tickers, period="5d", group_by="ticker", progress=False)
+dead = [t for t in tickers if data[t]["Close"].dropna().empty]
+```
+
+**Last sweep (2026-09-25, 383 unique tickers across all 7 universes): 2 dead, both fixed.**
+
+| Symbol | Problem | Replacement |
+|---|---|---|
+| `SPLG` (US ETF universe) | renamed **2025-10-31** (State Street rebrand); Yahoo returns 404 on the chart endpoint | `SPYM` (expense ratio also dropped 0.03 → 0.02) |
+| `CRH.L` (EU universe) | CRH plc delisted from **London and Dublin**; only NYSE listing survives | `CRH` — moved to the **US** universe (S&P 500 member since sep-2024), plus a `us_overrides` entry in `html_export._exchange_mapping()` |
+
+`tests/test_universes.py::test_delisted_and_renamed_symbols_removed` guards both.
 
 ## `get_recommendations()` — Programmatic API
 ```python

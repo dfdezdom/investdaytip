@@ -18,7 +18,7 @@ DEFAULT_UNIVERSE: list[str] = [
     "ALL", "AXP", "BAC", "BLK", "GS", "JPM", "MA", "MS",
     "SEZL", "THG", "UVE", "V", "WFC",
     # Industrials / Energy / Materials
-    "BA", "CAT", "CSTM", "CVX", "GE", "HON", "IAG",
+    "BA", "CAT", "CRH", "CSTM", "CVX", "GE", "HON", "IAG",
     "LIN", "SHIP", "UPS", "XOM",
     # Communications / Utilities / Real Estate
     "NFLX", "T", "VZ", "NEE", "AMT",
