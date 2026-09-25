@@ -82,3 +82,16 @@ def test_delisted_and_renamed_symbols_removed():
     # CRH plc delisted from London and Dublin; it trades on NYSE as CRH.
     assert "CRH.L" not in DEFAULT_EU_UNIVERSE
     assert "CRH" in DEFAULT_UNIVERSE
+
+    # Wrong-symbol guard: 088980.KS is the Macquarie Korea Infrastructure
+    # Fund, not Celltrion — the correct code is 068270.KS.
+    assert "088980.KS" not in ASIA_UNIVERSE
+    assert "068270.KS" in ASIA_UNIVERSE
+
+    # SGOV is a 0-3 month Treasury ETF, not an equity — it does not belong in
+    # the superinvestor *stock* universe.
+    assert "SGOV" not in SUPERINVESTOR_UNIVERSE
+
+    # The US universe is documented as large-cap; these trade below $3B.
+    for small in ("SHIP", "UVE", "INVA", "AUPH", "AVAH"):
+        assert small not in DEFAULT_UNIVERSE

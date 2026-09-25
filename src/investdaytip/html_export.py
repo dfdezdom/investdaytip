@@ -36,7 +36,7 @@ def infer_region_from_ticker(ticker: str) -> str:
     """
     upper = ticker.upper()
     suffix = upper.rsplit(".", 1)[-1] if "." in upper else ""
-    eu_suffixes = {"DE", "F", "PA", "AS", "L", "MC", "MI", "SW", "ST", "CO", "HE", "OL"}
+    eu_suffixes = {"DE", "F", "PA", "AS", "L", "MC", "MI", "SW", "ST", "CO", "HE", "OL", "BR"}
     asia_suffixes = {"T", "HK", "SI", "NS", "KS", "TW", "AX", "SS", "SZ"}
     if suffix in eu_suffixes:
         return "eu"
@@ -140,6 +140,7 @@ def _exchange_mapping(ticker: str, exchange_hint: str | None = None) -> tuple[st
     "CO": ("CPH", "OMXCOP"),
     "HE": ("HEL", "OMXHEX"),
     "OL": ("OSL", "OSL"),
+    "BR": ("BRU", "EURONEXT"),
     "T": ("TYO", "TSE"),
     "HK": ("HKG", "HKEX"),
     "SI": ("SGX", "SGX"),
