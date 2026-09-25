@@ -34,6 +34,13 @@ from investdaytip.data_source import (
     _technical_indicators,
     _trend_metrics,
 )
+from investdaytip.data_source_stockfit import (
+    PitStatements,
+    StockfitError,
+    check_api_key,
+    fetch_pit_statements,
+    pit_fact_asof,
+)
 from investdaytip.recommender import _build_universe
 from investdaytip.scoring import ScoredAsset, resolve_include_technical, score_stock
 
@@ -395,24 +402,31 @@ def _compute_historical_eps_surprise(
     return _compute_eps_surprise(filtered, lookback_quarters)
 
 
-def _build_historical_stock_data(
-    ticker: str,
-    info: dict,
-    price_history: pd.DataFrame,
-    snapshot_date: datetime,
-    balance_sheet: pd.DataFrame,
-    income_stmt: pd.DataFrame,
-    cash_flow: pd.DataFrame,
-    dividends: pd.Series,
-    quarter_date: datetime,
-    earnings_dates: pd.DataFrame | None = None,
-    reporting_lag_days: int = 60,
-) -> StockData:
-    """Build a ``StockData`` instance using only data available at *snapshot_date*.
+@dataclass
+class _Fundamentals:
+    """Raw fundamental inputs shared by the classic and PIT snapshot builders."""
 
-    Fundamental metrics are sourced from **annual** (fiscal-year) financial
-    statements.  For each metric the value at the most recent fiscal year
-    ending on or before *quarter_date* is used.
+    ni: Optional[float] = None
+    rev: Optional[float] = None
+    eps: Optional[float] = None
+    ni_prev: Optional[float] = None
+    rev_prev: Optional[float] = None
+    equity: Optional[float] = None
+    total_assets: Optional[float] = None
+    total_debt: Optional[float] = None
+    curr_assets: Optional[float] = None
+    curr_liab: Optional[float] = None
+    shares: Optional[float] = None
+    fcf: Optional[float] = None
+
+
+def _snapshot_price_trend(
+    price_history: pd.DataFrame, snapshot_date: datetime
+) -> tuple[Optional[float], tuple, Optional[float], Optional[float]]:
+    """Price, trend metrics, RSI-14 and MACD histogram at *snapshot_date*.
+
+    Returns ``(price, trend, rsi_14, macd_histogram)`` where ``trend`` is the
+    6-tuple from :func:`_trend_metrics` (all-``None`` when unavailable).
     """
     # Price at snapshot
     close = price_history["Close"].dropna()
@@ -424,33 +438,43 @@ def _build_historical_stock_data(
     # ── Trend metrics from history slice ──
     hist_slice = price_history.loc[:pd.Timestamp(snapshot_date)].copy()
     trend = _trend_metrics(hist_slice)
-    price_vs_sma200, return_1m, return_12m, sma200_slope, _vol, daily_change = (
-        trend if trend else (None, None, None, None, None, None)
-    )
+    trend_vals = trend if trend else (None, None, None, None, None, None)
     rsi_14, macd_histogram = _technical_indicators(
         hist_slice["Close"].dropna()
     ) if "Close" in hist_slice else (None, None)
+    return price, trend_vals, rsi_14, macd_histogram
 
-    # ── Fundamental metrics from annual fiscal-year data ──
-    ni = _latest_value_before(income_stmt, quarter_date, "NetIncome")
-    rev = _latest_value_before(income_stmt, quarter_date, "TotalRevenue")
-    eps = _latest_value_before(income_stmt, quarter_date, "BasicEPS")
 
-    # YoY growth (compare with previous fiscal year)
-    ni_prev = _value_n_years_before(income_stmt, quarter_date, "NetIncome", n=1)
-    rev_prev = _value_n_years_before(income_stmt, quarter_date, "TotalRevenue", n=1)
+def _derive_stock_data(
+    ticker: str,
+    info: dict,
+    price: Optional[float],
+    trend_vals: tuple,
+    rsi_14: Optional[float],
+    macd_histogram: Optional[float],
+    fund: _Fundamentals,
+    ttm_div: Optional[float],
+    eps_surprise: Optional[float],
+) -> StockData:
+    """Derive ``StockData`` metrics from raw fundamentals.
 
-    earnings_growth = _pct_change(ni, ni_prev)
-    revenue_growth = _pct_change(rev, rev_prev)
+    Single derivation path shared by the classic (fixed reporting-lag) and
+    StockFit point-in-time snapshot builders — a data-source comparison
+    only changes the inputs, never the math.
+    """
+    price_vs_sma200, return_1m, return_12m, sma200_slope, _vol, daily_change = trend_vals
 
-    equity = _balance_sheet_value(balance_sheet, quarter_date, "StockholdersEquity")
-    total_assets = _balance_sheet_value(balance_sheet, quarter_date, "TotalAssets")
-    total_debt = _balance_sheet_value(balance_sheet, quarter_date, "TotalDebt")
-    curr_assets = _balance_sheet_value(balance_sheet, quarter_date, "CurrentAssets")
-    curr_liab = _balance_sheet_value(balance_sheet, quarter_date, "CurrentLiabilities")
-    shares = _balance_sheet_value(balance_sheet, quarter_date, "OrdinarySharesNumber")
+    ni, rev, eps = fund.ni, fund.rev, fund.eps
+    equity = fund.equity
+    total_assets = fund.total_assets
+    total_debt = fund.total_debt
+    curr_assets = fund.curr_assets
+    curr_liab = fund.curr_liab
+    shares = fund.shares
+    fcf = fund.fcf
 
-    fcf = _latest_value_before(cash_flow, quarter_date, "FreeCashFlow")
+    earnings_growth = _pct_change(ni, fund.ni_prev)
+    revenue_growth = _pct_change(rev, fund.rev_prev)
 
     # Debt/Equity: yfinance reports as percentage, divide by 100.
     # Negative equity makes the ratio meaningless (and sign flips can clamp
@@ -497,21 +521,15 @@ def _build_historical_stock_data(
     # Market cap
     market_cap = (price * shares) if (price and shares) else None
 
-    # Dividend yield (TTM)
-    ttm_div = _ttm_dividends(
-        dividends,
-        quarter_date - timedelta(days=365),
-        quarter_date,
+    # Dividend yield (TTM) — the TTM window is chosen by the caller
+    # (quarter_date for the classic path, snapshot_date for PIT).
+    dividend_yield = (
+        (ttm_div / price) if (ttm_div is not None and price and price > 0) else None
     )
-    dividend_yield = (ttm_div / price) if (price and price > 0) else None
 
     # Payout ratio
     payout_ratio = (
         (ttm_div / eps) if (ttm_div and eps and eps != 0) else None
-    )
-
-    eps_surprise = _compute_historical_eps_surprise(
-        earnings_dates, snapshot_date, reporting_lag_days
     )
 
     return StockData(
@@ -546,6 +564,116 @@ def _build_historical_stock_data(
         macd_histogram=macd_histogram,
     )
 
+
+def _build_historical_stock_data(
+    ticker: str,
+    info: dict,
+    price_history: pd.DataFrame,
+    snapshot_date: datetime,
+    balance_sheet: pd.DataFrame,
+    income_stmt: pd.DataFrame,
+    cash_flow: pd.DataFrame,
+    dividends: pd.Series,
+    quarter_date: datetime,
+    earnings_dates: pd.DataFrame | None = None,
+    reporting_lag_days: int = 60,
+) -> StockData:
+    """Build a ``StockData`` instance using only data available at *snapshot_date*.
+
+    Fundamental metrics are sourced from **annual** (fiscal-year) financial
+    statements.  For each metric the value at the most recent fiscal year
+    ending on or before *quarter_date* is used.
+    """
+    price, trend_vals, rsi_14, macd_histogram = _snapshot_price_trend(
+        price_history, snapshot_date
+    )
+
+    fund = _Fundamentals(
+        ni=_latest_value_before(income_stmt, quarter_date, "NetIncome"),
+        rev=_latest_value_before(income_stmt, quarter_date, "TotalRevenue"),
+        eps=_latest_value_before(income_stmt, quarter_date, "BasicEPS"),
+        # YoY growth (compare with previous fiscal year)
+        ni_prev=_value_n_years_before(income_stmt, quarter_date, "NetIncome", n=1),
+        rev_prev=_value_n_years_before(income_stmt, quarter_date, "TotalRevenue", n=1),
+        equity=_balance_sheet_value(balance_sheet, quarter_date, "StockholdersEquity"),
+        total_assets=_balance_sheet_value(balance_sheet, quarter_date, "TotalAssets"),
+        total_debt=_balance_sheet_value(balance_sheet, quarter_date, "TotalDebt"),
+        curr_assets=_balance_sheet_value(balance_sheet, quarter_date, "CurrentAssets"),
+        curr_liab=_balance_sheet_value(balance_sheet, quarter_date, "CurrentLiabilities"),
+        shares=_balance_sheet_value(balance_sheet, quarter_date, "OrdinarySharesNumber"),
+        fcf=_latest_value_before(cash_flow, quarter_date, "FreeCashFlow"),
+    )
+
+    ttm_div = _ttm_dividends(
+        dividends,
+        quarter_date - timedelta(days=365),
+        quarter_date,
+    )
+    eps_surprise = _compute_historical_eps_surprise(
+        earnings_dates, snapshot_date, reporting_lag_days
+    )
+    return _derive_stock_data(
+        ticker, info, price, trend_vals, rsi_14, macd_histogram,
+        fund, ttm_div, eps_surprise,
+    )
+
+
+def _build_pit_stock_data(
+    ticker: str,
+    info: dict,
+    price_history: pd.DataFrame,
+    snapshot_date: datetime,
+    pit: PitStatements,
+    dividends: pd.Series,
+    earnings_dates: pd.DataFrame | None = None,
+    reporting_lag_days: int = 60,
+) -> StockData:
+    """Build a ``StockData`` instance from StockFit point-in-time statements.
+
+    Every fundamental value comes from the latest annual period whose SEC
+    filing was accepted on or before *snapshot_date* — exact availability
+    dates instead of a fixed reporting-lag assumption.  *reporting_lag_days*
+    only affects the EPS-surprise window (yfinance earnings dates).
+    """
+    price, trend_vals, rsi_14, macd_histogram = _snapshot_price_trend(
+        price_history, snapshot_date
+    )
+
+    ni, ni_prev = pit_fact_asof(pit.income, "netIncome", snapshot_date)
+    rev, rev_prev = pit_fact_asof(pit.income, "revenue", snapshot_date)
+    eps = pit_fact_asof(pit.income, "eps", snapshot_date)[0]
+    equity = pit_fact_asof(pit.balance, "stockholdersEquity", snapshot_date)[0]
+    total_assets = pit_fact_asof(pit.balance, "assets", snapshot_date)[0]
+    total_debt = pit_fact_asof(pit.balance, "totalDebt", snapshot_date)[0]
+    curr_assets = pit_fact_asof(pit.balance, "currentAssets", snapshot_date)[0]
+    curr_liab = pit_fact_asof(pit.balance, "currentLiabilities", snapshot_date)[0]
+    shares = pit_fact_asof(pit.balance, "sharesOutstanding", snapshot_date)[0]
+    fcf = pit_fact_asof(pit.cash_flow, "freeCashFlow", snapshot_date)[0]
+
+    if shares is None and ni is not None and eps:
+        # Some filers (e.g. FLWS) report no share count on the balance sheet.
+        # Derive basic shares from the same filing: net income / basic EPS.
+        derived_shares = ni / eps
+        shares = derived_shares if derived_shares > 0 else None
+
+    fund = _Fundamentals(
+        ni=ni, rev=rev, eps=eps, ni_prev=ni_prev, rev_prev=rev_prev,
+        equity=equity, total_assets=total_assets, total_debt=total_debt,
+        curr_assets=curr_assets, curr_liab=curr_liab, shares=shares, fcf=fcf,
+    )
+
+    ttm_div = _ttm_dividends(
+        dividends,
+        snapshot_date - timedelta(days=365),
+        snapshot_date,
+    )
+    eps_surprise = _compute_historical_eps_surprise(
+        earnings_dates, snapshot_date, reporting_lag_days
+    )
+    return _derive_stock_data(
+        ticker, info, price, trend_vals, rsi_14, macd_histogram,
+        fund, ttm_div, eps_surprise,
+    )
 
 
 def _pct_change(current: Optional[float], previous: Optional[float]) -> Optional[float]:
@@ -738,6 +866,48 @@ def _fetch_all_data(
     return all_data
 
 
+def _fetch_pit_statements(
+    tickers: list[str],
+    max_workers: int = 6,
+) -> dict[str, PitStatements]:
+    """Fetch StockFit point-in-time statements for all tickers in parallel.
+
+    Per-ticker soft failures are logged and skipped (the snapshot loop then
+    falls back to the classic fixed-lag path for that ticker).  If *every*
+    ticker fails, raises :exc:`StockfitError` so a silent full degradation
+    can never masquerade as a PIT run.
+    """
+    pit_data: dict[str, PitStatements] = {}
+    failures: list[str] = []
+    total = len(tickers)
+    workers = max(1, min(max_workers, 6))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(fetch_pit_statements, t): t for t in tickers}
+        for future in as_completed(futures):
+            t = futures[future]
+            try:
+                stmts = future.result()
+                if stmts.income:
+                    pit_data[t] = stmts
+                else:
+                    logger.warning("No StockFit PIT statements for %s", t)
+                    failures.append(t)
+            except StockfitError as exc:
+                logger.warning("StockFit PIT fetch failed for %s: %s", t, exc)
+                failures.append(t)
+    if total and not pit_data:
+        raise StockfitError(
+            f"StockFit PIT fetch failed for all {total} tickers "
+            f"(last failure: {failures[:3]})"
+        )
+    if failures:
+        logger.info(
+            "StockFit PIT: %d/%d tickers unavailable (using classic path for them)",
+            len(failures), total,
+        )
+    return pit_data
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 
@@ -757,6 +927,7 @@ def run_backtest(
     on_progress: Callable[[str, int, int], None] | None = None,
     include_technical: bool | None = None,
     scoring_model: str = "quant",
+    pit_source: str | None = None,
 ) -> BacktestResult:
     """Run a historical backtest of the stock scoring model.
 
@@ -790,12 +961,25 @@ def run_backtest(
         ``True`` for ``"quant"`` and ``False`` for ``"classic"``.
     scoring_model:
         ``"quant"`` (default) or ``"classic"``.
+    pit_source:
+        ``None`` (default) or ``"none"`` for the classic fixed reporting-lag
+        path; ``"stockfit"`` sources fundamentals from StockFit point-in-time
+        SEC filings (exact ``dateFiled`` knowledge dates instead of a fixed
+        lag, US stocks only).  Requires ``STOCKFIT_API_KEY``.
 
     Returns
     -------
     BacktestResult with per-snapshot picks and aggregate metrics.
     """
     include_technical = resolve_include_technical(include_technical, scoring_model)
+
+    if pit_source == "none":
+        pit_source = None
+    if pit_source not in (None, "stockfit"):
+        raise ValueError(f"Unsupported pit_source: {pit_source!r}")
+    if pit_source == "stockfit":
+        # Fail fast before any fetch work starts.
+        check_api_key()
 
     if min_market_cap is None:
         min_market_cap = 0.0 if tickers is not None else 2_000_000_000.0
@@ -829,6 +1013,19 @@ def run_backtest(
         # Fetch all data
         all_tickers = list(set(universe + [benchmark]))
         data = _fetch_all_data(all_tickers, period, max_workers, on_progress=on_progress)
+
+        # Point-in-time fundamentals (StockFit): exact filing dates per
+        # snapshot instead of a fixed reporting-lag assumption.
+        pit_data: dict[str, PitStatements] = {}
+        if pit_source == "stockfit":
+            try:
+                pit_data = _fetch_pit_statements(universe, max_workers)
+            except StockfitError as exc:
+                return BacktestResult(snapshots=[], errors=[f"StockFit PIT: {exc}"])
+            logger.info(
+                "StockFit PIT enabled: statements for %d/%d tickers",
+                len(pit_data), len(universe),
+            )
 
         bench_history = data.get(benchmark, {}).get("history")
         if bench_history is None or bench_history.empty:
@@ -887,19 +1084,32 @@ def run_backtest(
                 divs = td.get("dividends", pd.Series(dtype=float))
                 ed = td.get("earnings_dates")
 
-                sd_obj = _build_historical_stock_data(
-                    ticker=t,
-                    info=info,
-                    price_history=hist,
-                    snapshot_date=sd,
-                    balance_sheet=bs,
-                    income_stmt=inc,
-                    cash_flow=cf,
-                    dividends=divs,
-                    quarter_date=quarter_date,
-                    earnings_dates=ed,
-                    reporting_lag_days=reporting_lag_days,
-                )
+                pit = pit_data.get(t)
+                if pit is not None:
+                    sd_obj = _build_pit_stock_data(
+                        ticker=t,
+                        info=info,
+                        price_history=hist,
+                        snapshot_date=sd,
+                        pit=pit,
+                        dividends=divs,
+                        earnings_dates=ed,
+                        reporting_lag_days=reporting_lag_days,
+                    )
+                else:
+                    sd_obj = _build_historical_stock_data(
+                        ticker=t,
+                        info=info,
+                        price_history=hist,
+                        snapshot_date=sd,
+                        balance_sheet=bs,
+                        income_stmt=inc,
+                        cash_flow=cf,
+                        dividends=divs,
+                        quarter_date=quarter_date,
+                        earnings_dates=ed,
+                        reporting_lag_days=reporting_lag_days,
+                    )
 
                 # Apply min market cap filter
                 if min_market_cap > 0 and (

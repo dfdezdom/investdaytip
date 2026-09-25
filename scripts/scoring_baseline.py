@@ -45,6 +45,8 @@ def _run_backtest(args: argparse.Namespace) -> dict[str, Any]:
         cmd.append("--include-technical")
     if args.scoring_model != "classic":
         cmd.extend(["--scoring-model", args.scoring_model])
+    if args.pit_source != "none":
+        cmd.extend(["--pit-source", args.pit_source])
 
     # Run in temp dir so HTML file is captured
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -73,6 +75,7 @@ def _run_backtest(args: argparse.Namespace) -> dict[str, Any]:
                 "dynamic_weights": args.dynamic_weights,
                 "regime": args.regime,
                 "scoring_model": args.scoring_model,
+                "pit_source": args.pit_source,
             },
             "html_file": html_file,
         }
@@ -192,6 +195,8 @@ def main() -> None:
     run.add_argument("--include-technical", action="store_true")
     run.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",
                      help="Scoring model to use (default: quant).")
+    run.add_argument("--pit-source", choices=["none", "stockfit"], default="none",
+                     help="Point-in-time fundamentals via StockFit (default: none).")
     run.add_argument("-o", "--output", default=".")
 
     cmp = sub.add_parser("compare", help="Compare two baseline JSON files")

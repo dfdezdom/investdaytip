@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import importlib.metadata
 import logging
+import os
 import re
 import sys
 from datetime import datetime
@@ -270,12 +271,23 @@ def _run_backtest_cli(args: argparse.Namespace) -> int:
             f"[red]--interval-months must be >= 1 (got {args.interval_months}).[/red]"
         )
         return 2
+    if args.pit_source == "stockfit" and not os.environ.get("STOCKFIT_API_KEY"):
+        console.print(
+            "[red]--pit-source stockfit requires the STOCKFIT_API_KEY "
+            "environment variable.[/red]"
+        )
+        console.print("Get a free key at https://developer.stockfit.io and export it:")
+        console.print("  export STOCKFIT_API_KEY=<your-key>")
+        return 1
     region_str = ", ".join(args.region) if isinstance(args.region, list) else args.region
+    pit_str = (
+        ", PIT [italic]stockfit[/italic]" if args.pit_source == "stockfit" else ""
+    )
     console.print(
         f"[bold cyan]InvestDayTip Backtest[/bold cyan] — "
         f"region [italic]{region_str}[/italic], "
         f"top [italic]{args.top}[/italic], "
-        f"period [italic]{args.period}[/italic] "
+        f"period [italic]{args.period}[/italic]{pit_str} "
         f"([italic]stocks only[/italic])...\n"
     )
 
@@ -337,6 +349,7 @@ def _run_backtest_cli(args: argparse.Namespace) -> int:
             on_progress=on_progress,
             include_technical=args.include_technical,
             scoring_model=args.scoring_model,
+            pit_source=args.pit_source,
         )
 
     # ── Console summary ──
@@ -541,6 +554,10 @@ def main(argv: list[str] | None = None) -> int:
                          default=None, help="Exclude RSI and MACD from scoring.")
     bt.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",
                     help="Scoring model to use (default: quant).")
+    bt.add_argument("--pit-source", choices=["none", "stockfit"], default="none",
+                    help="Point-in-time fundamental source: stockfit uses exact SEC "
+                         "filing dates instead of a fixed reporting lag "
+                         "(requires STOCKFIT_API_KEY; default: none).")
 
     main_grp = parser.add_argument_group("Main options")
     main_grp.add_argument("-n", "--top", type=int, default=None,
