@@ -495,9 +495,9 @@ Rank every ticker by **USD market cap** and **3-month average daily turnover** (
 |---|---|---|---|
 | US / EU / Asia / superinvestor stocks | 121 / 99 / 110 / 101 | $170B / $73B / $60B / $82B | none |
 | EU ETFs | 38 → 35 | $8.1B | `QANT.L`, `XLES.L`, `XSEN.L` |
-| Asia ETFs | 18 → 16 | $6.3B | `ASEA`, `CXSE` |
+| Asia ETFs | 18 → 17 | $6.3B | `ASEA`, `CXSE` |
 
-- Removal criterion for ETFs: **AUM < $500M AND turnover < $1M/day**; index/style coverage survives (`IUES.L`, `QNTM.L`, `FXI`, `MCHI`). Guarded by `tests/test_universes.py::test_micro_etfs_removed`.
+- Removal criterion for ETFs: **AUM < $500M AND turnover < $1M/day**; index/style coverage survives (`IUES.L`, `QNTM.L`, `FXI`, `MCHI`) and `EWS` replaced `ASEA` as the Southeast Asia representative ($1.25B AUM / $35M per day). Guarded by `tests/test_universes.py::test_micro_etfs_removed`.
 - Stocks stay: the three under the $15M/day bar (`RO.SW`, `UHAL`, `KOF`) are mega/large caps — Yahoo just under-reports SIX volume.
 - **13 EU UCITS ETFs (`CSPX.AS`, `IWDA.AS`, `EUNL.DE`, `SXR8.DE`, `EQQQ.L`, …) return no `totalAssets`** — they are large iShares/Vanguard funds, a Yahoo data gap (their Size factor scores neutral), **not** irrelevance. Never flag them again; fall back to `sharesOutstanding × navPrice` when `totalAssets` is missing.
 

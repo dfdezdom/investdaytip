@@ -511,7 +511,7 @@ When no `-t` is given, InvestDayTip uses curated universes:
 - **EU stocks** — 99 large-caps from DAX, CAC, FTSE 100, IBEX, AEX, SMI, FTSE MIB, Nordics (`eu_universe.py`)
 - **EU UCITS ETFs** — 35 broad, sector and bond UCITS ETFs (`eu_etf_universe.py`)
 - **Asia stocks** — 110 large-caps from Japan, Hong Kong, Singapore, India, South Korea, Taiwan, and Australia (`asia_universe.py`)
-- **Asia ETFs** — 16 broad-market, country-specific, and sector ETFs with significant Asian exposure (`asia_etf_universe.py`)
+- **Asia ETFs** — 17 broad-market, country-specific, and sector ETFs with significant Asian exposure (`asia_etf_universe.py`)
 - **Superinvestor stocks** — 101 consensus picks held by ≥2 of ~82 top investors tracked by DataRoma 13F filings (`superinvestor_universe.py`)
 
 Tickers use Yahoo Finance suffixes: 
