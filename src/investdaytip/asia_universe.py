@@ -1,7 +1,7 @@
 """Default universe of large-cap, liquid Asian stocks across regions and sectors.
 
 Used when the user requests the Asia region. Curated to give the multi-factor
-model a diverse pool for long-term candidates across major Asian exchanges.
+model a diverse pool of long-term candidates across major Asian exchanges.
 """
 
 ASIA_UNIVERSE: list[str] = [
@@ -21,7 +21,17 @@ ASIA_UNIVERSE: list[str] = [
     "8031.T",  # Mitsui Fudosan
     "8725.T",  # Tokyu Land
     "9432.T",  # Nippon Telegraph & Telephone
-    
+    "8035.T",  # Tokyo Electron
+    "6501.T",  # Hitachi
+    "9983.T",  # Fast Retailing (Uniqlo)
+    "7974.T",  # Nintendo
+    "6981.T",  # Murata Manufacturing
+    "4063.T",  # Shin-Etsu Chemical
+    "6752.T",  # Panasonic Holdings
+    "6367.T",  # Daikin Industries
+    "6954.T",  # Fanuc
+    "8001.T",  # ITOCHU
+
     # Hong Kong (.HK)
     "0001.HK",  # CKH Holdings
     "3690.HK",  # Meituan
@@ -36,7 +46,13 @@ ASIA_UNIVERSE: list[str] = [
     "9618.HK",  # JD.com
     "9901.HK",  # New Oriental Education
     "0388.HK",  # HKEX
-    
+    "0005.HK",  # HSBC Holdings (alias → HSBA.L when pools merge)
+    "1398.HK",  # Industrial and Commercial Bank of China
+    "0939.HK",  # China Construction Bank
+    "3988.HK",  # Bank of China
+    "9999.HK",  # NetEase
+    "9888.HK",  # Baidu
+
     # Singapore (.SI)
     "D05.SI",  # DBS Group Holdings
     "O39.SI",  # OCBC Bank
@@ -46,7 +62,7 @@ ASIA_UNIVERSE: list[str] = [
     "Z74.SI",  # Singtel
     "BS6.SI",  # Genting Singapore
     "S68.SI",  # Singapore Exchange
-    
+
     # India (NSE .NS and BSE .BO)
     "RELIANCE.NS",  # Reliance Industries
     "TCS.NS",  # Tata Consultancy Services
@@ -60,7 +76,15 @@ ASIA_UNIVERSE: list[str] = [
     "ICICIBANK.NS",  # ICICI Bank
     "NESTLEIND.NS",  # Nestlé India
     "SUNPHARMA.NS",  # Sun Pharmaceutical
-    
+    "HINDUNILVR.NS",  # Hindustan Unilever
+    "SBIN.NS",  # State Bank of India
+    "BHARTIARTL.NS",  # Bharti Airtel
+    "LT.NS",  # Larsen & Toubro
+    "KOTAKBANK.NS",  # Kotak Mahindra Bank
+    "BAJFINANCE.NS",  # Bajaj Finance
+    "TITAN.NS",  # Titan Company
+    "NTPC.NS",  # NTPC
+
     # South Korea (.KS)
     "005930.KS",  # Samsung Electronics
     "000660.KS",  # SK Hynix
@@ -72,7 +96,11 @@ ASIA_UNIVERSE: list[str] = [
     "068270.KS",  # Celltrion
     "207940.KS",  # SamsungBio
     "316140.KS",  # Woori Financial Group
-    
+    "028260.KS",  # Samsung C&T
+    "006400.KS",  # Samsung SDI
+    "035420.KS",  # NAVER
+    "096770.KS",  # SK Innovation
+
     # Taiwan (.TW)
     "2330.TW",  # Taiwan Semiconductor Manufacturing Company
     "2454.TW",  # MediaTek
@@ -82,7 +110,10 @@ ASIA_UNIVERSE: list[str] = [
     "2892.TW",  # First Financial Holding
     "3711.TW",  # ASE Technology Holding
     "1605.TW",  # TSRC Corporation
-    
+    "2317.TW",  # Hon Hai Precision (Foxconn)
+    "2308.TW",  # Delta Electronics
+    "2303.TW",  # United Microelectronics
+
     # Australia (.AX)
     "CBA.AX",  # Commonwealth Bank of Australia
     "WBC.AX",  # Westpac Banking Corporation
@@ -94,4 +125,7 @@ ASIA_UNIVERSE: list[str] = [
     "CSL.AX",  # CSL
     "IAG.AX",  # Insurance Australia Group
     "MQG.AX",  # Macquarie Group
+    "FMG.AX",  # Fortescue
+    "WDS.AX",  # Woodside Energy
+    "RMD.AX",  # ResMed
 ]

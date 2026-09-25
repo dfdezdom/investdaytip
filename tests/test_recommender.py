@@ -61,6 +61,15 @@ class TestBuildUniverse:
         assert "ASML" in u
         assert "ASML.AS" not in u
 
+    def test_hsbc_alias_multi_region(self):
+        """0005.HK (Asia) collapses into HSBA.L (EU) when pools merge."""
+        u = _build_universe(None, "stocks", ["eu", "asia"], "all")
+        assert "HSBA.L" in u
+        assert "0005.HK" not in u
+        # A single region keeps its local listing.
+        asia = _build_universe(None, "stocks", "asia", "all")
+        assert "0005.HK" in asia
+
     def test_unknown_currency_keeps_all_regions(self):
         u_all = _build_universe(None, "stocks", "all", "all")
         u_unknown = _build_universe(None, "stocks", "all", "ZZZ")

@@ -52,6 +52,7 @@ _TICKER_ALIASES: dict[str, str] = {
     "RACE.MI": "RACE",   # Ferrari
     "RIO.AX": "RIO.L",   # Rio Tinto (ASX → LSE)
     "ASML.AS": "ASML",   # ASML (Euronext → NASDAQ ADR)
+    "0005.HK": "HSBA.L",  # HSBC Holdings (HK listing → LSE)
 }
 
 

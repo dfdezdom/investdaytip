@@ -170,6 +170,7 @@ when FMP is unreachable (`URLError`, `OSError`, `http.client.HTTPException`, inv
 - `ScoredAsset` unified output; `ScoredStock = ScoredAsset` backwards-compatible alias
 - Universe export naming: US + EU use `DEFAULT_` prefix (`DEFAULT_UNIVERSE`, `DEFAULT_EU_ETF_UNIVERSE`), Asia does not (`ASIA_UNIVERSE`, `ASIA_ETF_UNIVERSE`), Superinvestor uses `SUPERINVESTOR_UNIVERSE`
 - `_build_universe()` accepts `currency` param; when `currency != "all"` and `region == "all"`, it derives region from currency (USD→us, EUR→eu, JPY→asia) to reduce API calls. It deduplicates the merged pools case-insensitively (overlapping universes share tickers like `VXUS`/`IEMG`)
+- `_TICKER_ALIASES` in `recommender.py` maps a secondary listing to its canonical symbol (`2330.TW→TSM`, `9988.HK→BABA`, `RACE.MI→RACE`, `RIO.AX→RIO.L`, `ASML.AS→ASML`, `0005.HK→HSBA.L`). It is applied **only** when more than one pool is merged (`len(pools) > 1`), so a single-region scan keeps its local listing
 - Superinvestor region is stocks-only (no ETF universe); tickers are US-listed with direct 13F data from DataRoma
 
 ### Caching

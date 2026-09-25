@@ -506,13 +506,13 @@ ETF scoring also switches between two models via `--scoring-model {classic,quant
 
 When no `-t` is given, InvestDayTip uses curated universes:
 
-- **US stocks** — 58 large-caps across all S&P sectors (`src/investdaytip/universe.py`)
+- **US stocks** — 121 large-caps across all S&P sectors (`src/investdaytip/universe.py`)
 - **US ETFs** — 41 broad-market, factor, sector and bond ETFs (`etf_universe.py`)
-- **EU stocks** — 65 large-caps from DAX, CAC, FTSE 100, IBEX, AEX, SMI, FTSE MIB, Nordics (`eu_universe.py`)
+- **EU stocks** — 99 large-caps from DAX, CAC, FTSE 100, IBEX, AEX, SMI, FTSE MIB, Nordics (`eu_universe.py`)
 - **EU UCITS ETFs** — 38 broad, sector and bond UCITS ETFs (`eu_etf_universe.py`)
-- **Asia stocks** — 76 large-caps from Japan, Hong Kong, Singapore, India, South Korea, Taiwan, and Australia (`asia_universe.py`)
-- **Asia ETFs** — 20 broad-market, country-specific, and sector ETFs with significant Asian exposure (`asia_etf_universe.py`)
-- **Superinvestor stocks** — 116 consensus picks held by ≥2 of ~82 top investors tracked by DataRoma 13F filings (`superinvestor_universe.py`)
+- **Asia stocks** — 110 large-caps from Japan, Hong Kong, Singapore, India, South Korea, Taiwan, and Australia (`asia_universe.py`)
+- **Asia ETFs** — 18 broad-market, country-specific, and sector ETFs with significant Asian exposure (`asia_etf_universe.py`)
+- **Superinvestor stocks** — 101 consensus picks held by ≥2 of ~82 top investors tracked by DataRoma 13F filings (`superinvestor_universe.py`)
 
 Tickers use Yahoo Finance suffixes: 
 - **US:** no suffix (AAPL, MSFT)
@@ -677,7 +677,7 @@ ruff check src tests      # lint
 mypy                      # type-check
 ```
 
-**335 tests** across 16 test files. The scoring engine is purely functional
+**334 tests** across 16 test files. The scoring engine is purely functional
 and tested without network calls; an autouse guard in `tests/conftest.py` fails
 fast if a test reaches yfinance unmocked. Integration tests mock the full
 `recommend()` → `main()` → export pipeline.
