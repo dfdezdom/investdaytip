@@ -9,8 +9,7 @@ ASIA_ETF_UNIVERSE: list[str] = [
     "EEM",     # iShares MSCI Emerging Markets ETF
     "VXUS",    # Vanguard Total International Stock Market ETF
     "IEMG",    # iShares Core MSCI Emerging Markets ETF
-    "ASEA",    # Global X FTSE Southeast Asia ETF
-    
+
     # Japan-specific
     "EWJ",     # iShares MSCI Japan ETF
     "HEWJ",    # iShares Currency Hedged MSCI Japan ETF
@@ -24,7 +23,6 @@ ASIA_ETF_UNIVERSE: list[str] = [
     # China (excluding Hong Kong)
     "FXI",     # iShares China Large-Cap ETF
     "MCHI",    # iShares MSCI China ETF
-    "CXSE",    # WisdomTree China ex-State-Owned Enterprises Fund
     "KWEB",    # KraneShares CSI China Internet ETF
     
     # South Korea
@@ -36,6 +34,6 @@ ASIA_ETF_UNIVERSE: list[str] = [
     # Hong Kong
     "EWH",     # iShares MSCI Hong Kong ETF
     
-    # Southeast Asia / China A-Shares
+    # China A-Shares
     "ASHR",    # Xtrackers Harvest CSI 300 A-Shares ETF
 ]

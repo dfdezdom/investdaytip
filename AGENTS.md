@@ -485,6 +485,22 @@ dead = [t for t in tickers if data[t]["Close"].dropna().empty]
 
 `tests/test_universes.py::test_delisted_and_renamed_symbols_removed` guards both.
 
+### Relevance audit (size + liquidity)
+
+Rank every ticker by **USD market cap** and **3-month average daily turnover** (`volume × close`). FX gotcha: `USD<X>=X` quotes local units **per 1 USD**, so convert with `local / rate` (multiplying inverts it and makes KRW/JPY names look enormous); for `GBp` listings `marketCap` comes back in **GBP** while `price × volume` comes back in **pence**.
+
+**Last audit (2026-09-25, 405 stocks + 95 ETFs): stocks healthy, 5 ETFs removed.**
+
+| Pool | n | Median mcap | Removed |
+|---|---|---|---|
+| US / EU / Asia / superinvestor stocks | 121 / 99 / 110 / 101 | $170B / $73B / $60B / $82B | none |
+| EU ETFs | 38 → 35 | $8.1B | `QANT.L`, `XLES.L`, `XSEN.L` |
+| Asia ETFs | 18 → 16 | $6.3B | `ASEA`, `CXSE` |
+
+- Removal criterion for ETFs: **AUM < $500M AND turnover < $1M/day**; index/style coverage survives (`IUES.L`, `QNTM.L`, `FXI`, `MCHI`). Guarded by `tests/test_universes.py::test_micro_etfs_removed`.
+- Stocks stay: the three under the $15M/day bar (`RO.SW`, `UHAL`, `KOF`) are mega/large caps — Yahoo just under-reports SIX volume.
+- **13 EU UCITS ETFs (`CSPX.AS`, `IWDA.AS`, `EUNL.DE`, `SXR8.DE`, `EQQQ.L`, …) return no `totalAssets`** — they are large iShares/Vanguard funds, a Yahoo data gap (their Size factor scores neutral), **not** irrelevance. Never flag them again; fall back to `sharesOutstanding × navPrice` when `totalAssets` is missing.
+
 ## `get_recommendations()` — Programmatic API
 ```python
 from investdaytip import get_recommendations

@@ -95,3 +95,23 @@ def test_delisted_and_renamed_symbols_removed():
     # The US universe is documented as large-cap; these trade below $3B.
     for small in ("SHIP", "UVE", "INVA", "AUPH", "AVAH"):
         assert small not in DEFAULT_UNIVERSE
+
+
+def test_micro_etfs_removed():
+    """ETFs too small or too illiquid for the screened pools (audited 2026-09-25).
+
+    Criterion: AUM below $500M **and** average daily turnover below $1M, both
+    measured from live Yahoo data over the previous three months. Index/style
+    coverage is preserved by a surviving equivalent in each case.
+    """
+    for t in ("QANT.L", "XLES.L", "XSEN.L"):
+        assert t not in DEFAULT_EU_ETF_UNIVERSE, f"{t} should have been removed"
+    # Energy and quantum coverage survive through these.
+    assert "IUES.L" in DEFAULT_EU_ETF_UNIVERSE
+    assert "QNTM.L" in DEFAULT_EU_ETF_UNIVERSE
+
+    for t in ("ASEA", "CXSE"):
+        assert t not in ASIA_ETF_UNIVERSE, f"{t} should have been removed"
+    # China coverage survives through these.
+    assert "FXI" in ASIA_ETF_UNIVERSE
+    assert "MCHI" in ASIA_ETF_UNIVERSE
