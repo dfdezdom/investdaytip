@@ -33,7 +33,10 @@ ASIA_ETF_UNIVERSE: list[str] = [
     
     # Hong Kong
     "EWH",     # iShares MSCI Hong Kong ETF
-    
+
+    # Southeast Asia
+    "EWS",     # iShares MSCI Singapore ETF (replaces ASEA — 12x the AUM/turnover)
+
     # China A-Shares
     "ASHR",    # Xtrackers Harvest CSI 300 A-Shares ETF
 ]

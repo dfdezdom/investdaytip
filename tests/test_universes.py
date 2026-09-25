@@ -112,6 +112,8 @@ def test_micro_etfs_removed():
 
     for t in ("ASEA", "CXSE"):
         assert t not in ASIA_ETF_UNIVERSE, f"{t} should have been removed"
-    # China coverage survives through these.
+    # China coverage survives through these, and EWS replaces ASEA as the
+    # Southeast Asia representative (iShares MSCI Singapore: $1.25B AUM).
     assert "FXI" in ASIA_ETF_UNIVERSE
     assert "MCHI" in ASIA_ETF_UNIVERSE
+    assert "EWS" in ASIA_ETF_UNIVERSE
