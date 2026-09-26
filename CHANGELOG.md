@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.11.0 (2026-09-26)
+
+### Features
+
+- **StockFit point-in-time fundamentals for backtests** — new `backtest --pit-source stockfit` sources annual SEC filings with their exact acceptance date (`dateFiled`) instead of a fixed reporting-lag assumption, so every snapshot only sees data that was public that day. US stocks only, per-ticker soft degradation to the classic path, entity-stitching fallback for holdco reorgs (XOM). Opt-in; validated on the full US universe: Sharpe 0.74→0.85, max drawdown 24%→11%, 12M win rate 50%→56%, alpha flat.
+- **Local PIT snapshot — PIT backtests without an API key** — `scripts/pit_snapshot.py` builds a per-ticker JSON snapshot under `~/.investdaytip/pit/`, and `fetch_pit_statements()` resolves live StockFit (key) → local snapshot → classic fallback. Built during the Pro trial (196/196 US tickers, 2140 fiscal years, 8.2 MB), so PIT backtests keep working after the key expires; a successful live fetch refreshes the snapshot, failures never wipe it.
+- **Opt-in fundamental insights in the HTML report** — `--fundamental-insights` appends a StockFit section with revenue/margin trends, FCF/NI and OCF/NI quality, debt/equity and current ratio, plus a per-ticker fiscal-year grid with trend arrows. US stocks only, 3 Free-tier endpoints, cached 1d, degrades gracefully without a key; flag off by default → byte-identical output.
+- **Curated universes expanded and cleaned** — 123 missing large caps added across all pools; dead/renamed symbols replaced (`SPLG`→`SPYM`, `CRH.L`→`CRH`); Celltrion symbol fix, `.BR` exchange mapping, SGOV; 5 micro ETFs pruned (AUM < $500M and turnover < $1M/day); `EWS` added as the Southeast Asia representative.
+
+### Fixes
+
+- **StockFit `lookup/search` rejected punctuated company names (HTTP 400)** — `,` `/` `&` `(` `)` in `searchString` are now stripped (verified live: `"BlackRock, Inc."` → 400, `"BlackRock Inc"` → results), and the entity-stitching path is fully best-effort: a rejected search or failed probe can no longer discard a ticker's by-symbol series (`BLK` went from "no data" to a stitched 12-FY series).
+
 ## v0.10.0 (2026-09-25)
 
 ### Features
