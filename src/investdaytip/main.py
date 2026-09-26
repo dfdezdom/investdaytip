@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import importlib.metadata
 import logging
-import os
 import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -25,6 +24,7 @@ from investdaytip.data_source_stockfit import (
     FundamentalInsights,
     StockfitError,
     check_api_key,
+    check_pit_access,
     fetch_fundamental_insights,
 )
 from investdaytip.dataroma import fetch_superinvestor_universe, get_superinvestor_data
@@ -325,14 +325,16 @@ def _run_backtest_cli(args: argparse.Namespace) -> int:
             f"[red]--interval-months must be >= 1 (got {args.interval_months}).[/red]"
         )
         return 2
-    if args.pit_source == "stockfit" and not os.environ.get("STOCKFIT_API_KEY"):
-        console.print(
-            "[red]--pit-source stockfit requires the STOCKFIT_API_KEY "
-            "environment variable.[/red]"
-        )
-        console.print("Get a free key at https://developer.stockfit.io and export it:")
-        console.print("  export STOCKFIT_API_KEY=<your-key>")
-        return 1
+    if args.pit_source == "stockfit":
+        try:
+            check_pit_access()
+        except StockfitError as exc:
+            console.print(f"[red]{exc}[/red]")
+            console.print("Get a free key at https://developer.stockfit.io and export it:")
+            console.print("  export STOCKFIT_API_KEY=<your-key>")
+            console.print("Or build a local PIT snapshot while your key is valid:")
+            console.print("  python scripts/pit_snapshot.py")
+            return 1
     region_str = ", ".join(args.region) if isinstance(args.region, list) else args.region
     pit_str = (
         ", PIT [italic]stockfit[/italic]" if args.pit_source == "stockfit" else ""

@@ -40,6 +40,7 @@ import threading
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -217,7 +218,11 @@ def _fetch_statements(selector: dict[str, Any]) -> tuple[list[PitPeriod], list[P
 
 def _lookup_profile(ticker: str) -> dict[str, Any]:
     """Return the StockFit profile for *ticker* (empty dict on failure)."""
-    res = _get("lookup/batch", {"symbols": ticker})
+    try:
+        res = _get("lookup/batch", {"symbols": ticker})
+    except StockfitError as exc:
+        logger.debug("lookup/batch failed for %s: %s", ticker, exc)
+        return {}
     if isinstance(res, dict):
         prof = res.get(ticker)
         if isinstance(prof, dict):
@@ -232,6 +237,11 @@ def _search_queries(name: str) -> list[str]:
     ``"EXXON MOBIL CORP"``) typically only shares its first word with its
     predecessor — and that word may itself be a camel-case concatenation, so
     it is split as well.  Returns up to three queries, most specific first.
+
+    Queries are punctuation-stripped: ``lookup/search`` rejects names
+    containing ``,`` ``/`` ``&`` ``(`` ``)`` with HTTP 400 (verified
+    2026-09-26 — e.g. ``"BlackRock, Inc."`` 400s while ``"BlackRock Inc"``
+    resolves).
     """
     queries: list[str] = [name]
     words = name.split()
@@ -244,8 +254,10 @@ def _search_queries(name: str) -> list[str]:
             queries.append(parts[0])
     out: list[str] = []
     for query in queries:
-        if query not in out:
-            out.append(query)
+        clean = re.sub(r"[/,&()]+", " ", query)
+        clean = re.sub(r"\s+", " ", clean).strip().rstrip(".")
+        if clean and clean not in out:
+            out.append(clean)
     return out[:3]
 
 
@@ -261,10 +273,16 @@ def _candidate_ciks(profile: dict[str, Any], current_cik: Optional[int]) -> list
     seen: set[int] = set()
     ciks: list[int] = []
     for query in _search_queries(name):
-        results = _get(
-            "lookup/search",
-            {"searchString": query[:50], "includeDelisted": "true", "limit": "25"},
-        )
+        try:
+            results = _get(
+                "lookup/search",
+                {"searchString": query[:50], "includeDelisted": "true", "limit": "25"},
+            )
+        except StockfitError as exc:
+            # Best-effort: a rejected query must not abort stitching (and
+            # never the ticker's by-symbol series).
+            logger.debug("lookup/search failed for %r: %s", query, exc)
+            continue
         if not isinstance(results, list):
             continue
         for cand in results:
@@ -284,15 +302,14 @@ def _candidate_ciks(profile: dict[str, Any], current_cik: Optional[int]) -> list
     return ciks[:8]
 
 
-def fetch_pit_statements(ticker: str) -> PitStatements:
-    """Fetch annual statements with filing dates for *ticker*.
+def _fetch_pit_statements_live(ticker: str) -> PitStatements:
+    """Fetch annual statements with filing dates for *ticker* (network).
 
     Applies the entity-stitching fallback when the directly-resolved entity
     has an empty/short annual series (holdco reorgs, e.g. XOM).
 
-    Per-ticker soft failures (unknown ticker, no data) return a
-    :class:`PitStatements` with empty lists — the caller falls back to the
-    yfinance path for that ticker.
+    Raises :exc:`StockfitError` on endpoint failures; per-ticker "no data"
+    results come back as empty lists.
     """
     selector: dict[str, Any] = {"symbol": ticker}
     inc, bal, cf = _fetch_statements(selector)
@@ -306,7 +323,11 @@ def fetch_pit_statements(ticker: str) -> PitStatements:
         original_count = len(inc)
         best: Optional[tuple[list[PitPeriod], list[PitPeriod], list[PitPeriod], int]] = None
         for cik in _candidate_ciks(profile, current_cik)[:_MAX_STITCH_PROBES]:
-            cand_inc, cand_bal, cand_cf = _fetch_statements({"cik": cik})
+            try:
+                cand_inc, cand_bal, cand_cf = _fetch_statements({"cik": cik})
+            except StockfitError as exc:
+                logger.debug("Stitch probe CIK %s failed for %s: %s", cik, ticker, exc)
+                continue
             if len(cand_inc) > original_count and (
                 best is None or len(cand_inc) > len(best[0])
             ):
@@ -330,6 +351,169 @@ def fetch_pit_statements(ticker: str) -> PitStatements:
         balance=bal,
         cash_flow=cf,
     )
+
+
+# ── Local PIT snapshot (backtests without an API key) ───────────────────────
+
+SNAPSHOT_DIR_ENV = "STOCKFIT_PIT_SNAPSHOT_DIR"
+
+
+def snapshot_dir() -> Path:
+    """Directory holding per-ticker PIT statement snapshots.
+
+    Defaults to ``~/.investdaytip/pit``; override with the
+    ``STOCKFIT_PIT_SNAPSHOT_DIR`` environment variable (tests point it at a
+    throwaway directory so the real home is never touched).
+    """
+    override = os.environ.get(SNAPSHOT_DIR_ENV)
+    if override:
+        return Path(override)
+    return Path.home() / ".investdaytip" / "pit"
+
+
+def snapshot_available() -> bool:
+    """True when at least one snapshot file exists locally."""
+    try:
+        directory = snapshot_dir()
+        return directory.is_dir() and any(directory.glob("*.json"))
+    except OSError:
+        return False
+
+
+def check_pit_access() -> None:
+    """Raise :exc:`StockfitError` unless a key **or** a local snapshot exists."""
+    if os.environ.get("STOCKFIT_API_KEY") or snapshot_available():
+        return
+    raise StockfitError(
+        "STOCKFIT_API_KEY not set and no local PIT snapshot found at "
+        f"{snapshot_dir()}. Either export STOCKFIT_API_KEY "
+        "(free key at https://developer.stockfit.io) or build a snapshot "
+        "while your key is valid: python scripts/pit_snapshot.py"
+    )
+
+
+def _snapshot_path(ticker: str) -> Path:
+    return snapshot_dir() / f"{ticker}.json"
+
+
+def _serialize_periods(periods: list[PitPeriod]) -> list[dict[str, Any]]:
+    return [
+        {
+            "period_end": p.period_end.strftime("%Y-%m-%d"),
+            "fiscal_year": p.fiscal_year,
+            "fiscal_period": p.fiscal_period,
+            "date_filed": p.date_filed.strftime("%Y-%m-%d"),
+            "facts": p.facts,
+        }
+        for p in periods
+    ]
+
+
+def _deserialize_periods(raw: Any) -> list[PitPeriod]:
+    """Rebuild a sorted (newest first) period list from snapshot JSON."""
+    out: list[PitPeriod] = []
+    if not isinstance(raw, list):
+        return out
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        try:
+            out.append(
+                PitPeriod(
+                    period_end=datetime.strptime(str(row["period_end"])[:10], "%Y-%m-%d"),
+                    fiscal_year=int(row.get("fiscal_year") or 0),
+                    fiscal_period=str(row.get("fiscal_period") or ""),
+                    date_filed=datetime.strptime(str(row["date_filed"])[:10], "%Y-%m-%d"),
+                    facts=row.get("facts") or {},
+                )
+            )
+        except (KeyError, ValueError, TypeError) as exc:
+            logger.debug("Skipping malformed snapshot period: %s", exc)
+    out.sort(key=lambda p: p.period_end, reverse=True)
+    return out
+
+
+def save_pit_snapshot(statements: PitStatements) -> bool:
+    """Persist *statements* to the snapshot directory (atomic, best-effort).
+
+    Empty series are never written, so a failed live fetch cannot wipe an
+    existing snapshot.  Returns ``True`` when the file was written.
+    """
+    if not (statements.income or statements.balance or statements.cash_flow):
+        return False
+    payload = {
+        "ticker": statements.ticker,
+        "cik": statements.cik,
+        "stitched": statements.stitched,
+        "saved_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "income": _serialize_periods(statements.income),
+        "balance": _serialize_periods(statements.balance),
+        "cash_flow": _serialize_periods(statements.cash_flow),
+    }
+    try:
+        path = _snapshot_path(statements.ticker)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        tmp.replace(path)
+        return True
+    except OSError:
+        logger.debug("Could not write PIT snapshot for %s", statements.ticker, exc_info=True)
+        return False
+
+
+def load_pit_snapshot(ticker: str) -> Optional[PitStatements]:
+    """Load *ticker*'s snapshot from disk (``None`` when missing/corrupt/empty)."""
+    try:
+        payload = json.loads(_snapshot_path(ticker).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    income = _deserialize_periods(payload.get("income"))
+    if not income:
+        return None
+    cik = payload.get("cik")
+    return PitStatements(
+        ticker=ticker,
+        cik=cik if isinstance(cik, int) else None,
+        stitched=bool(payload.get("stitched")),
+        income=income,
+        balance=_deserialize_periods(payload.get("balance")),
+        cash_flow=_deserialize_periods(payload.get("cash_flow")),
+    )
+
+
+def fetch_pit_statements(ticker: str) -> PitStatements:
+    """Fetch annual statements with filing dates for *ticker*.
+
+    Resolution order, each step soft-failing to the next:
+
+    1. live StockFit when ``STOCKFIT_API_KEY`` is set — a successful live
+       fetch also refreshes the local snapshot;
+    2. the local PIT snapshot (:func:`snapshot_dir`);
+    3. an empty :class:`PitStatements` — the caller falls back to the classic
+       fixed-lag path for that ticker.
+
+    Never raises for missing access; use :func:`check_pit_access` for the
+    fail-fast check at startup.
+    """
+    live: Optional[PitStatements] = None
+    if os.environ.get("STOCKFIT_API_KEY"):
+        try:
+            live = _fetch_pit_statements_live(ticker)
+        except StockfitError as exc:
+            logger.debug(
+                "StockFit live fetch failed for %s (%s); trying snapshot", ticker, exc
+            )
+    if live is not None and live.income:
+        save_pit_snapshot(live)  # best-effort — never breaks the fetch
+        return live
+    snap = load_pit_snapshot(ticker)
+    if snap is not None:
+        logger.debug("StockFit PIT snapshot used for %s (%d periods)", ticker, len(snap.income))
+        return snap
+    return live if live is not None else PitStatements(ticker=ticker)
 
 
 def pit_fact_asof(

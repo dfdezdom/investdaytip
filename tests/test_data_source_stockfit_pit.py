@@ -194,6 +194,56 @@ def test_search_queries_derives_shorter_variants():
     assert _search_queries("Apple Inc") == ["Apple Inc", "Apple"]
 
 
+def test_search_queries_strips_api_rejected_punctuation():
+    """lookup/search 400s on `,` `/` `&` `(` `)` (verified live 2026-09-26)."""
+    queries = _search_queries("BlackRock, Inc.")
+    assert queries[0] == "BlackRock Inc"
+    assert "BlackRock" in queries
+    queries = _search_queries("Ferguson Enterprises Inc. /DE/")
+    assert "Ferguson" in queries
+    for q in queries + _search_queries("Brown & Brown, Inc."):
+        assert not any(ch in q for ch in ",/&()")
+
+
+def test_lookup_profile_http_error_returns_empty(mocker):
+    from investdaytip.data_source_stockfit import _lookup_profile
+
+    mocker.patch(
+        "investdaytip.data_source_stockfit._get",
+        side_effect=StockfitError("HTTP 400"),
+    )
+    assert _lookup_profile("BLK") == {}
+
+
+def test_stitching_failure_keeps_by_symbol_series(mocker):
+    """A rejected search must not discard the (short but valid) by-symbol series."""
+    two = [
+        _row("2025-09-30", "2025-11-01", 2025, {"netIncome": 1e9}),
+        _row("2024-09-30", "2024-11-01", 2024, {"netIncome": 9e8}),
+    ]
+    searches: list[str] = []
+
+    def mock_get(path: str, params: dict | None = None) -> Any:
+        params = params or {}
+        if path == "lookup/batch":
+            return {"BLK": {"cik": 2012383, "name": "BlackRock, Inc."}}
+        if path == "lookup/search":
+            searches.append(params.get("searchString", ""))
+            raise StockfitError("HTTP 400: Bad Request")
+        if params.get("symbol") == "BLK":
+            return two if path == "financials/income-statement" else []
+        raise AssertionError(f"unexpected: {path} {params}")
+
+    mocker.patch("investdaytip.data_source_stockfit._get", side_effect=mock_get)
+    stmts = fetch_pit_statements("BLK")
+    assert len(stmts.income) == 2  # by-symbol series kept, no exception
+    assert stmts.stitched is False
+    assert stmts.cik == 2012383
+    assert searches, "stitching should have attempted the search"
+    for q in searches:
+        assert not any(ch in q for ch in ",/&()")
+
+
 def test_entity_stitching_via_short_query(mocker):
     """Exact-name search fails → shorter camel-split query finds predecessor."""
     short = [_row("2026-09-30", "2026-11-01", 2026, {"netIncome": 1e9})]
