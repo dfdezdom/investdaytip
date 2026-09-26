@@ -6,10 +6,11 @@ import json
 import math
 from datetime import datetime, timezone
 from html import escape
-from typing import Any, TypeGuard
+from typing import Any, Callable, Optional, Sequence, TypeGuard
 from urllib.parse import quote, quote_plus
 
 from investdaytip.backtest import BacktestResult, _interpret_backtest
+from investdaytip.data_source_stockfit import FundamentalInsights
 from investdaytip.scoring import ScoredAsset, resolve_include_technical
 
 # Base number of <th> columns excluding the optional Superinvestors column.
@@ -268,6 +269,156 @@ def _render_initial_rows(rows: list[dict[str, Any]], include_superinvestor: bool
   return "".join(out)
 
 
+def _fmt_pct_point(value: float) -> str:
+    """Format a decimal margin as a percentage (``0.4691`` → ``46.9%``)."""
+    return f"{value * 100:.1f}%"
+
+
+def _fmt_ratio(value: float) -> str:
+    """Format a plain ratio (``FCF/NI``, ``D/E``, current ratio)."""
+    return f"{value:.2f}"
+
+
+def _fmt_big(value: float) -> str:
+    """Format an absolute figure compactly (``416161000000`` → ``416.2B``)."""
+    sign = "-" if value < 0 else ""
+    magnitude = abs(value)
+    for limit, suffix in ((1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")):
+        if magnitude >= limit:
+            return f"{sign}{magnitude / limit:.1f}{suffix}"
+    return f"{sign}{magnitude:.0f}"
+
+
+def _insight_metric(value: Optional[float], fmt: Callable[[float], str]) -> str:
+    """Render one metric cell: muted dash when missing, red when negative."""
+    if not _is_finite_number(value):
+        return '<span class="muted">—</span>'
+    if value < 0:
+        return f'<span class="neg">{fmt(value)}</span>'
+    return fmt(value)
+
+
+def _trend_arrow(
+    values: Sequence[Optional[float]],
+    *,
+    min_delta: float = 0.0,
+    min_rel: float = 0.0,
+    good_when_high: bool = True,
+) -> str:
+    """Trend of *values* (oldest → newest) as ``↗`` / ``→`` / ``↘``.
+
+    ``min_delta`` is an absolute threshold (margins in decimals), ``min_rel`` a
+    relative one (ratios, revenue).  Arrow colour reflects whether rising is
+    good for that metric (e.g. D/E rising is bad → red ↗).
+    """
+    known = [v for v in values if _is_finite_number(v)]
+    if len(known) < 2:
+        return ""
+    oldest, newest = known[0], known[-1]
+    threshold = min_delta
+    if min_rel:
+        threshold = max(threshold, min_rel * abs(oldest))
+    delta = newest - oldest
+    if abs(delta) <= threshold:
+        return ' <span class="muted">→</span>'
+    rising = delta > 0
+    if rising:
+        cls = "pos" if good_when_high else "neg"
+    else:
+        cls = "neg" if good_when_high else "pos"
+    arrow = "↗" if rising else "↘"
+    return f' <span class="{cls}">{arrow}</span>'
+
+
+def _render_insights_section(insights: dict[str, FundamentalInsights]) -> str:
+    """Server-render the opt-in "Fundamental insights" section (``""`` if empty).
+
+    Renders a summary row per ticker (latest fiscal year + trend arrows) plus
+    one ``<details>`` block per ticker with the full fiscal-year grid.
+    """
+    summary_rows: list[str] = []
+    detail_blocks: list[str] = []
+    for ticker, data in insights.items():
+        periods = data.periods
+        if not periods:
+            continue
+        latest = periods[0]
+        # Trend inputs must be oldest → newest (periods are stored newest first).
+        rev_series = [p.revenue for p in reversed(periods)]
+        gm_series = [p.gross_margin for p in reversed(periods)]
+        om_series = [p.operating_margin for p in reversed(periods)]
+        nm_series = [p.net_margin for p in reversed(periods)]
+        fcf_series = [p.fcf_to_ni for p in reversed(periods)]
+        de_series = [p.debt_to_equity for p in reversed(periods)]
+        cr_series = [p.current_ratio for p in reversed(periods)]
+
+        summary_rows.append(
+            "<tr>"
+            f"<td><strong>{escape(ticker)}</strong></td>"
+            f"<td>FY{escape(latest.period_end[:4])}</td>"
+            f'<td class="num">{_insight_metric(latest.revenue, _fmt_big)}'
+            f"{_trend_arrow(rev_series, min_rel=0.03)}</td>"
+            f'<td class="num">{_insight_metric(latest.gross_margin, _fmt_pct_point)}'
+            f"{_trend_arrow(gm_series, min_delta=0.005)}</td>"
+            f'<td class="num">{_insight_metric(latest.operating_margin, _fmt_pct_point)}'
+            f"{_trend_arrow(om_series, min_delta=0.005)}</td>"
+            f'<td class="num">{_insight_metric(latest.net_margin, _fmt_pct_point)}'
+            f"{_trend_arrow(nm_series, min_delta=0.005)}</td>"
+            f'<td class="num">{_insight_metric(latest.fcf_to_ni, _fmt_ratio)}'
+            f"{_trend_arrow(fcf_series, min_rel=0.05)}</td>"
+            f'<td class="num">{_insight_metric(latest.debt_to_equity, _fmt_ratio)}'
+            f"{_trend_arrow(de_series, min_rel=0.05, good_when_high=False)}</td>"
+            f'<td class="num">{_insight_metric(latest.current_ratio, _fmt_ratio)}'
+            f"{_trend_arrow(cr_series, min_rel=0.05)}</td>"
+            "</tr>"
+        )
+
+        if len(periods) > 1:
+            detail_rows = "".join(
+                "<tr>"
+                f"<td>FY{escape(p.period_end[:4])}</td>"
+                f'<td class="num">{_insight_metric(p.revenue, _fmt_big)}</td>'
+                f'<td class="num">{_insight_metric(p.gross_margin, _fmt_pct_point)}</td>'
+                f'<td class="num">{_insight_metric(p.operating_margin, _fmt_pct_point)}</td>'
+                f'<td class="num">{_insight_metric(p.net_margin, _fmt_pct_point)}</td>'
+                f'<td class="num">{_insight_metric(p.fcf_to_ni, _fmt_ratio)}</td>'
+                f'<td class="num">{_insight_metric(p.ocf_to_ni, _fmt_ratio)}</td>'
+                f'<td class="num">{_insight_metric(p.debt_to_equity, _fmt_ratio)}</td>'
+                f'<td class="num">{_insight_metric(p.current_ratio, _fmt_ratio)}</td>'
+                "</tr>"
+                for p in periods
+            )
+            detail_blocks.append(
+                f'<details class="insights-detail">'
+                f"<summary>{escape(ticker)} — {len(periods)} fiscal years</summary>"
+                '<table><thead><tr>'
+                "<th>FY</th><th class=\"num\">Revenue</th><th class=\"num\">Gross</th>"
+                "<th class=\"num\">Operating</th><th class=\"num\">Net</th>"
+                "<th class=\"num\">FCF/NI</th><th class=\"num\">OCF/NI</th>"
+                "<th class=\"num\">D/E</th><th class=\"num\">Current</th>"
+                "</tr></thead><tbody>"
+                f"{detail_rows}</tbody></table></details>"
+            )
+
+    if not summary_rows:
+        return ""
+    return (
+        '<section class="insights" aria-label="Fundamental insights">'
+        "<h2>Fundamental insights</h2>"
+        '<p class="insights-note">Source: StockFit — SEC filings (10-K/10-Q) as filed · '
+        "US stocks only · absolute figures in USD · margins and ratios per fiscal year</p>"
+        "<table><thead><tr>"
+        "<th>Ticker</th><th>Latest FY</th><th class=\"num\">Revenue</th>"
+        "<th class=\"num\">Gross</th><th class=\"num\">Operating</th><th class=\"num\">Net</th>"
+        "<th class=\"num\">FCF/NI</th><th class=\"num\">D/E</th><th class=\"num\">Current</th>"
+        "</tr></thead><tbody>"
+        + "".join(summary_rows)
+        + "</tbody></table>"
+        + "".join(detail_blocks)
+        + "</section>"
+    )
+
+
 def export_recommendations_html(
     results: list[ScoredAsset],
     destination: str,
@@ -283,11 +434,14 @@ def export_recommendations_html(
     sector: str | None = None,
     fear_greed: dict[str, Any] | None = None,
     scoring_model: str = "classic",
+    fundamental_insights: dict[str, FundamentalInsights] | None = None,
 ) -> str:
     """Write a self-contained, filterable HTML report to ``destination``.
 
     ``fear_greed`` should be fetched by the caller and passed in to avoid a
-    side-effect network call inside the rendering function.
+    side-effect network call inside the rendering function.  Same applies to
+    ``fundamental_insights`` (StockFit — fetched by the CLI when
+    ``--fundamental-insights`` is set).
     """
     include_technical = resolve_include_technical(include_technical, scoring_model)
     col_count = _TABLE_BASE_COLUMN_COUNT + (1 if include_superinvestor else 0) + (2 if include_technical else 0)
@@ -311,6 +465,7 @@ def export_recommendations_html(
     rows_json = json.dumps(rows, ensure_ascii=True).replace("</", "<\\/")
     metadata_json = json.dumps(metadata, ensure_ascii=True).replace("</", "<\\/")
     initial_rows_html = _render_initial_rows(rows, include_superinvestor=include_superinvestor, include_technical=include_technical, column_count=col_count)
+    insights_html = _render_insights_section(fundamental_insights or {})
 
     # Build optional column sections
     if include_superinvestor:
@@ -489,6 +644,20 @@ def export_recommendations_html(
     .pos {{ color: var(--pos); font-weight: 600; }}
     .neg {{ color: var(--neg); font-weight: 600; }}
     .count {{ margin: 8px 0 12px; color: var(--muted); font-size: 0.9rem; }}
+    .insights {{ margin-top: 28px; }}
+    .insights h2 {{ font-size: 1.12rem; margin: 0 0 4px; }}
+    .insights-note {{ color: var(--muted); font-size: 0.86rem; margin: 0 0 12px; }}
+    .insights-detail {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 8px 14px;
+      margin-top: 10px;
+      box-shadow: var(--shadow);
+    }}
+    .insights-detail summary {{ cursor: pointer; color: var(--link); font-size: 0.9rem; }}
+    .insights-detail summary:hover {{ color: var(--link-hover); }}
+    .insights-detail table {{ margin-top: 10px; box-shadow: none; }}
     @media (max-width: 900px) {{
       .desktop-only {{ display: none; }}
       body {{ font-size: 14px; }}
@@ -563,6 +732,8 @@ def export_recommendations_html(
       </thead>
       <tbody id=\"tbody\">{initial_rows_html}</tbody>
     </table>
+
+    {insights_html}
   </div>
 
   <script>

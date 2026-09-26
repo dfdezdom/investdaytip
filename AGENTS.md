@@ -29,7 +29,7 @@ the convention is `Optional[...]` for dataclass fields, not `X | None`.
 | Orchestration | `recommender.py` | builds universe, ThreadPoolExecutor fetches, scores, filters, sorts |
 | Data fetching | `data_source.py` | yfinance wrapper, dataclasses (`StockData` / `EtfData` / `AssetData`). **All network I/O lives here.** |
 | Yahooquery data source | `data_source_yahooquery.py` | yahooquery batch wrapper, maps `all_modules` to yfinance-style `info`, yfinance fallback |
-| StockFit PIT source | `data_source_stockfit.py` | StockFit annual statements with `dateFiled` for look-ahead-free backtests (`backtest --pit-source stockfit`) |
+| StockFit PIT source | `data_source_stockfit.py` | StockFit annual statements with `dateFiled` for look-ahead-free backtests (`backtest --pit-source stockfit`); also live insight charts (`--fundamental-insights`) |
 | FMP data source | `data_source_fmp.py` | FMP wrapper, `fetch_asset()` alternative, 4 endpoints/ticker, rate-limit auto-fallback to yfinance |
 | Caching | `cache.py` | SQLite cache with per-thread connections, WAL mode, write lock |
 | Scoring | `scoring.py` | pure functions only — no I/O, no side effects |
@@ -226,6 +226,46 @@ full universe. In that run classic vs PIT picks were **identical for all
 - The XOM reorg is the regression case for stitching; keep the
   `_search_queries("ExxonMobil Holdings Corp")` assertions green.
 
+## StockFit Fundamental Insights (`--fundamental-insights`)
+
+Opt-in section in the recommendations HTML report with SEC-derived fundamentals
+for the displayed US stocks. Flag **off by default → output byte-identical to a run
+without it**; without `STOCKFIT_API_KEY` it prints a warning and omits the section
+(graceful degradation — same posture as `--superinvestor`).
+
+- **3 Free-tier chart endpoints** per ticker (annual, 5 fiscal years):
+  `financials/chart/revenue-profitability` (Gross/Operating/Net margin + revenue),
+  `earnings/chart/quality` (FCF/NI, OCF/NI), `financials/chart/balance-sheet-health`
+  (Debt/Equity, Current Ratio). Response shapes verified live 2026-09-26.
+- **Scope**: only `asset_type == "STOCK"` with `infer_region_from_ticker() == "us"` —
+  ETFs and EU/Asia tickers never call StockFit (0 wasted API calls).
+- **Render** (`html_export._render_insights_section`): summary table (latest FY +
+  trend arrows ↗/→/↘ colored by outcome — D/E falling is green, FCF/NI falling red)
+  plus one `<details>` block per ticker with the full fiscal-year grid. Server-rendered,
+  no JS; the main table is untouched.
+- **Fetch** (`main._fetch_report_insights`): `ThreadPoolExecutor(5)`, soft-fail per
+  ticker, never raises. `fetch_fundamental_insights()` (in `data_source_stockfit.py`)
+  never raises either — a failed endpoint degrades to partial data, all-fail → `None`.
+- **Cache**: `{ticker}:stockfit_insights`, TTL 1d — written only when all 3 endpoints
+  succeeded (partial results are refetched on the next run).
+- Orthogonal to `--data-source`: prices/fundamentals stay on yfinance/yahooquery/FMP,
+  insights come from StockFit.
+- Post-trial: these 3 calls are in the Free tier (34 endpoints, 300 req/day), so the
+  section keeps working at $0 — only `financials/scores` (Piotroski/Altman) or the
+  Pro-only `footnotes/*` risk endpoints would need a paid tier later.
+
+```bash
+investdaytip -t "AAPL MSFT" -n 5 --export-html report.html --fundamental-insights
+```
+
+### Testing
+
+- `tests/test_fundamental_insights.py` — mocks `_get` (never HTTP): chart merge
+  parsing, partial/total endpoint degradation, missing key (real `_get` raises before
+  I/O), cache roundtrip via `enabled_temp_cache`, HTML render (section presence,
+  trend arrows, negative-red), CLI wiring (flag on/off/without `--export-html`), and
+  `_fetch_report_insights` filtering (US-stocks-only, per-ticker failures).
+
 ## Conventions & Gotchas
 
 - `from __future__ import annotations` in every annotated module (not in `__init__.py` or universe files)
@@ -246,7 +286,7 @@ full universe. In that run classic vs PIT picks were **identical for all
 
 ### Caching
 - `CacheDB` in `cache.py`: SQLite with `threading.local()` per-thread connections, WAL mode, write lock via `threading.Lock`
-- Seven cache entry types:
+- Eight cache entry types:
   - `{ticker}:info` (fundamentals, TTL 1d — flat yfinance-style dict)
   - `{ticker}:fmp_info` (FMP `{"profile", "ratios_ttm"}` schema, TTL 1d) — separate key so FMP's incompatible schema never poisons the shared yfinance-style `info` entry (and vice versa)
   - `{ticker}:history` (prices, TTL 15min)
@@ -254,6 +294,7 @@ full universe. In that run classic vs PIT picks were **identical for all
   - `{ticker}:dividends` (dividends, TTL 7d)
   - `_global:fear_greed` (CNN Fear & Greed Index, TTL 1h)
   - `superinvestor:holdings` (DataRoma aggregated data, TTL 7 days)
+  - `{ticker}:stockfit_insights` (StockFit insight charts, TTL 1d — written only on a complete 3-endpoint fetch)
 - `fetch_asset()` defers cache-write until both info and history are fetched (atomic snapshot); partial results cached on history failure
 - Backtest **disables cache entirely** to ensure reproducible results — stale history cache can shift `_latest_common_end()` and produce different snapshot counts; cache state is saved and restored via `try/finally`
 - Connections are tracked so `CacheDB.close_all()` / module-level `close_db()` can release **worker-thread** connections; `recommend()` calls `close_db()` in a `finally` after the pool tears down

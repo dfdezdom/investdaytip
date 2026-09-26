@@ -21,6 +21,12 @@ breaks do not silently drop a decade of fundamentals.
 
 Only US-listed stocks are supported (StockFit is SEC-only).  ETFs and
 non-US listings raise/return nothing and must stay on yfinance.
+
+Fundamental insights (live path)
+--------------------------------
+:func:`fetch_fundamental_insights` powers the opt-in ``--fundamental-insights``
+HTML section from three Free-tier chart endpoints (margin stack, earnings
+quality, balance-sheet health) — never raises, soft-fails per ticker.
 """
 
 from __future__ import annotations
@@ -32,12 +38,14 @@ import os
 import re
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+
+from investdaytip.cache import cache_stockfit_insights_get, cache_stockfit_insights_set
 
 logger = logging.getLogger(__name__)
 
@@ -339,3 +347,162 @@ def pit_fact_asof(
     current = eligible[0].fact(key)
     previous = eligible[1].fact(key) if len(eligible) > 1 else None
     return current, previous
+
+
+# ── Fundamental insights (live path, Free-tier chart endpoints) ─────────────
+
+INSIGHT_YEARS = 5  # fiscal years requested per chart
+
+_INSIGHT_CHARTS = (
+    "financials/chart/revenue-profitability",
+    "earnings/chart/quality",
+    "financials/chart/balance-sheet-health",
+)
+
+
+@dataclass
+class InsightPeriod:
+    """Chart-derived fundamentals for one fiscal year."""
+
+    period_end: str  # YYYY-MM-DD
+    revenue: Optional[float] = None
+    gross_margin: Optional[float] = None
+    operating_margin: Optional[float] = None
+    net_margin: Optional[float] = None
+    fcf_to_ni: Optional[float] = None
+    ocf_to_ni: Optional[float] = None
+    debt_to_equity: Optional[float] = None
+    current_ratio: Optional[float] = None
+
+
+@dataclass
+class FundamentalInsights:
+    """Margin / earnings-quality / balance trends for one ticker.
+
+    ``periods`` is sorted newest first (same convention as :class:`PitPeriod`).
+    """
+
+    ticker: str
+    periods: list[InsightPeriod] = field(default_factory=list)
+
+
+def _chart_values(raw: Any) -> tuple[list[str], dict[str, list[Any]]]:
+    """Extract ``periods`` and ``{series_name: data}`` from a chart payload."""
+    if not isinstance(raw, dict):
+        return [], {}
+    periods = [str(p) for p in raw.get("periods") or []]
+    values: dict[str, list[Any]] = {}
+    for block in ("series", "rates"):
+        entries = raw.get(block)
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if (
+                isinstance(entry, dict)
+                and isinstance(entry.get("name"), str)
+                and isinstance(entry.get("data"), list)
+            ):
+                values[entry["name"]] = entry["data"]
+    return periods, values
+
+
+def _chart_point(values: dict[str, list[Any]], name: str, index: int) -> Optional[float]:
+    """Finite value of series *name* at *index*, else ``None``."""
+    data = values.get(name)
+    if data is None or index >= len(data):
+        return None
+    return _safe_fact({"value": data[index]}, "value")
+
+
+def _parse_insights(
+    ticker: str,
+    revenue_raw: Any,
+    quality_raw: Any,
+    balance_raw: Any,
+) -> Optional[FundamentalInsights]:
+    """Merge the three chart payloads into :class:`FundamentalInsights`.
+
+    Returns ``None`` when no period carries data (unknown ticker, ETF,
+    non-US listing).  Metrics missing from an individual chart stay ``None``.
+    """
+    rows: dict[str, InsightPeriod] = {}
+
+    def _row(period_end: str) -> InsightPeriod:
+        row = rows.get(period_end)
+        if row is None:
+            row = InsightPeriod(period_end=period_end)
+            rows[period_end] = row
+        return row
+
+    periods, values = _chart_values(revenue_raw)
+    for i, period_end in enumerate(periods):
+        row = _row(period_end)
+        row.revenue = _chart_point(values, "Revenue", i)
+        row.gross_margin = _chart_point(values, "Gross Margin", i)
+        row.operating_margin = _chart_point(values, "Operating Margin", i)
+        row.net_margin = _chart_point(values, "Net Margin", i)
+
+    periods, values = _chart_values(quality_raw)
+    for i, period_end in enumerate(periods):
+        row = _row(period_end)
+        row.fcf_to_ni = _chart_point(values, "FCF / Net Income", i)
+        row.ocf_to_ni = _chart_point(values, "OCF / Net Income", i)
+
+    periods, values = _chart_values(balance_raw)
+    for i, period_end in enumerate(periods):
+        row = _row(period_end)
+        row.debt_to_equity = _chart_point(values, "Debt to Equity", i)
+        row.current_ratio = _chart_point(values, "Current Ratio", i)
+
+    if not rows:
+        return None
+    ordered = sorted(rows.values(), key=lambda r: r.period_end, reverse=True)
+    return FundamentalInsights(ticker=ticker, periods=ordered)
+
+
+def _insights_from_cache(ticker: str, raw: str) -> Optional[FundamentalInsights]:
+    """Rebuild :class:`FundamentalInsights` from cached JSON (``None`` on error)."""
+    try:
+        payload = json.loads(raw)
+        periods = [InsightPeriod(**p) for p in payload.get("periods") or []]
+    except (TypeError, ValueError, AttributeError):
+        return None
+    if not periods:
+        return None
+    return FundamentalInsights(ticker=ticker, periods=periods)
+
+
+def fetch_fundamental_insights(ticker: str) -> Optional[FundamentalInsights]:
+    """Fetch margin / earnings-quality / balance trends for *ticker*.
+
+    Uses three Free-tier StockFit chart endpoints (annual, ``INSIGHT_YEARS``
+    periods).  Never raises: a per-endpoint failure degrades to partial data
+    and a fully failed fetch returns ``None`` so the caller can skip the
+    ticker.  Complete results are cached for one day.
+    """
+    cached = cache_stockfit_insights_get(ticker)
+    if cached is not None:
+        parsed = _insights_from_cache(ticker, cached)
+        if parsed is not None:
+            return parsed
+
+    results: list[Any] = []
+    for path in _INSIGHT_CHARTS:
+        try:
+            results.append(
+                _get(path, {"symbol": ticker, "period": "annual", "limit": str(INSIGHT_YEARS)})
+            )
+        except StockfitError as exc:
+            logger.debug("StockFit insights fetch failed for %s (%s): %s", ticker, path, exc)
+            results.append(None)
+
+    insights = _parse_insights(ticker, *results)
+    if insights is None:
+        return None
+    if all(r is not None for r in results):
+        try:
+            payload = {"periods": [asdict(p) for p in insights.periods]}
+            cache_stockfit_insights_set(ticker, json.dumps(payload))
+        except (TypeError, ValueError):
+            logger.debug("Could not cache StockFit insights for %s", ticker)
+    return insights

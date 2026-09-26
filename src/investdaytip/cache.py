@@ -275,6 +275,20 @@ def cache_earnings_dates_set(ticker: str, df_json: str) -> None:
     get_db().set(_cache_key(ticker, "earnings_dates"), df_json, TTL_EARNINGS_DATES)
 
 
+def cache_stockfit_insights_get(ticker: str) -> str | None:
+    """Return cached StockFit fundamental-insights JSON string or None."""
+    if not enabled:
+        return None
+    return get_db().get(_cache_key(ticker, "stockfit_insights"))
+
+
+def cache_stockfit_insights_set(ticker: str, insights_json: str) -> None:
+    """Store StockFit fundamental-insights JSON string with fundamentals TTL."""
+    if not enabled:
+        return
+    get_db().set(_cache_key(ticker, "stockfit_insights"), insights_json, TTL_FUNDAMENTALS)
+
+
 def clear_cache() -> None:
     """Purge all cached data."""
     get_db().clear()

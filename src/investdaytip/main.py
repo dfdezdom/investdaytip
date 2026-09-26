@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -20,6 +21,12 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 from rich.table import Table
 
 from investdaytip.backtest import BacktestResult
+from investdaytip.data_source_stockfit import (
+    FundamentalInsights,
+    StockfitError,
+    check_api_key,
+    fetch_fundamental_insights,
+)
 from investdaytip.dataroma import fetch_superinvestor_universe, get_superinvestor_data
 from investdaytip.html_export import export_backtest_html, export_recommendations_html
 from investdaytip.recommender import recommend
@@ -253,6 +260,53 @@ def _render(results: list[ScoredAsset], console: Console, include_superinvestor:
     console.print(
         "[dim italic]Disclaimer: This is not financial advice. Do your own research.[/dim italic]"
     )
+
+
+def _fetch_report_insights(results: list[ScoredAsset], console: Console) -> dict[str, FundamentalInsights]:
+    """Fetch StockFit fundamental insights for the displayed US stocks.
+
+    Best-effort and never raises: a missing key, a StockFit outage, or
+    per-ticker failures only cost the report its insights section.
+    """
+    from investdaytip.html_export import infer_region_from_ticker
+
+    try:
+        check_api_key()
+    except StockfitError as exc:
+        console.print(
+            f"[yellow]⚠️  {exc}[/yellow]\n"
+            "  Continuing without fundamental insights."
+        )
+        return {}
+
+    candidates = [
+        s.data.ticker
+        for s in results
+        if s.asset_type == "STOCK" and infer_region_from_ticker(s.data.ticker) == "us"
+    ]
+    if not candidates:
+        return {}
+
+    out: dict[str, FundamentalInsights] = {}
+    with ThreadPoolExecutor(max_workers=min(5, len(candidates))) as pool:
+        futures = {pool.submit(fetch_fundamental_insights, t): t for t in candidates}
+        for future in as_completed(futures):
+            ticker = futures[future]
+            try:
+                insights = future.result()
+            except Exception:
+                logger.warning("StockFit insights failed for %s", ticker, exc_info=True)
+                continue
+            if insights is not None:
+                out[ticker] = insights
+
+    if out:
+        console.print(
+            f"[dim]StockFit insights: {len(out)}/{len(candidates)} US tickers[/dim]"
+        )
+    else:
+        console.print("[yellow]⚠️  StockFit insights unavailable — section omitted.[/yellow]")
+    return out
 
 
 def _default_backtest_html_filename(now: datetime | None = None) -> str:
@@ -601,6 +655,9 @@ def main(argv: list[str] | None = None) -> int:
                           help="Data source (default: yfinance). yahooquery uses Yahoo's internal API (faster, more stable). FMP requires FMP_API_KEY env var.")
     data_grp.add_argument("--superinvestor", action="store_true",
                           help="Include superinvestor ownership data.")
+    data_grp.add_argument("--fundamental-insights", action="store_true",
+                          help="Add SEC fundamentals insights (margin stack, earnings quality, balance) to the HTML report. "
+                               "Requires STOCKFIT_API_KEY env var; US stocks only; degrades gracefully without the key.")
     data_grp.add_argument("--no-cache", action="store_true",
                           help="Bypass SQLite cache.")
     data_grp.add_argument("--cache-clear", action="store_true",
@@ -756,6 +813,12 @@ def main(argv: list[str] | None = None) -> int:
 
     _render(results, console, include_superinvestor=args.superinvestor, include_technical=args.include_technical)
 
+    if args.fundamental_insights and args.export_html is None:
+        console.print(
+            "[yellow]⚠️  --fundamental-insights only applies to --export-html; "
+            "nothing to render into, ignoring.[/yellow]"
+        )
+
     if args.export_html is not None:
         try:
             destination = args.export_html or _default_export_html_filename(
@@ -773,6 +836,9 @@ def main(argv: list[str] | None = None) -> int:
                 meta_region = args.region
                 meta_currency = args.currency
             from investdaytip.sentiment import fear_greed_index
+            insights_map: dict[str, FundamentalInsights] = {}
+            if args.fundamental_insights:
+                insights_map = _fetch_report_insights(results, console)
             out_path = export_recommendations_html(
                 results,
                 destination,
@@ -787,6 +853,7 @@ def main(argv: list[str] | None = None) -> int:
                 sector=args.sector,
                 fear_greed=fear_greed_index(),
                 scoring_model=args.scoring_model,
+                fundamental_insights=insights_map or None,
             )
             logger.info("HTML report exported: %s", out_path)
             console.print(f"[green]HTML report exported:[/green] {out_path}")
