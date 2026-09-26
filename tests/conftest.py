@@ -21,6 +21,12 @@ def disable_cache():
 
 
 @pytest.fixture(autouse=True)
+def pit_snapshot_dir(tmp_path, monkeypatch):
+    """Point StockFit PIT snapshots at a throwaway dir (never ~/.investdaytip)."""
+    monkeypatch.setenv("STOCKFIT_PIT_SNAPSHOT_DIR", str(tmp_path / "pit_snapshot"))
+
+
+@pytest.fixture(autouse=True)
 def no_network(monkeypatch, request):
     """Fail fast if a test instantiates ``yf.Ticker`` without mocking it.
 

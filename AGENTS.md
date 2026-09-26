@@ -217,12 +217,51 @@ full universe. In that run classic vs PIT picks were **identical for all
 2024-2025 snapshots** (where yfinance data is complete) and differed only
 2021-2023 (where classic fundamentals are `NaN`/None).
 
+### Local PIT snapshot (`scripts/pit_snapshot.py`)
+
+Lets `backtest --pit-source stockfit` run **without an API key**: annual
+statements (12 FY with `dateFiled`) are fetched while a key is valid and
+stored per-ticker as JSON under `~/.investdaytip/pit/` (override with
+`STOCKFIT_PIT_SNAPSHOT_DIR` — tests point it at `tmp_path` via an autouse
+`conftest.py` fixture, so the real home is never touched).
+
+- **Resolution order** in `fetch_pit_statements()`: live StockFit (key set) →
+  local snapshot → empty result (classic fixed-lag fallback, per ticker).
+  A successful live fetch refreshes the snapshot; an empty or failed live
+  fetch never wipes an existing file (atomic write via `.tmp` + `replace`).
+- **Fail-fast** is `check_pit_access()` (key **or** snapshot) instead of
+  `check_api_key()` — in `run_backtest()` and the CLI. Message tells the user
+  to build a snapshot with the script.
+- **Builder**: `python scripts/pit_snapshot.py` (full 196-ticker US stock
+  universe; `-t "AAPL MSFT"`, `--force`, `--status`, `--workers`). Resume-
+  friendly: already-saved tickers are skipped unless `--force`.
+- Built while the Pro trial was alive (2026-09-26): **196/196 tickers**
+  (1–12 FY each, 2140 fiscal years, 8.2 MB). Entity stitching (XOM, BLK) is
+  resolved **at build time**, so the snapshot carries the stitched predecessor
+  CIK and needs no key to read.
+
+### StockFit `lookup/search` HTTP 400 (live-verified 2026-09-26)
+
+The search endpoint **rejects `searchString` containing `,` `/` `&` `(` `)`**
+with HTTP 400 (`.` and `-` are fine): `"BlackRock, Inc."` → 400, `"BlackRock
+Inc"` → results. Two defensive fixes shipped with the snapshot block:
+
+- `_search_queries()` strips that punctuation (and trailing `.`) before use.
+- The whole stitching path is **best-effort**: `_lookup_profile()` returns `{}`
+  on error, `_candidate_ciks()` skips a failing query, and a failing CIK probe
+  is skipped — a rejected search can never discard a ticker's by-symbol
+  series (it used to fail BLK/FERG/SUNB entirely; now BLK stitches to 12 FY).
+
 ### Testing
 
 - `tests/test_data_source_stockfit_pit.py` — mocks `investdaytip.data_source_stockfit._get`
   (same pattern as FMP; never HTTP): parsing, happy-path fetch, entity
   stitching (exact-name and short-query variants), look-ahead gating of
   `pit_fact_asof`, shares-from-EPS, per-ticker degradation guards, CLI wiring.
+- `tests/test_pit_snapshot.py` — save/load roundtrip, empty-never-written,
+  corrupt/missing → `None`, fetch resolution order (no-key→snapshot without
+  touching `_get`, key→snapshot refresh, live fail/empty→snapshot fallback),
+  `check_pit_access`, CLI runs with snapshot-but-no-key, script `--status`.
 - The XOM reorg is the regression case for stitching; keep the
   `_search_queries("ExxonMobil Holdings Corp")` assertions green.
 

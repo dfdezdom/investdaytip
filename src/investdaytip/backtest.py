@@ -37,7 +37,7 @@ from investdaytip.data_source import (
 from investdaytip.data_source_stockfit import (
     PitStatements,
     StockfitError,
-    check_api_key,
+    check_pit_access,
     fetch_pit_statements,
     pit_fact_asof,
 )
@@ -978,8 +978,9 @@ def run_backtest(
     if pit_source not in (None, "stockfit"):
         raise ValueError(f"Unsupported pit_source: {pit_source!r}")
     if pit_source == "stockfit":
-        # Fail fast before any fetch work starts.
-        check_api_key()
+        # Fail fast before any fetch work starts: a key (live fetch) or a
+        # previously built local snapshot must be available.
+        check_pit_access()
 
     if min_market_cap is None:
         min_market_cap = 0.0 if tickers is not None else 2_000_000_000.0
