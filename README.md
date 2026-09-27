@@ -682,6 +682,7 @@ src/investdaytip/
 ├── data_source_stockfit.py # StockFit PIT statements + fundamental insights
 ├── financial_health.py    # Piotroski F-Score, Altman Z, YoY-improvement flags
 ├── deep_dive.py           # Per-ticker deep report (score + research + diagnostics)
+├── risk_signals.py        # Keyless devil's advocate layer (bear-case bullets)
 ├── scoring.py             # Pure scoring functions (score_stock, score_etf)
 ├── sentiment.py           # CNN Fear & Greed Index fetch
 ├── universe.py            # US stock universe
