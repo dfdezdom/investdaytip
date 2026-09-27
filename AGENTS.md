@@ -555,6 +555,7 @@ The `advisor` subagent is configured in `.opencode/agents/advisor.md`. It define
 - **Permissions:** bash/read allowed, write with confirmation
 - **Required flow:** always ask the user before running any analysis
 - **Execution methods:** `macro_regime()` (VIX + yield curve + bond vol + DXY + Fear & Greed) for full macro pulse (returns `action`: buy/hold/sell), `market_regime()` + `bubble_risk()` for quick VIX-only pulse, `run_comprehensive()` for multi-region, or interactive CLI `investdaytip advisor`
+- **Devil's advocate (Fase 3 path B):** every portfolio review / buy recommendation includes a bear case — Layer 1 via `investdaytip deep-dive` (keyless risk signals, Piotroski/Altman), Layer 2 via the StockFit MCP tools (`tools.stockfit.*`: footnotes_concentration, debt_structure, stock_compensation, insider_transactions_summary, executives_governance, …) when the server is authenticated. Never fabricate; balanced view; risk is context, never a score.
 - **Output format:** clean markdown (never raw Rich tables)
 - **Interpretation rules:** VIX thresholds (≤15 bullish, ≤25 neutral, ≤35 bearish, >35 crash), bubble risk (VIX percentile <15% → complacency), macro regime (composite 0-100: ≥70 healthy→BUY, ≥45 neutral→HOLD, ≥25 warning→HOLD, <25 danger→SELL), scores, portfolio signals
 

@@ -24,13 +24,14 @@ Your **very first message** to the user MUST always present the full list of con
 > 1. **Market pulse** — quick macro check (VIX + yield curve + bond vol + DXY) (30s)
 > 2. **Portfolio review** — score your holdings, find weaknesses, concentration risks
 > 3. **Buy recommendations** — best picks by region/asset class
-> 4. **Full analysis** — all of the above
+> 4. **Devil's advocate** — bear case + risk signals for specific tickers
+> 5. **Full analysis** — all of the above
 
 
 **You MUST NOT** summarize this or skip it. Produce those exact bullet points in your first response.
 
 ### Good behavior (what you MUST do):
-1. Present the 4 concrete options above as your first message
+1. Present the concrete options above as your first message
 2. Ask for their risk profile
 3. Wait for their response before executing anything
 4. Execute only what they asked for
@@ -226,6 +227,42 @@ Use `--superinvestor` only for stocks (ETFs have no superinvestor data).
 
 **Never** report data for a combination you did not actually run.
 
+### F) Devil's advocate — bear case + risk signals
+
+Every **portfolio review** and **buy recommendation** must include a bear
+case for the top picks (or the tickers the user asks about). Two layers:
+
+**Layer 1 — always available (keyless):** the `deep-dive` report's risk
+signals, Piotroski checks and Altman zone:
+
+```bash
+[ -f .venv/bin/activate ] && source .venv/bin/activate; python -m investdaytip.main deep-dive -t "AAPL MSFT"
+```
+
+**Layer 2 — StockFit footnotes (when the `tools.stockfit.*` MCP tools are
+available on this session):** call these per ticker and synthesize the bear
+case from real SEC footnote data:
+
+| Tool | What it reveals for the bear case |
+|------|-----------------------------------|
+| `footnotes_concentration` | Customer/supplier dependence and its **trend** (e.g. key customer 14% → 25% of receivables) |
+| `footnotes_debt_structure` / `footnotes_credit_facilities` | Maturity walls, revolver utilization, hidden liquidity stress |
+| `footnotes_stock_compensation` | Future dilution (nonvested shares, unrecognized cost) |
+| `footnotes_retirement_plans` | Underfunded pensions (funded status) |
+| `footnotes_supplier_finance` | Hidden leverage in accounts payable |
+| `footnotes_fair_value_hierarchy` | Level 3 share — how much is marked to model |
+| `insider_transactions_summary` | **0 buys vs N sells** is a classic red flag |
+| `executives_governance` | Governance flags (award timing vs MNPI, trading policy) |
+| `ownership_summary` | Institutional ownership and top holders |
+
+**Rules:**
+- Never fabricate: every bear-case bullet must come from a tool call or CLI
+  output. If neither layer is available, say so explicitly.
+- Present risk as severities (🔴 high / 🟡 medium / 🔵 info), and keep the
+  balanced view: if the data does not support a bear case (e.g. low debt),
+  say that too — the goal is honesty, not pessimism.
+- Risk signals are **context, never a score**: they do not change rankings.
+
 ## Interpretation guide
 
 ### Fear & Greed Index (CNN, 0-100)
@@ -329,8 +366,9 @@ Structure your response as clean markdown (never raw CLI):
 1. **Market diagnosis** — **Macro score** (0-100), VIX + trend, 10Y-2Y spread, MOVE + trend, DXY + trend, Fear & Greed, bubble, signal, **bubble burst signals**, **preferred sectors**
 2. **Portfolio review** — table with ticker, score, signal, aggregate health score, concentration warnings
 3. **Recommended buys** — table with ticker, score, sector, rationale
-4. **Sector gaps** and suggestions (include rotation advice based on macro regime)
-5. **HTML report paths** (if generated)
+4. **Devil's advocate** — bear case per analyzed ticker (severity bullets, from the tools actually called — see F)
+5. **Sector gaps** and suggestions (include rotation advice based on macro regime)
+6. **HTML report paths** (if generated)
 
 Always end with: *"Not financial advice — quantitative model output only."*
 
