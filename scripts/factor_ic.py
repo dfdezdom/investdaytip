@@ -220,6 +220,7 @@ def main() -> None:
                 "earnings_growth": stock.earnings_growth,
                 "revenue_growth": stock.revenue_growth,
                 "eps_surprise": stock.eps_surprise,
+                "eps_acceleration": stock.eps_acceleration,
                 # raw trend / candidates
                 "return_12m": stock.return_12m,
                 "return_12m_ex_1m": r12x1,

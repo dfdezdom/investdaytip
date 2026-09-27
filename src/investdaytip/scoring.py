@@ -373,6 +373,10 @@ class QuantStockScorer:
         too pessimistic and are likely revising estimates upward; negative
         surprises suggest downward revisions.  When no earnings-dates data is
         available the factor falls back to neutral.
+
+        ``eps_acceleration`` (as-filed EPS growth 2nd derivative) was tested
+        as a fallback when estimates are missing and **rejected**: factor-IC
+        −0.059 mean over 3 usable snapshots (2026-09-27, full US universe).
         """
         notes: list[str] = []
         if d.eps_surprise is None:

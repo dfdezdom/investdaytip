@@ -162,6 +162,17 @@ def test_fetch_stock_flags_from_statements():
     assert plain.roa_improving is None
 
 
+def test_eps_acceleration_second_derivative():
+    from investdaytip.data_source import _eps_acceleration
+
+    # eps 5 → 6 → 7: growth 20% then 16.7% → deceleration of 3.3pp
+    assert _eps_acceleration(7.0, 6.0, 5.0) == pytest.approx((7 / 6 - 1) - (6 / 5 - 1))
+    assert _eps_acceleration(5.0, 5.0, 5.0) == pytest.approx(0.0)
+    assert _eps_acceleration(None, 6.0, 5.0) is None
+    assert _eps_acceleration(7.0, 6.0, None) is None
+    assert _eps_acceleration(7.0, 0.0, 5.0) is None  # zero denominator
+
+
 def test_technical_indicators_returns_none_for_short_series():
     short = pd.Series([100.0] * 10)
     rsi, macd = _technical_indicators(short)

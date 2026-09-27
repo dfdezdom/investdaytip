@@ -267,3 +267,24 @@ def test_quant_improvement_note_when_both_true():
         replace(_base_data(), margin_improving=True, roa_improving=True)
     )
     assert any("fundamentals improving" in n for n in notes)
+
+
+def test_quant_eps_acceleration_is_not_scored():
+    """Regression: eps_acceleration was tested as a fallback and rejected
+    (factor-IC −0.059) — it must not influence the score."""
+    scorer = QuantStockScorer()
+    with_accel, _ = scorer._eps_revisions_score(
+        replace(_base_data(), eps_surprise=None, eps_acceleration=0.15)
+    )
+    without, _ = scorer._eps_revisions_score(
+        replace(_base_data(), eps_surprise=None, eps_acceleration=None)
+    )
+    assert with_accel == without == 50.0
+
+
+def test_quant_eps_surprise_still_scores():
+    scorer = QuantStockScorer()
+    score, _ = scorer._eps_revisions_score(
+        replace(_base_data(), eps_surprise=15.0, eps_acceleration=-0.20)
+    )
+    assert score == pytest.approx(100.0)
