@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.13.0 (2026-09-27)
+
+### Features
+
+- **`deep-dive` subcommand** — per-ticker deep report combining the InvestDayTip score and factor breakdown, StockFit's earnings snapshot (EPS, margins, ROE/ROIC, FCF, growth, next earnings/filing dates), keyless health diagnostics (Piotroski F-Score with its 9 checks and Altman Z + zone — informative only, never scored), a devil's advocate risk block, and a DCF link-out to StockFit's platform. Rich terminal output plus a self-contained HTML page (`--export-html`).
+- **Keyless risk signals — the local devil's advocate layer** — `risk_signals.py` turns data we already have into explicit bear-case bullets (Altman zone, losses, negative FCF, leverage, payout ratio, failed Piotroski checks) sorted by severity. Context only — never scored.
+- **Tier-aware degradation — works on every StockFit plan, and without a key at all** — a central capability registry (`pit_statements` keyless, `fundamental_insights` free, `deep_dive_summary` starter, `economic_model` stock, `footnotes` pro) plus automatic plan detection: StockFit exposes no plan endpoint, but gated endpoints answer HTTP 403, so the plan is detected by probing the tier boundaries (cached 1d). Features below the detected plan are omitted with the explicit reason — never fabricated. New `investdaytip stockfit-status` prints the plan and the capability matrix.
+
+### Tooling
+
+- **StockFit MCP server registered** (`https://api.stockfit.io/mcp`, OAuth) — 125 research tools for the OpenCode advisor agent (footnotes, governance flags, insider summaries, ownership).
+
 ## v0.12.0 (2026-09-27)
 
 ### Features
