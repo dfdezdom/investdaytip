@@ -195,7 +195,8 @@ curl -fsSL https://opencode.ai/install | bash
 1. **Market pulse** — Full macro analysis (VIX + yield curve + bond volatility + DXY) in ~30 seconds
 2. **Portfolio review** — Score your holdings, identify weaknesses, and get actionable signals
 3. **Buy recommendations** — Best picks filtered by region, asset class, and risk profile
-4. **Full analysis** — All of the above combined into a single comprehensive report
+4. **Devil's advocate** — Bear case + risk signals for specific tickers (see below)
+5. **Full analysis** — All of the above combined into a single comprehensive report
 
 ### Quick example
 
@@ -218,6 +219,39 @@ Macro Score: 58/100 (Neutral)
 Signal: 🟡 HOLD — selective buying
 ```
 
+### 🩺 Devil's advocate — bear cases from SEC footnotes
+
+Every portfolio review and buy recommendation now ends with a **bear case**
+for the analyzed tickers, in two layers:
+
+| Layer | Source | Needs |
+|---|---|---|
+| 1 — risk signals | `investdaytip deep-dive` (risk bullets, Piotroski checks, Altman zone) | nothing — works keyless |
+| 2 — SEC footnotes | StockFit MCP tools: customer/supplier **concentration trends**, debt **maturity walls**, stock-comp **dilution**, **insider summaries** (0 buys vs N sells), governance flags | StockFit MCP connected |
+
+```text
+@advisor devil's advocate on NVDA
+```
+
+**Expected output:** severity bullets (🔴/🟡/🔵) mixing both layers — e.g.
+"Customer One went from 14% → 25% of receivables in two years" next to
+"0 insider buys vs 318 sells ($2.18B) in 12 months" — **plus the balanced
+view** of what does *not* support the bear case (clean balance sheet, no
+hidden leverage). Never fabricated: every bullet comes from a tool call.
+
+**Connecting the StockFit MCP (layer 2):** the server is registered in
+`opencode.json` (OAuth 2.1 — no API key in config):
+
+```bash
+opencode mcp add stockfit --url https://api.stockfit.io/mcp   # already registered
+```
+
+Then sign in once from the OpenCode TUI: run `/mcps`, select `stockfit` and
+complete the browser flow. Tools appear as `tools.stockfit.*` (125 of them —
+footnotes, governance, insider/ownership summaries, sector-aware metrics).
+Without the MCP — or on lower plans — the advisor degrades to layer 1 and
+says so explicitly.
+
 ### AI Agent vs CLI advisor
 
 | | OpenCode AI Agent | `investdaytip advisor` CLI |
@@ -235,7 +269,8 @@ See [`.opencode/agents/advisor.md`](.opencode/agents/advisor.md) for:
 - Fear & Greed Index signals
 - Bubble burst historical indicators (dot-com 2000, railroads 1845)
 - Portfolio scoring thresholds and presentation format
-- Execution methods (market pulse, portfolio review, full analysis)
+- Devil's advocate rules (bear-case layers, StockFit tool map, never-fabricate)
+- Execution methods (market pulse, portfolio review, devil's advocate, full analysis)
 
 ---
 
