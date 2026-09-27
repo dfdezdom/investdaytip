@@ -232,11 +232,9 @@ def test_render_html_smoke():
     # StockFit percent-form fields are normalized (25.0 = 25%, not 2500%)
     assert "25.0%" in html
     assert "2500" not in html
-    # DCF link-out points at StockFit's site (early access landing)
-    from investdaytip.deep_dive import DCF_URL
-    assert "https://www.stockfit.io" in html
-    assert "deep-dive-dcf" in html  # utm campaign (HTML-escaped ampersands)
-    assert DCF_URL.split("?")[0] in html
+    # DCF link-out is intentionally NOT rendered while StockFit's valuation
+    # platform is in early access (user decision 2026-09-27)
+    assert "stockfit.io" not in html
     assert "Devil" in html
     assert "no significant risk signals" in html
     # no-key run renders the omission note instead of the snapshot block
