@@ -36,6 +36,9 @@ def _pit() -> PitStatements:
             _row("2024-09-28", "2024-11-01", 2024,
                  {"revenue": 350e9, "netIncome": 90e9, "epsDiluted": 6.0,
                   "grossProfit": 157.5e9}),
+            _row("2023-09-30", "2023-11-02", 2023,
+                 {"revenue": 300e9, "netIncome": 80e9, "epsDiluted": 5.0,
+                  "grossProfit": 135e9}),
         ]),
         balance=_parse_periods([
             _row("2025-09-27", "2025-10-31", 2025, {
@@ -89,7 +92,8 @@ def test_fetch_asset_stockfit_happy_path(mocker):
     assert data.trailing_pe == pytest.approx(data.current_price / 7.0)
     assert data.earnings_growth == pytest.approx((100e9 - 90e9) / 90e9)
     assert data.margin_improving is True   # 0.50 > 0.45
-    assert data.roa_improving is True      # 100/400 > 90/360
+    assert data.roa_improving is True      # 100/400 > 90/380
+    assert data.eps_acceleration == pytest.approx((7 / 6 - 1) - (6 / 5 - 1))
     assert data.dividend_yield == pytest.approx(2.0 / data.current_price)
     assert data.return_12m is not None     # trend from the price series
     # No analyst estimates in StockFit → these stay neutral/None

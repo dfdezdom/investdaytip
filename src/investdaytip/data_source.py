@@ -67,6 +67,9 @@ class StockData:
     payout_ratio: Optional[float] = None
     # Earnings surprises (proxy for EPS revisions)
     eps_surprise: Optional[float] = None
+    # EPS growth acceleration (2nd derivative) — derived diagnostic, tested as
+    # an EPS-revisions fallback and REJECTED (factor-IC −0.059, 2026-09-27)
+    eps_acceleration: Optional[float] = None
     # Market context
     market_cap: Optional[float] = None
     current_price: Optional[float] = None
@@ -395,6 +398,8 @@ class _Fundamentals:
     eps: Optional[float] = None
     ni_prev: Optional[float] = None
     rev_prev: Optional[float] = None
+    eps_prev: Optional[float] = None
+    eps_prev2: Optional[float] = None
     gross_profit: Optional[float] = None
     gross_profit_prev: Optional[float] = None
     total_assets_prev: Optional[float] = None
@@ -411,6 +416,22 @@ def _pct_change(current: Optional[float], previous: Optional[float]) -> Optional
     if current is None or previous is None or previous == 0:
         return None
     return (current - previous) / abs(previous)
+
+
+def _eps_acceleration(
+    eps: Optional[float], eps_prev: Optional[float], eps_prev2: Optional[float]
+) -> Optional[float]:
+    """Second derivative of as-filed EPS growth — EPS-revisions fallback.
+
+    ``growth(eps vs eps_prev) − growth(eps_prev vs eps_prev2)``: accelerating
+    earnings are the as-filed shadow of upward estimate revisions.  ``None``
+    unless all three fiscal years are available.
+    """
+    growth_now = _pct_change(eps, eps_prev)
+    growth_prev = _pct_change(eps_prev, eps_prev2)
+    if growth_now is None or growth_prev is None:
+        return None
+    return growth_now - growth_prev
 
 
 def _derive_stock_data(
@@ -509,6 +530,9 @@ def _derive_stock_data(
         (ttm_div / eps) if (ttm_div and eps and eps != 0) else None
     )
 
+    # EPS-revisions fallback: as-filed EPS growth acceleration.
+    accel = _eps_acceleration(eps, fund.eps_prev, fund.eps_prev2)
+
     return StockData(
         ticker=ticker,
         name=info.get("shortName") or info.get("longName"),
@@ -532,6 +556,7 @@ def _derive_stock_data(
         dividend_yield=dividend_yield,
         payout_ratio=payout_ratio,
         eps_surprise=eps_surprise,
+        eps_acceleration=accel,
         market_cap=market_cap,
         current_price=price,
         price_vs_sma200=price_vs_sma200,

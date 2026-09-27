@@ -289,7 +289,9 @@ to **Starter+** via the `live_source` capability (~6 calls per ticker — Free's
 fields — `earnings_growth`, `profit_margin`, `roe`, `trailing_pe` differ per
 company and **rankings are source-dependent**. No analyst estimates exist in
 StockFit, so `forward_pe`/`peg_ratio`/`eps_surprise` are always `None` (Value
-scores with one metric fewer, EPS Revisions neutral). Details:
+scores with one metric fewer, EPS Revisions neutral). `eps_acceleration` is
+derived (3 FY of EPS) but was **rejected** as the EPS-Revisions fallback
+(factor-IC −0.059) — diagnostic only. Details:
 `stockfit/data_source_stockfit_validation.md`.
 
 Robustness fixes found during that validation (keep them):
@@ -525,7 +527,7 @@ Two stock-scoring models are available, selectable via `--scoring-model {classic
   - Profitability sub-weights: ROE 30%, margin 25%, ROA 15%, **YoY-improvement 30%** (Δgross margin + ΔROA vs previous fiscal year; neutral 50 when unknown). Shared logic in `financial_health.improvement_flags()`; flags live on `StockData.margin_improving`/`roa_improving`, filled by the live path (`fetch_asset(with_improvements=True)` — 2 statement calls, 7d cache; skipped for `classic`) and by both backtest builders. Validated 2026-09-27 (full US, top-5, min-cap 0): factor-IC +0.134/+0.126 mean (86% hit — top of the table), before/after 5y alpha 6.85%→7.60% (MaxDD unchanged), 3y alpha 7.69%→13.37%, Sharpe 1.16→1.30, win12M 50%→62.5%.
   - **Piotroski F-Score composite and Altman Z were tested and REJECTED as scoring factors** (mean IC +0.039/+0.014 = noise; 5 of the 9 Piotroski checks are negative on large-caps). `financial_health.piotroski_f_score()` / `altman_z_score()` stay available for display use — **reserved as per-ticker diagnostic content for the future `deep-dive` subcommand (product Fase 2, see `stockfit/STOCKFIT_EVALUACION.md` roadmap)**: informative only, never scored.
   - Momentum uses **12-1 momentum** (12m return excluding the most recent month, derived from `return_12m`/`return_1m`; falls back to raw 12m when `return_1m` is missing) — the last month is short-term reversal, not momentum. Validated via factor-IC + before/after backtests (2026-07-17): alpha +0.5pp and Sharpe +0.03 on the 5y wide universe, never worse on 3y/standard configs.
-  - EPS Revisions uses the average EPS surprise (Reported EPS vs Estimate) over the last four reported quarters; `lxml` is required for yfinance to expose this data.
+  - EPS Revisions uses the average EPS surprise (Reported EPS vs Estimate) over the last four reported quarters; `lxml` is required for yfinance to expose this data. **Note (2026-09-27 IC run): the factor itself is noise in the 3y window** (`eps_surprise` IC −0.002, `F_eps_revisions` −0.010, 38% hit) — a candidate for re-weighting/removal with its own before/after validation. `eps_acceleration` (as-filed EPS 2nd derivative) was tested as an estimates-free fallback and **rejected** (IC −0.059, only 3 usable snapshots); it stays as a derived diagnostic on `StockData`, never scored (regression test in `test_scoring_quant.py`).
   - Disqualifying grades cap the total score at neutral when a factor falls into red-flag territory
   - Uses absolute thresholds (peer-relative scoring is left for a future iteration)
 - **`classic`** — Original InvestDayTip model (Graham/Buffett + momentum):

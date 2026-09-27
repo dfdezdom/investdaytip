@@ -671,6 +671,20 @@ def pit_fact_asof(
     return current, previous
 
 
+def pit_fact_n_back(
+    periods: list[PitPeriod], key: str, as_of: datetime, years_back: int
+) -> Optional[float]:
+    """Value of *key* ``years_back`` fiscal years before the as-of period.
+
+    Same look-ahead discipline as :func:`pit_fact_asof`: only periods filed
+    on or before *as_of* are considered.  ``None`` when the series is shorter.
+    """
+    eligible = [p for p in periods if p.date_filed <= as_of]
+    if len(eligible) <= years_back:
+        return None
+    return eligible[years_back].fact(key)
+
+
 # ── Fundamental insights (live path, Free-tier chart endpoints) ─────────────
 
 INSIGHT_YEARS = 5  # fiscal years requested per chart
@@ -974,6 +988,14 @@ def fetch_asset_stockfit(
         eps=_first(
             pit_fact_asof(pit.income, "epsDiluted", now)[0],
             pit_fact_asof(pit.income, "eps", now)[0],
+        ),
+        eps_prev=_first(
+            pit_fact_asof(pit.income, "epsDiluted", now)[1],
+            pit_fact_asof(pit.income, "eps", now)[1],
+        ),
+        eps_prev2=_first(
+            pit_fact_n_back(pit.income, "epsDiluted", now, 2),
+            pit_fact_n_back(pit.income, "eps", now, 2),
         ),
         ni_prev=pit_fact_asof(pit.income, "netIncome", now)[1],
         rev_prev=pit_fact_asof(pit.income, "revenue", now)[1],

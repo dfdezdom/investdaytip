@@ -42,6 +42,7 @@ from investdaytip.data_source_stockfit import (
     check_pit_access,
     fetch_pit_statements,
     pit_fact_asof,
+    pit_fact_n_back,
 )
 from investdaytip.recommender import _build_universe
 from investdaytip.scoring import ScoredAsset, resolve_include_technical, score_stock
@@ -460,6 +461,8 @@ def _build_historical_stock_data(
         # YoY growth (compare with previous fiscal year)
         ni_prev=_value_n_years_before(income_stmt, quarter_date, "NetIncome", n=1),
         rev_prev=_value_n_years_before(income_stmt, quarter_date, "TotalRevenue", n=1),
+        eps_prev=_value_n_years_before(income_stmt, quarter_date, "BasicEPS", n=1),
+        eps_prev2=_value_n_years_before(income_stmt, quarter_date, "BasicEPS", n=2),
         gross_profit=_latest_value_before(income_stmt, quarter_date, "GrossProfit"),
         gross_profit_prev=_value_n_years_before(income_stmt, quarter_date, "GrossProfit", n=1),
         total_assets_prev=_value_n_years_before(balance_sheet, quarter_date, "TotalAssets", n=1),
@@ -510,6 +513,8 @@ def _build_pit_stock_data(
     ni, ni_prev = pit_fact_asof(pit.income, "netIncome", snapshot_date)
     rev, rev_prev = pit_fact_asof(pit.income, "revenue", snapshot_date)
     eps = pit_fact_asof(pit.income, "eps", snapshot_date)[0]
+    eps_prev = pit_fact_asof(pit.income, "eps", snapshot_date)[1]
+    eps_prev2 = pit_fact_n_back(pit.income, "eps", snapshot_date, 2)
     gross_profit, gross_profit_prev = pit_fact_asof(pit.income, "grossProfit", snapshot_date)
     equity = pit_fact_asof(pit.balance, "stockholdersEquity", snapshot_date)[0]
     total_assets = pit_fact_asof(pit.balance, "assets", snapshot_date)[0]
@@ -528,6 +533,7 @@ def _build_pit_stock_data(
 
     fund = _Fundamentals(
         ni=ni, rev=rev, eps=eps, ni_prev=ni_prev, rev_prev=rev_prev,
+        eps_prev=eps_prev, eps_prev2=eps_prev2,
         gross_profit=gross_profit, gross_profit_prev=gross_profit_prev,
         total_assets_prev=total_assets_prev,
         equity=equity, total_assets=total_assets, total_debt=total_debt,
