@@ -725,7 +725,7 @@ src/investdaytip/
 ├── data_source.py         # yfinance wrapper + dataclasses (StockData / EtfData)
 ├── data_source_fmp.py     # FMP wrapper (alternative data source, 6 endpoints/ticker)
 ├── data_source_yahooquery.py # Yahooquery batch data source
-├── data_source_stockfit.py # StockFit PIT statements + fundamental insights
+├── data_source_stockfit.py # StockFit client: PIT statements, insights, plan detection, live source
 ├── financial_health.py    # Piotroski F-Score, Altman Z, YoY-improvement flags
 ├── deep_dive.py           # Per-ticker deep report (score + research + diagnostics)
 ├── risk_signals.py        # Keyless devil's advocate layer (bear-case bullets)
@@ -759,6 +759,7 @@ tests/
 ├── test_data_source_fmp.py # FMP data fetching tests
 ├── test_data_source_yahooquery.py # Yahooquery data source tests
 ├── test_data_source_stockfit_pit.py # StockFit PIT layer tests (mocked HTTP)
+├── test_data_source_stockfit_live.py # StockFit live data source tests (mocked HTTP)
 ├── test_fundamental_insights.py # StockFit insights section tests
 ├── test_pit_snapshot.py   # PIT snapshot layer tests
 ├── test_deep_dive.py      # Deep-dive report tests
