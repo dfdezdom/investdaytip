@@ -31,7 +31,12 @@ from investdaytip.data_source import (
     fetch_cash_flow_frame,
     fetch_statement_frames,
 )
-from investdaytip.data_source_stockfit import ResearchSummary, fetch_research_summary
+from investdaytip.data_source_stockfit import (
+    ResearchSummary,
+    detect_plan,
+    fetch_research_summary,
+    plan_allows,
+)
 from investdaytip.financial_health import (
     AltmanResult,
     PiotroskiResult,
@@ -102,8 +107,8 @@ def build_deep_dive(
     except Exception as exc:  # pragma: no cover - defensive
         dd.errors.append(f"health diagnostics failed: {exc}")
 
-    # StockFit research summary — opt-in enrichment via the API key.
-    if os.environ.get("STOCKFIT_API_KEY"):
+    # StockFit research summary — opt-in enrichment, tier-aware (Starter+).
+    if os.environ.get("STOCKFIT_API_KEY") and plan_allows(detect_plan(), "deep_dive_summary"):
         try:
             dd.research = fetch_research_summary(ticker)
         except Exception as exc:  # pragma: no cover - defensive
@@ -151,6 +156,16 @@ def _fmt(value: Optional[float], pct: bool = False, money: bool = False) -> str:
     return f"{value:.2f}"
 
 
+def _research_omission_reason() -> str:
+    """Why the StockFit snapshot is missing — never fabricates, explains."""
+    if not os.environ.get("STOCKFIT_API_KEY"):
+        return "no STOCKFIT_API_KEY"
+    plan = detect_plan()
+    if not plan_allows(plan, "deep_dive_summary"):
+        return f"requires Starter plan (current plan: {plan})"
+    return "fetch failed"
+
+
 def render_rich(items: list[DeepDive], console: Optional[Console] = None) -> None:
     """Print the deep-dive report to the terminal."""
     console = console or Console()
@@ -186,10 +201,10 @@ def render_rich(items: list[DeepDive], console: Optional[Console] = None) -> Non
                 console.print(f"  Next earnings: {snap['nextEarningsDate']}"
                               + (f"  ·  next filing: {snap['nextFilingDate']}"
                                  if snap.get("nextFilingDate") else ""))
-        elif not os.environ.get("STOCKFIT_API_KEY"):
-            console.print("  [dim]StockFit research summary omitted (no STOCKFIT_API_KEY)[/dim]")
         else:
-            console.print("  [dim]StockFit research summary unavailable[/dim]")
+            console.print(
+                f"  [dim]StockFit research summary omitted — {_research_omission_reason()}[/dim]"
+            )
 
         if dd.piotroski is not None:
             checks = " ".join(
@@ -292,8 +307,7 @@ def render_html(items: list[DeepDive], generated_at: Optional[datetime] = None) 
                 f'<table>{cells}</table>{extra}</div>'
             )
         else:
-            reason = ("no STOCKFIT_API_KEY" if not os.environ.get("STOCKFIT_API_KEY")
-                      else "fetch failed")
+            reason = _research_omission_reason()
             rows.append(
                 f'<div class="block"><h3>Earnings snapshot (StockFit)</h3>'
                 f'<p class="muted">omitted — {_h(reason)}</p></div>'

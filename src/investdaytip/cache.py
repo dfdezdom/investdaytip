@@ -303,6 +303,20 @@ def cache_stockfit_research_set(ticker: str, research_json: str) -> None:
     get_db().set(_cache_key(ticker, "stockfit_research"), research_json, TTL_FUNDAMENTALS)
 
 
+def cache_stockfit_plan_get() -> str | None:
+    """Return the cached StockFit plan string or None."""
+    if not enabled:
+        return None
+    return get_db().get(_cache_key("_global", "stockfit_plan"))
+
+
+def cache_stockfit_plan_set(plan: str) -> None:
+    """Store the detected StockFit plan with fundamentals TTL (1 day)."""
+    if not enabled:
+        return
+    get_db().set(_cache_key("_global", "stockfit_plan"), plan, TTL_FUNDAMENTALS)
+
+
 def clear_cache() -> None:
     """Purge all cached data."""
     get_db().clear()
