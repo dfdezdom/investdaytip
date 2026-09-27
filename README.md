@@ -362,6 +362,7 @@ investdaytip deep-dive -t "AAPL MSFT" --export-html # Self-contained HTML page
 | Score + factor breakdown | live data + the scoring model | no |
 | Earnings snapshot (margins, ROE/ROIC, FCF, growth, next dates) | StockFit `company/research-summary` | yes (omitted gracefully otherwise) |
 | Piotroski F-Score (9 checks) + Altman Z + zone | local computation from the ticker's own statements | no |
+| Devil's advocate — risk signals | local heuristics (Altman zone, Piotroski failures, leverage, payout, losses) | no |
 
 Piotroski/Altman are **informative diagnostics — never scored** (they were
 validated and rejected as scoring factors).

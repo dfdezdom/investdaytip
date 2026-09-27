@@ -39,6 +39,7 @@ from investdaytip.financial_health import (
     annual_facts,
     piotroski_f_score,
 )
+from investdaytip.risk_signals import RiskSignal, risk_signals
 from investdaytip.scoring import ScoredAsset, resolve_include_technical, score_stock
 
 # StockFit's DCF model lives in their web platform, which is in early access
@@ -61,6 +62,7 @@ class DeepDive:
     research: Optional[ResearchSummary] = None
     piotroski: Optional[PiotroskiResult] = None
     altman: Optional[AltmanResult] = None
+    risks: list[RiskSignal] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
 
@@ -106,6 +108,10 @@ def build_deep_dive(
             dd.research = fetch_research_summary(ticker)
         except Exception as exc:  # pragma: no cover - defensive
             dd.errors.append(f"research summary failed: {exc}")
+
+    # Local devil's advocate: risk signals from the data we already have.
+    if isinstance(dd.data, StockData):
+        dd.risks = risk_signals(dd.data, dd.piotroski, dd.altman)
 
     return dd
 
@@ -200,6 +206,15 @@ def render_rich(items: list[DeepDive], console: Optional[Console] = None) -> Non
                           f"[{color}]{dd.altman.zone}[/{color}]")
         if dd.piotroski is None and dd.altman is None:
             console.print("  [dim]Health diagnostics unavailable (no statements)[/dim]")
+
+        console.print("  [underline]Devil's advocate — risk signals[/underline]")
+        if dd.risks:
+            colors = {"high": "red", "medium": "yellow", "info": "dim"}
+            for sig in dd.risks:
+                color = colors.get(sig.severity, "dim")
+                console.print(f"  [{color}]• {sig.label}[/{color}] — {sig.detail}")
+        else:
+            console.print("  [green]✓ no significant risk signals[/green]")
 
         console.print(f"  [underline]DCF valuation[/underline] {DCF_LABEL}")
         console.print(f"  [dim]{DCF_URL.split('?')[0]}[/dim]")
@@ -308,6 +323,19 @@ def render_html(items: list[DeepDive], generated_at: Optional[datetime] = None) 
             f'<p><a href="{_h(DCF_URL)}" target="_blank" rel="noopener">'
             f'{_h(DCF_LABEL)} ↗</a></p></div>'
         )
+        if dd.risks:
+            risk_items = "".join(
+                f'<li class="risk-{_h(s.severity)}"><strong>{_h(s.label)}</strong>'
+                f' — {_h(s.detail)}</li>'
+                for s in dd.risks
+            )
+            risk_html = f'<ul class="risks">{risk_items}</ul>'
+        else:
+            risk_html = '<p class="ok">✓ no significant risk signals</p>'
+        rows.append(
+            f'<div class="block"><h3>Devil\u2019s advocate — risk signals '
+            f'<span class="muted">(local data — never scored)</span></h3>{risk_html}</div>'
+        )
 
         err_html = "".join(f'<p class="err">⚠ {_h(e)}</p>' for e in dd.errors)
         sections.append(
@@ -340,6 +368,12 @@ td:first-child {{ color: #555; }}
 .zone-safe {{ color: #2e9e5b; font-weight: 600; }}
 .zone-grey {{ color: #c98a2e; font-weight: 600; }}
 .zone-distress {{ color: #c94a4a; font-weight: 600; }}
+.risks {{ list-style: none; padding: 0; }}
+.risks li {{ padding: .25rem 0; border-bottom: 1px solid #ececef; }}
+.risk-high {{ color: #c94a4a; }}
+.risk-medium {{ color: #c98a2e; }}
+.risk-info {{ color: #555; }}
+.ok {{ color: #2e9e5b; }}
 .muted {{ color: #8a8f98; font-weight: 400; font-size: .85em; }}
 .err {{ color: #c94a4a; }}
 </style>

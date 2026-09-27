@@ -38,8 +38,9 @@ the convention is `Optional[...]` for dataclass fields, not `X | None`.
 | Backtest | `backtest.py` | historical scoring validation (stocks only) |
 | Sentiment | `sentiment.py` | CNN Fear & Greed Index, no yfinance (uses `urllib`) |
 | Deep-dive report | `deep_dive.py` | Per-ticker report: score + StockFit research-summary + keyless Piotroski/Altman diagnostics |
+| Risk signals | `risk_signals.py` | Keyless "devil's advocate" layer (Fase 3 local): Altman zone, Piotroski failures, leverage, payout, losses — context, never scored |
 | Universes | `*_universe.py` (7 modules) | curated ticker lists wired in `recommender._build_universe()` (deduplicated case-insensitively) |
-| Tests | `tests/` | 21 test files, no live network calls (autouse network guard in `conftest.py`) |
+| Tests | `tests/` | 22 test files, no live network calls (autouse network guard in `conftest.py`) |
 | OpenCode agent | `.opencode/agents/advisor.md` | advisor subagent: permissions, interactive flow, execution methods, and interpretation guide |
 
 Data flow: `CLI → recommender → data_source (yfinance|yahooquery|fmp) → scoring → html_export / Rich table`
@@ -325,6 +326,13 @@ investdaytip deep-dive -t "AAPL MSFT" --export-html report.html
 
 - Piotroski/Altman are **diagnostics, never scored** (validated and rejected
   as scoring factors); both renders label them as such.
+- **Devil's advocate block** (`risk_signals.risk_signals()`) — keyless local
+  risk bullets: Altman zone (distress→high, grey→medium), losses, negative
+  FCF, D/E > 200%, payout > 100% / > 85%, failed Piotroski checks (accruals
+  → medium, dilution & rising leverage → info, both margin+ROA deteriorating
+  → medium). This is the **local layer of product Fase 3**; the footnotes
+  based bear case (StockFit `footnotes/*`, Pro tier or MCP) layers on top.
+  Context only — never scored.
 - **Unit convention (verified live 2026-09-27)**: StockFit snapshot
   margins/returns (`grossMargin`, `operatingMargin`, `netMargin`, `roe`,
   `roic`, `fcfToNetIncome`) are **percent-form** (40.31 = 40.31%) while
