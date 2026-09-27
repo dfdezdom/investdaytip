@@ -193,6 +193,8 @@ def test_render_rich_smoke():
     assert "AAPL" in out
     assert "Piotroski" in out
     assert "Altman" in out
+    assert "Devil's advocate" in out
+    assert "no significant risk signals" in out
 
 
 def test_render_html_smoke():
@@ -209,6 +211,8 @@ def test_render_html_smoke():
     assert "https://www.stockfit.io" in html
     assert "deep-dive-dcf" in html  # utm campaign (HTML-escaped ampersands)
     assert DCF_URL.split("?")[0] in html
+    assert "Devil" in html
+    assert "no significant risk signals" in html
     # no-key run renders the omission note instead of the snapshot block
     dd = _sample_dive()
     dd.research = None
