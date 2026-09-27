@@ -19,7 +19,7 @@
 
 - 📈 **Multi-factor scoring** — composite 0-100 score per asset
 - 🔗 **Multiple data sources** — yfinance (default), yahooquery (batch), or Financial Modeling Prep (FMP), with automatic fallback
-- 🧾 **StockFit integration (optional)** — point-in-time SEC filing dates for backtests (`--pit-source stockfit`, works offline from a local snapshot) and a fundamentals insights section in the HTML report (`--fundamental-insights`)
+- 🧾 **StockFit integration (optional)** — point-in-time SEC filing dates for backtests (`--pit-source stockfit`, works offline from a local snapshot), a fundamentals insights section in the HTML report (`--fundamental-insights`), per-ticker `deep-dive` reports and a keyless devil's advocate layer (risk signals). Works on every StockFit plan — and without a key at all (`stockfit-status` shows what yours unlocks)
 - 🏦 **Stocks & ETFs** — auto-detected and scored with dedicated models
 - 🌍 **US, European, Asian & Superinvestor markets** — S&P 500, DAX, CAC 40, FTSE 100, Nikkei 225, Hang Seng, NSE, and superinvestor consensus picks from DataRoma 13F filings
 - 💱 **Currency filter** — narrow by native currency (`USD`, `EUR`, `JPY`, …)
@@ -84,6 +84,16 @@ That's it. You'll see the top 5 buys scored across 300+ stocks & ETFs.
 
 ### CLI
 
+**Subcommands:**
+
+| Command | What it does | Section |
+|---|---|---|
+| `investdaytip [flags]` | Top recommendations from the curated universes | below |
+| `investdaytip deep-dive` | Per-ticker deep report (score + research + diagnostics) | [Deep-dive](#deep-dive-subcommand) |
+| `investdaytip backtest` | Historical validation of the scoring model | [Backtest](#backtest-subcommand) |
+| `investdaytip advisor` | Interactive market pulse, portfolio review, buys | [Advisor](#advisor-subcommand) |
+| `investdaytip stockfit-status` | Your StockFit plan + which features unlock | [Tiers](#stockfit-integration--tiers) |
+
 ```bash
 investdaytip                         # Top 5 from full universe (US + EU + Asia, stocks + ETFs)
 investdaytip -n 10                   # Top 10
@@ -131,6 +141,10 @@ investdaytip backtest --export-html     # Export backtest results to HTML
 investdaytip backtest --no-cache        # Bypass cache in backtest
 investdaytip backtest --cache-clear     # Purge cache before backtest
 
+investdaytip deep-dive -t AAPL          # Deep report: score + research + risk signals
+investdaytip deep-dive -t NVDA --export-html nvda.html
+investdaytip stockfit-status            # Your StockFit plan and unlocked features
+
 investdaytip --help
 ./preview.sh                         # Serve generated HTML files on localhost:8000
 ```
@@ -151,11 +165,13 @@ investdaytip --help
 | `--fundamental-insights` | Add a StockFit fundamentals section to the HTML report (margin trends, FCF/NI quality, balance-sheet health; US stocks only). Uses `STOCKFIT_API_KEY` when set and is omitted gracefully without it | disabled |
 | `--include-technical` | Include RSI + MACD technical indicators in the scoring. **Default is `True` for `quant` and `False` for `classic`.** Use `--no-include-technical` to force-disable. | model-dependent |
 | `--no-include-technical` | Force-disable RSI + MACD technical indicators | disabled |
+| `--scoring-model {classic,quant}` | Stock/ETF scoring model | `quant` |
 | `--data-source {yfinance,yahooquery,fmp}` | Data source (yfinance, yahooquery, or FMP) | `yfinance` |
 | `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable; see [Market Cap Classification](#market-cap-classification)) | `0` with tickers, `2B` otherwise |
 | `--no-cache` | Skip SQLite cache, fetch all data live from Yahoo Finance | disabled |
 | `--cache-clear` | Purge the SQLite cache before running | disabled |
 | `--workers N` | Parallel fetch threads | `10` |
+| `--version` | Show the installed version and exit | n/a |
 | `-h, --help` | Show the CLI help message and exit | n/a |
 
 ---
@@ -263,6 +279,50 @@ The score starts at a neutral **50** and each indicator adjusts it up or down ba
 
 All indicators are shown live in the `📈 Market Analysis` table when running `investdaytip advisor`.
 
+### Deep-dive subcommand
+
+Per-ticker deep report — this is where the detail lives: the InvestDayTip
+score, StockFit's research summary and keyless health diagnostics.
+
+```bash
+investdaytip deep-dive -t AAPL                      # Rich terminal report
+investdaytip deep-dive -t "AAPL MSFT" --export-html # Self-contained HTML page
+```
+
+| Section | Source | Needs `STOCKFIT_API_KEY`? |
+|---|---|---|
+| Score + factor breakdown | live data + the scoring model | no |
+| Earnings snapshot (margins, ROE/ROIC, FCF, growth, next dates) | StockFit `company/research-summary` | yes (omitted gracefully otherwise) |
+| Piotroski F-Score (9 checks) + Altman Z + zone | local computation from the ticker's own statements | no |
+| Devil's advocate — risk signals | local heuristics (Altman zone, Piotroski failures, leverage, payout, losses) | no |
+
+Piotroski/Altman are **informative diagnostics — never scored** (they were
+validated and rejected as scoring factors).
+
+| Flag | Description | Default |
+|---|---|---|
+| `-t, --tickers ...` | Ticker(s) to analyse (required) | — |
+| `--export-html [PATH]` | Export the report to a self-contained HTML page | disabled |
+| `--scoring-model {classic,quant}` | Scoring model for the displayed score | `quant` |
+| `--no-cache` | Skip SQLite cache for the underlying fetches | disabled |
+
+### StockFit integration & tiers
+
+InvestDayTip works **on every StockFit plan — and without a key at all**:
+features unlock more as the tier rises and degrade gracefully below it
+(omitted with the reason, never fabricated). See what your setup unlocks:
+
+```bash
+investdaytip stockfit-status
+```
+
+| Feature | Needs |
+|---|---|
+| PIT backtests + snapshot (`--pit-source stockfit`) | keyless (local snapshot) |
+| HTML fundamental insights (`--fundamental-insights`) | any key (Free) |
+| deep-dive earnings snapshot | Starter |
+| Rich devil's advocate footnotes (roadmap) | Pro |
+
 ### Backtest subcommand
 
 Historical validation of the stock scoring model:
@@ -284,6 +344,26 @@ investdaytip backtest --pit-source stockfit    # Point-in-time SEC filing dates 
 investdaytip backtest --no-cache               # Bypass SQLite cache
 investdaytip backtest --cache-clear            # Purge cache before run
 ```
+
+#### Backtest options
+
+| Flag | Description | Default |
+|---|---|---|
+| `-n, --top N` | Top N picks per snapshot | `10` |
+| `-t, --tickers ...` | Custom ticker list | curated US universe |
+| `-r, --region ...` | Region filter(s) | `us` |
+| `-c, --currency ...` | Currency filter(s) | `all` |
+| `--period PERIOD` | yfinance lookback period | `5y` |
+| `--interval-months N` | Months between snapshots | `3` |
+| `--lag-days N` | Reporting lag in days | `60` |
+| `--min-market-cap CAP` | Minimum market cap (`0`, `1B`, …) | `0` with tickers, `2B` otherwise |
+| `--benchmark TICKER` | Benchmark for alpha/returns | `SPY` (per region) |
+| `--export-html [PATH]` | Export results to HTML | disabled |
+| `--scoring-model {classic,quant}` | Scoring model to validate | `quant` |
+| `--pit-source {none,stockfit}` | Point-in-time fundamentals (exact SEC filing dates; needs key **or** local snapshot) | `none` |
+| `--include-technical` / `--no-include-technical` | Force RSI/MACD in/out | model-dependent |
+| `--max-workers N` | Parallel fetch threads | `10` |
+| `--no-cache` / `--cache-clear` | Bypass / purge the SQLite cache | disabled |
 
 **Note:** Backtest only supports stocks (no ETFs). It simulates quarterly snapshots
 with a configurable reporting lag, scores each stock, and measures forward returns
@@ -346,43 +426,6 @@ Decision rules:
 - **Ship it**: Alpha ↑ AND Sharpe ↑ AND 12M win rate ↑
 - **Consider**: Alpha ↑ OR Sharpe ↑ (mixed, review drawdown)
 - **Reject / iterate**: Alpha ↓ AND Sharpe ↓
-
-### Deep-dive subcommand
-
-Per-ticker deep report combining the InvestDayTip score, StockFit's research
-summary and keyless health diagnostics:
-
-```bash
-investdaytip deep-dive -t AAPL                      # Rich terminal report
-investdaytip deep-dive -t "AAPL MSFT" --export-html # Self-contained HTML page
-```
-
-| Section | Source | Needs `STOCKFIT_API_KEY`? |
-|---|---|---|
-| Score + factor breakdown | live data + the scoring model | no |
-| Earnings snapshot (margins, ROE/ROIC, FCF, growth, next dates) | StockFit `company/research-summary` | yes (omitted gracefully otherwise) |
-| Piotroski F-Score (9 checks) + Altman Z + zone | local computation from the ticker's own statements | no |
-| Devil's advocate — risk signals | local heuristics (Altman zone, Piotroski failures, leverage, payout, losses) | no |
-
-Piotroski/Altman are **informative diagnostics — never scored** (they were
-validated and rejected as scoring factors).
-
-### StockFit integration & tiers
-
-InvestDayTip works **on every StockFit plan — and without a key at all**:
-features unlock more as the tier rises and degrade gracefully below it
-(omitted with the reason, never fabricated). See what your setup unlocks:
-
-```bash
-investdaytip stockfit-status
-```
-
-| Feature | Needs |
-|---|---|
-| PIT backtests + snapshot (`--pit-source stockfit`) | keyless (local snapshot) |
-| HTML fundamental insights (`--fundamental-insights`) | any key (Free) |
-| deep-dive earnings snapshot | Starter |
-| Rich devil's advocate footnotes (roadmap) | Pro |
 
 ### When to use technical indicators
 
