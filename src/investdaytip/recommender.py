@@ -209,7 +209,9 @@ def recommend(
 
         us_universe = [t for t in universe if infer_region_from_ticker(t) == "us"]
         if len(us_universe) != len(universe):
-            logger.warning(
+            # INFO, not WARNING: it would interleave with the Rich progress
+            # bar on stderr, and the CLI banner already says "US-only".
+            logger.info(
                 "StockFit is US-only — excluding %d non-US tickers",
                 len(universe) - len(us_universe),
             )

@@ -133,6 +133,80 @@ def test_fetch_asset_stockfit_dividend_scan(mocker):
     assert data.dividend_yield == pytest.approx(1.5 / data.current_price)
 
 
+def test_fetch_asset_stockfit_uses_fresh_snapshot(mocker):
+    """A <7d-old local snapshot serves statements without touching the API."""
+    from investdaytip.data_source_stockfit import save_pit_snapshot
+
+    save_pit_snapshot(_pit())
+    fetch_mock = mocker.patch(
+        "investdaytip.data_source_stockfit.fetch_pit_statements",
+        side_effect=AssertionError("fresh snapshot must be used"),
+    )
+    mocker.patch("investdaytip.data_source_stockfit._lookup_profile", return_value=dict(_PROFILE))
+    mocker.patch("investdaytip.data_source_stockfit._get", side_effect=_fake_get)
+    data = fetch_asset_stockfit("AAPL")
+    fetch_mock.assert_not_called()
+    assert data.earnings_growth == pytest.approx((100e9 - 90e9) / 90e9)
+
+
+def test_fetch_asset_stockfit_stale_snapshot_refetches(mocker):
+    import os as _os
+    import time as _time
+
+    from investdaytip.data_source_stockfit import save_pit_snapshot, snapshot_dir
+
+    save_pit_snapshot(_pit())
+    old = _time.time() - 30 * 86400
+    _os.utime(snapshot_dir() / "AAPL.json", (old, old))
+    mocker.patch("investdaytip.data_source_stockfit._lookup_profile", return_value=dict(_PROFILE))
+    fetch_mock = mocker.patch(
+        "investdaytip.data_source_stockfit.fetch_pit_statements",
+        side_effect=StockfitError("live unreachable"),
+    )
+    with pytest.raises(StockfitError):
+        fetch_asset_stockfit("AAPL")
+    fetch_mock.assert_called_once()
+
+
+def test_fetch_asset_stockfit_history_cached(enabled_temp_cache, mocker):
+    """Prices come from the shared 15-min history cache on the second run."""
+    calls: list[str] = []
+
+    def counting_get(path, params=None, **_kw):
+        calls.append(path)
+        return _fake_get(path, params)
+
+    mocker.patch("investdaytip.data_source_stockfit._lookup_profile", return_value=dict(_PROFILE))
+    mocker.patch("investdaytip.data_source_stockfit.fetch_pit_statements", return_value=_pit())
+    mocker.patch("investdaytip.data_source_stockfit._get", side_effect=counting_get)
+
+    first = fetch_asset_stockfit("AAPL")
+    second = fetch_asset_stockfit("AAPL")
+    assert calls.count("price/history") == 1  # second run is a cache hit
+    assert second.current_price == pytest.approx(first.current_price)
+
+
+def test_fetch_asset_stockfit_info_cached(enabled_temp_cache, mocker):
+    """Profile + dividends hit the 1-day cache on the second run."""
+    lookup_mock = mocker.patch(
+        "investdaytip.data_source_stockfit._lookup_profile", return_value=dict(_PROFILE)
+    )
+    mocker.patch("investdaytip.data_source_stockfit.fetch_pit_statements", return_value=_pit())
+    calls: list[str] = []
+
+    def counting_get(path, params=None, **_kw):
+        calls.append(path)
+        return _fake_get(path, params)
+
+    mocker.patch("investdaytip.data_source_stockfit._get", side_effect=counting_get)
+
+    first = fetch_asset_stockfit("AAPL")
+    second = fetch_asset_stockfit("AAPL")
+    assert lookup_mock.call_count == 1
+    assert calls.count("earnings/dividend-history") == 1
+    assert second.dividend_yield == pytest.approx(first.dividend_yield)
+
+
 def test_fetch_asset_stockfit_rejects_etf(mocker):
     mocker.patch(
         "investdaytip.data_source_stockfit._lookup_profile",

@@ -317,6 +317,20 @@ def cache_stockfit_plan_set(plan: str) -> None:
     get_db().set(_cache_key("_global", "stockfit_plan"), plan, TTL_FUNDAMENTALS)
 
 
+def cache_stockfit_info_get(ticker: str) -> str | None:
+    """Return cached StockFit profile+dividend JSON string or None."""
+    if not enabled:
+        return None
+    return get_db().get(_cache_key(ticker, "stockfit_info"))
+
+
+def cache_stockfit_info_set(ticker: str, info_json: str) -> None:
+    """Store StockFit profile+dividend JSON string with fundamentals TTL (1d)."""
+    if not enabled:
+        return
+    get_db().set(_cache_key(ticker, "stockfit_info"), info_json, TTL_FUNDAMENTALS)
+
+
 def clear_cache() -> None:
     """Purge all cached data."""
     get_db().clear()
