@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.12.0 (2026-09-27)
+
+### Features
+
+- **"Fundamentals improving" factor in the quant stock model** — Profitability now weights ROE 30%, profit margin 25%, ROA 15% and a new **YoY-improvement sub-score 30%** (Δgross margin and ΔROA vs the previous fiscal year; neutral 50 when statements are unknown — "unknown" is never "improving"). **Scores and rankings differ from 0.11.0.** Validated with factor-IC (mean IC +0.134 / +0.126, 86% hit rate — best candidates of the whole table) and before/after backtests on the full US universe (top-5, min-cap 0): 5y alpha 6.85%→7.60% with unchanged max drawdown, 3y alpha 7.69%→13.37%, Sharpe 1.16→1.30, 12M win rate 50%→62.5% — never worse on any metric of the secondary config.
+- **Live-path consistency** — `fetch_asset(with_improvements=True)` fetches the annual income statement and balance sheet (7-day cache) so live scores carry the same improvement flags as backtests; `--scoring-model classic` skips the two extra calls. All three data paths are covered: live yfinance, classic backtest and StockFit PIT.
+- **`financial_health.py`** — pure, tested Piotroski F-Score (9 checks), Altman Z-Score (1968 model + safe/grey/distress zones) and the shared `improvement_flags()` semantics. Piotroski composite and Altman Z were evaluated as scoring factors and **rejected** (mean IC +0.039 / +0.014 = noise on large-caps); the module is kept for planned per-ticker diagnostics.
+
+### Tooling
+
+- **`scripts/factor_ic.py`** — new candidate metrics: `piotroski`, `altman_z` and the 9 individual Piotroski checks (per-snapshot cross-sectional IC vs forward 6M returns).
+
 ## v0.11.0 (2026-09-26)
 
 ### Features
