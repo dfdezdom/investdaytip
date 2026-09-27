@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.14.1 (2026-09-27)
+
+### Fixes
+
+- **`--data-source stockfit`: current fundamentals switched to TTM** — the live source served as-filed fiscal-year figures, so a stale 10-K EPS made fast-moving earners look absurdly expensive (MU showed P/E 142.6 while the trailing figure was 24.5 after an earnings explosion). Current fundamentals now come from `financials/income-statement?period=ttm` (flows = last 4 reported quarters, balances and share counts = latest quarter), matching yfinance's trailing semantics — MU P/E 24.5 vs yfinance 24.45. Comparison fields stay as-filed fiscal year, so `earnings_growth`, the improvement flags and `eps_acceleration` read "TTM vs last FY vs prior FY". Per-field graceful degradation: a missing TTM fact keeps its as-filed value and unshifted comparison chain, an empty/failed TTM fetch is retried on the next run (never cached), and a rate limit falls back to yfinance per ticker. Backtest PIT paths are untouched (as-filed, look-ahead-free).
+
 ## v0.14.0 (2026-09-27)
 
 ### Features
