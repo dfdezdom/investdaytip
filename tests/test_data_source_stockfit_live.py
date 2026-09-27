@@ -10,6 +10,7 @@ from investdaytip.data_source import StockData
 from investdaytip.data_source_stockfit import (
     PitStatements,
     StockfitError,
+    StockfitRateLimitError,
     _parse_periods,
     fetch_asset_stockfit,
 )
@@ -62,6 +63,22 @@ _PROFILE = {
     "sector": "Information Technology", "exchanges": ["Nasdaq"],
 }
 
+# TTM block (last 4 quarters' flows + latest quarter's balances) — every
+# value differs from the as-filed fiscal-year ones so tests can tell them
+# apart.  Overrides land on: P/E, P/B, market cap, growth, margins.
+_TTM_FACTS = {
+    "revenue": 420e9, "netIncome": 120e9, "epsDiluted": 8.0,
+    "grossProfit": 220e9, "freeCashFlow": 100e9,
+    "assets": 410e9, "stockholdersEquity": 230e9, "totalDebt": 90e9,
+    "currentAssets": 160e9, "currentLiabilities": 120e9,
+    "sharesOutstanding": 14e9,
+}
+
+
+def _ttm_row(facts: dict) -> list:
+    return [{"period": "2026-06-27", "fiscalYear": 2026, "fiscalPeriod": "TTM",
+             "facts": facts}]
+
 
 def _fake_get(path, params=None, **_kw):
     if path == "price/history":
@@ -70,6 +87,8 @@ def _fake_get(path, params=None, **_kw):
         return {"data": data}
     if path == "earnings/dividend-history":
         return [{"period": "2025-09-27", "dividendPerShare": 2.0, "payoutRatio": 0.15}]
+    if path == "financials/income-statement":
+        return _ttm_row(_TTM_FACTS)
     raise AssertionError(f"unexpected path: {path}")
 
 
@@ -88,13 +107,20 @@ def test_fetch_asset_stockfit_happy_path(mocker):
     assert data.sector == "Technology"  # GICS mapped to yfinance-style
     assert data.currency == "USD"
     assert data.current_price == pytest.approx(100.0 + 499 * 0.2)
-    assert data.market_cap == pytest.approx(data.current_price * 15e9)
-    assert data.trailing_pe == pytest.approx(data.current_price / 7.0)
-    assert data.earnings_growth == pytest.approx((100e9 - 90e9) / 90e9)
-    assert data.margin_improving is True   # 0.50 > 0.45
-    assert data.roa_improving is True      # 100/400 > 90/380
-    assert data.eps_acceleration == pytest.approx((7 / 6 - 1) - (6 / 5 - 1))
+    # Current fundamentals come from the TTM block (trailing semantics):
+    assert data.market_cap == pytest.approx(data.current_price * 14e9)
+    assert data.trailing_pe == pytest.approx(data.current_price / 8.0)
+    assert data.price_to_book == pytest.approx(data.current_price / (230e9 / 14e9))
+    assert data.profit_margin == pytest.approx(120e9 / 420e9)
+    # Comparisons read "TTM vs last as-filed fiscal year":
+    assert data.earnings_growth == pytest.approx((120e9 - 100e9) / 100e9)
+    assert data.revenue_growth == pytest.approx((420e9 - 400e9) / 400e9)
+    assert data.margin_improving is True   # 220/420 > 200/400
+    assert data.roa_improving is True      # 120/410 > 100/400
+    # EPS acceleration chains TTM → FY2025 → FY2024 (consecutive spans):
+    assert data.eps_acceleration == pytest.approx((8 / 7 - 1) - (7 / 6 - 1))
     assert data.dividend_yield == pytest.approx(2.0 / data.current_price)
+    assert data.payout_ratio == pytest.approx(2.0 / 8.0)
     assert data.return_12m is not None     # trend from the price series
     # No analyst estimates in StockFit → these stay neutral/None
     assert data.forward_pe is None
@@ -112,9 +138,15 @@ def test_fetch_asset_stockfit_shares_fallback(mocker):
                                      {"assets": 400e9, "stockholdersEquity": 180e9,
                                       "currentSharesOutstanding": 2e9})]),
     )
+
+    def fake_get(path, params=None, **_kw):
+        if path == "financials/income-statement":
+            return []  # no TTM block → as-filed shares chain must kick in
+        return _fake_get(path, params)
+
     mocker.patch("investdaytip.data_source_stockfit._lookup_profile", return_value=dict(_PROFILE))
     mocker.patch("investdaytip.data_source_stockfit.fetch_pit_statements", return_value=pit)
-    mocker.patch("investdaytip.data_source_stockfit._get", side_effect=_fake_get)
+    mocker.patch("investdaytip.data_source_stockfit._get", side_effect=fake_get)
     data = fetch_asset_stockfit("CVX")
     assert data.market_cap == pytest.approx(data.current_price * 2e9)
     assert data.price_to_book == pytest.approx(data.current_price / (180e9 / 2e9))
@@ -125,6 +157,8 @@ def test_fetch_asset_stockfit_dividend_scan(mocker):
     def fake_get(path, params=None, **_kw):
         if path == "price/history":
             return _fake_get(path, params)
+        if path == "financials/income-statement":
+            return []
         if path == "earnings/dividend-history":
             return [{"dividendPerShare": None, "payoutRatio": None},
                     {"dividendPerShare": 1.5}]
@@ -150,7 +184,7 @@ def test_fetch_asset_stockfit_uses_fresh_snapshot(mocker):
     mocker.patch("investdaytip.data_source_stockfit._get", side_effect=_fake_get)
     data = fetch_asset_stockfit("AAPL")
     fetch_mock.assert_not_called()
-    assert data.earnings_growth == pytest.approx((100e9 - 90e9) / 90e9)
+    assert data.earnings_growth == pytest.approx((120e9 - 100e9) / 100e9)  # TTM vs FY2025
 
 
 def test_fetch_asset_stockfit_stale_snapshot_refetches(mocker):
@@ -208,7 +242,132 @@ def test_fetch_asset_stockfit_info_cached(enabled_temp_cache, mocker):
     second = fetch_asset_stockfit("AAPL")
     assert lookup_mock.call_count == 1
     assert calls.count("earnings/dividend-history") == 1
+    assert calls.count("financials/income-statement") == 1  # TTM cached with the profile
     assert second.dividend_yield == pytest.approx(first.dividend_yield)
+    assert second.trailing_pe == pytest.approx(first.trailing_pe)
+
+
+# ── TTM overlay ──────────────────────────────────────────────────────────────
+
+
+def test_fetch_asset_stockfit_ttm_missing_keeps_asfiled(mocker):
+    """No TTM block at all → the as-filed fiscal-year wiring is untouched."""
+    def fake_get(path, params=None, **_kw):
+        if path == "financials/income-statement":
+            return []
+        return _fake_get(path, params)
+
+    mocker.patch("investdaytip.data_source_stockfit._lookup_profile", return_value=dict(_PROFILE))
+    mocker.patch("investdaytip.data_source_stockfit.fetch_pit_statements", return_value=_pit())
+    mocker.patch("investdaytip.data_source_stockfit._get", side_effect=fake_get)
+    data = fetch_asset_stockfit("AAPL")
+    assert data.trailing_pe == pytest.approx(data.current_price / 7.0)
+    assert data.earnings_growth == pytest.approx((100e9 - 90e9) / 90e9)  # FY2025 vs FY2024
+    assert data.market_cap == pytest.approx(data.current_price * 15e9)
+    assert data.eps_acceleration == pytest.approx((7 / 6 - 1) - (6 / 5 - 1))
+
+
+def test_fetch_asset_stockfit_ttm_error_keeps_asfiled(mocker):
+    """A failing TTM fetch degrades to as-filed values instead of raising."""
+    def fake_get(path, params=None, **_kw):
+        if path == "financials/income-statement":
+            raise StockfitError("ttm endpoint down")
+        return _fake_get(path, params)
+
+    mocker.patch("investdaytip.data_source_stockfit._lookup_profile", return_value=dict(_PROFILE))
+    mocker.patch("investdaytip.data_source_stockfit.fetch_pit_statements", return_value=_pit())
+    mocker.patch("investdaytip.data_source_stockfit._get", side_effect=fake_get)
+    data = fetch_asset_stockfit("AAPL")
+    assert data.errors == []
+    assert data.trailing_pe == pytest.approx(data.current_price / 7.0)
+
+
+def test_fetch_asset_stockfit_ttm_rate_limit_propagates(mocker):
+    """A rate limit aborts the ticker so the caller can fall back to yfinance."""
+    def fake_get(path, params=None, **_kw):
+        if path == "financials/income-statement":
+            raise StockfitRateLimitError("429")
+        return _fake_get(path, params)
+
+    mocker.patch("investdaytip.data_source_stockfit._lookup_profile", return_value=dict(_PROFILE))
+    mocker.patch("investdaytip.data_source_stockfit.fetch_pit_statements", return_value=_pit())
+    mocker.patch("investdaytip.data_source_stockfit._get", side_effect=fake_get)
+    with pytest.raises(StockfitRateLimitError):
+        fetch_asset_stockfit("AAPL")
+
+
+def test_fetch_asset_stockfit_ttm_cik_fallback(mocker):
+    """Symbol yields nothing → the PIT CIK (maybe stitched) is retried."""
+    seen: list[dict] = []
+
+    def fake_get(path, params=None, **_kw):
+        if path == "financials/income-statement":
+            seen.append(dict(params or {}))
+            if (params or {}).get("symbol"):
+                return []
+            return _ttm_row(_TTM_FACTS)
+        return _fake_get(path, params)
+
+    mocker.patch("investdaytip.data_source_stockfit._lookup_profile", return_value=dict(_PROFILE))
+    mocker.patch("investdaytip.data_source_stockfit.fetch_pit_statements", return_value=_pit())
+    mocker.patch("investdaytip.data_source_stockfit._get", side_effect=fake_get)
+    data = fetch_asset_stockfit("AAPL")
+    assert data.trailing_pe == pytest.approx(data.current_price / 8.0)
+    assert [p.get("cik") for p in seen] == [None, "320193"]
+
+
+def test_fetch_asset_stockfit_empty_ttm_not_cached(enabled_temp_cache, mocker):
+    """A failed/empty TTM fetch is retried next run instead of sticking for a day."""
+    calls: list[str] = []
+
+    def counting_get(path, params=None, **_kw):
+        calls.append(path)
+        if path == "financials/income-statement":
+            return []
+        return _fake_get(path, params)
+
+    mocker.patch("investdaytip.data_source_stockfit._lookup_profile", return_value=dict(_PROFILE))
+    mocker.patch("investdaytip.data_source_stockfit.fetch_pit_statements", return_value=_pit())
+    mocker.patch("investdaytip.data_source_stockfit._get", side_effect=counting_get)
+
+    first = fetch_asset_stockfit("AAPL")
+    second = fetch_asset_stockfit("AAPL")
+    # symbol + PIT-CIK probe per run (2 × 2) — the empty block is never cached
+    assert calls.count("financials/income-statement") == 4
+    assert first.trailing_pe == pytest.approx(first.current_price / 7.0)  # as-filed
+    assert second.trailing_pe == pytest.approx(first.trailing_pe)
+
+
+def test_apply_ttm_overlay_partial_facts_keep_asfiled():
+    """A partial TTM block shifts only the fields it actually carries."""
+    from investdaytip.data_source import _Fundamentals
+    from investdaytip.data_source_stockfit import _apply_ttm_overlay
+
+    fund = _Fundamentals(
+        ni=100.0, ni_prev=90.0, rev=400.0, rev_prev=350.0,
+        eps=7.0, eps_prev=6.0, eps_prev2=5.0, shares=15.0,
+    )
+    _apply_ttm_overlay(fund, {"netIncome": 120.0})  # only NI in the block
+    assert fund.ni == 120.0
+    assert fund.ni_prev == 100.0   # comparison shifted to the latest FY
+    assert fund.rev == 400.0       # untouched fields keep their chain
+    assert fund.rev_prev == 350.0
+    assert fund.eps == 7.0
+    assert fund.eps_prev == 6.0
+    assert fund.eps_prev2 == 5.0
+    assert fund.shares == 15.0
+
+
+def test_ttm_facts_from_response_shapes():
+    """Rows list, bare row and ``{"data": [...]}`` all yield the facts block."""
+    from investdaytip.data_source_stockfit import _ttm_facts_from
+
+    assert _ttm_facts_from(_ttm_row(_TTM_FACTS)) == _TTM_FACTS
+    assert _ttm_facts_from(_ttm_row(_TTM_FACTS)[0]) == _TTM_FACTS
+    assert _ttm_facts_from({"data": _ttm_row(_TTM_FACTS)}) == _TTM_FACTS
+    assert _ttm_facts_from([]) == {}
+    assert _ttm_facts_from({"data": []}) == {}
+    assert _ttm_facts_from({"error": "nope"}) == {}
 
 
 def test_fetch_asset_stockfit_rejects_etf(mocker):
