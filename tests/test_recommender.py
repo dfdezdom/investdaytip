@@ -78,7 +78,7 @@ class TestBuildUniverse:
 
 class TestRecommend:
     def test_scores_sorts_and_limits(self, mocker):
-        def _fake_fetch(ticker, min_market_cap=0.0):
+        def _fake_fetch(ticker, min_market_cap=0.0, **_kwargs):
             caps = {"AAA": 5e9, "BBB": 9e9, "CCC": 1e9}
             return StockData(
                 ticker=ticker,
@@ -98,7 +98,7 @@ class TestRecommend:
         close.assert_called_once()
 
     def test_currency_filter_keeps_none(self, mocker):
-        def _fake_fetch(ticker, min_market_cap=0.0):
+        def _fake_fetch(ticker, min_market_cap=0.0, **_kwargs):
             currencies = {"USD_T": "USD", "EUR_T": "EUR", "NONE_T": None}
             return StockData(ticker=ticker, currency=currencies[ticker], market_cap=5e9)
 
@@ -112,7 +112,7 @@ class TestRecommend:
         assert "EUR_T" not in tickers
 
     def test_swallowed_exception_is_logged(self, mocker, caplog):
-        def _fake_fetch(ticker, min_market_cap=0.0):
+        def _fake_fetch(ticker, min_market_cap=0.0, **_kwargs):
             raise ValueError("boom")
 
         mocker.patch("investdaytip.recommender.fetch_asset", side_effect=_fake_fetch)
@@ -136,7 +136,7 @@ class TestRecommend:
                     results[tk] = StockData(ticker=tk, errors=["yahooquery failed"])
             return results
 
-        def _fake_fetch(ticker, min_market_cap=0.0):
+        def _fake_fetch(ticker, min_market_cap=0.0, **_kwargs):
             return StockData(ticker=ticker, market_cap=5e9, return_on_equity=0.2)
 
         mocker.patch.object(fetch_batch_yq, "__call__", side_effect=_fake_batch)
@@ -152,7 +152,7 @@ class TestRecommend:
 class TestErrorsSkip:
     def test_error_dataclass_not_scored(self, mocker):
         """Fetch returning error StockData must be skipped, not scored as neutral 50."""
-        def _fake_fetch(ticker, min_market_cap=0.0):
+        def _fake_fetch(ticker, min_market_cap=0.0, **_kwargs):
             d = StockData(ticker=ticker)
             d.errors.append("fetch failed")
             return d

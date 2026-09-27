@@ -41,6 +41,7 @@ from investdaytip.data_source_stockfit import (
     fetch_pit_statements,
     pit_fact_asof,
 )
+from investdaytip.financial_health import improvement_flags
 from investdaytip.recommender import _build_universe
 from investdaytip.scoring import ScoredAsset, resolve_include_technical, score_stock
 
@@ -161,6 +162,7 @@ _FY_ROW_NAMES: dict[str, str] = {
     "NetIncome": "Net Income",
     "TotalRevenue": "Total Revenue",
     "BasicEPS": "Basic EPS",
+    "GrossProfit": "Gross Profit",
     "StockholdersEquity": "Stockholders Equity",
     "TotalAssets": "Total Assets",
     "TotalDebt": "Total Debt",
@@ -411,6 +413,9 @@ class _Fundamentals:
     eps: Optional[float] = None
     ni_prev: Optional[float] = None
     rev_prev: Optional[float] = None
+    gross_profit: Optional[float] = None
+    gross_profit_prev: Optional[float] = None
+    total_assets_prev: Optional[float] = None
     equity: Optional[float] = None
     total_assets: Optional[float] = None
     total_debt: Optional[float] = None
@@ -518,6 +523,15 @@ def _derive_stock_data(
     # Profit margin
     profit_margin = (ni / rev) if (ni is not None and rev is not None and rev > 0) else None
 
+    # YoY improvement flags (Piotroski-style Δ checks) — shared semantics
+    # with the live path via financial_health.improvement_flags().
+    margin_improving, roa_improving = improvement_flags(
+        {"GrossProfit": fund.gross_profit, "TotalRevenue": rev,
+         "NetIncome": ni, "TotalAssets": total_assets},
+        {"GrossProfit": fund.gross_profit_prev, "TotalRevenue": fund.rev_prev,
+         "NetIncome": fund.ni_prev, "TotalAssets": fund.total_assets_prev},
+    )
+
     # Market cap
     market_cap = (price * shares) if (price and shares) else None
 
@@ -547,6 +561,8 @@ def _derive_stock_data(
         profit_margin=profit_margin,
         earnings_growth=earnings_growth,
         revenue_growth=revenue_growth,
+        margin_improving=margin_improving,
+        roa_improving=roa_improving,
         debt_to_equity=debt_to_equity,
         current_ratio=current_ratio,
         free_cashflow=fcf,
@@ -595,6 +611,9 @@ def _build_historical_stock_data(
         # YoY growth (compare with previous fiscal year)
         ni_prev=_value_n_years_before(income_stmt, quarter_date, "NetIncome", n=1),
         rev_prev=_value_n_years_before(income_stmt, quarter_date, "TotalRevenue", n=1),
+        gross_profit=_latest_value_before(income_stmt, quarter_date, "GrossProfit"),
+        gross_profit_prev=_value_n_years_before(income_stmt, quarter_date, "GrossProfit", n=1),
+        total_assets_prev=_value_n_years_before(balance_sheet, quarter_date, "TotalAssets", n=1),
         equity=_balance_sheet_value(balance_sheet, quarter_date, "StockholdersEquity"),
         total_assets=_balance_sheet_value(balance_sheet, quarter_date, "TotalAssets"),
         total_debt=_balance_sheet_value(balance_sheet, quarter_date, "TotalDebt"),
@@ -642,8 +661,10 @@ def _build_pit_stock_data(
     ni, ni_prev = pit_fact_asof(pit.income, "netIncome", snapshot_date)
     rev, rev_prev = pit_fact_asof(pit.income, "revenue", snapshot_date)
     eps = pit_fact_asof(pit.income, "eps", snapshot_date)[0]
+    gross_profit, gross_profit_prev = pit_fact_asof(pit.income, "grossProfit", snapshot_date)
     equity = pit_fact_asof(pit.balance, "stockholdersEquity", snapshot_date)[0]
     total_assets = pit_fact_asof(pit.balance, "assets", snapshot_date)[0]
+    total_assets_prev = pit_fact_asof(pit.balance, "assets", snapshot_date)[1]
     total_debt = pit_fact_asof(pit.balance, "totalDebt", snapshot_date)[0]
     curr_assets = pit_fact_asof(pit.balance, "currentAssets", snapshot_date)[0]
     curr_liab = pit_fact_asof(pit.balance, "currentLiabilities", snapshot_date)[0]
@@ -658,6 +679,8 @@ def _build_pit_stock_data(
 
     fund = _Fundamentals(
         ni=ni, rev=rev, eps=eps, ni_prev=ni_prev, rev_prev=rev_prev,
+        gross_profit=gross_profit, gross_profit_prev=gross_profit_prev,
+        total_assets_prev=total_assets_prev,
         equity=equity, total_assets=total_assets, total_debt=total_debt,
         curr_assets=curr_assets, curr_liab=curr_liab, shares=shares, fcf=fcf,
     )

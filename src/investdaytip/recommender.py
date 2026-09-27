@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FuturesTimeoutError
+from functools import partial
 from typing import Callable, Iterable, Literal, cast
 
 from investdaytip.asia_etf_universe import ASIA_ETF_UNIVERSE
@@ -187,11 +188,17 @@ def recommend(
 
     try:
         _fetcher: Callable[[str, float], AssetData]
+        # The quant model needs the annual statements for its YoY-improvement
+        # flags; classic scores without them → skip the two extra calls.
+        _yf_fetcher = cast(
+            "Callable[[str, float], AssetData]",
+            partial(fetch_asset, with_improvements=scoring_model == "quant"),
+        )
         if data_source == "fmp":
             from investdaytip.data_source_fmp import fetch_asset as _fmp_fetch
             _fetcher = cast(Callable[[str, float], AssetData], _fmp_fetch)
         else:
-            _fetcher = fetch_asset
+            _fetcher = _yf_fetcher
 
         leftovers: list[str] = []
 
@@ -234,7 +241,7 @@ def recommend(
             # Fallback any failed tickers to yfinance
             if leftovers:
                 _log_fallback("yahooquery batch", len(leftovers))
-                _fetcher = fetch_asset
+                _fetcher = _yf_fetcher
                 pool = ThreadPoolExecutor(max_workers=max_workers)
                 futures = {pool.submit(_fetcher, t, min_market_cap): t for t in leftovers}
                 initial = len(scored)
@@ -316,7 +323,7 @@ def recommend(
             # ── Fallback to yfinance for FMP rate-limited tickers ────
             if leftovers and data_source == "fmp":
                 _log_fallback("FMP rate limit / unavailable", len(leftovers))
-                _fetcher = fetch_asset
+                _fetcher = _yf_fetcher
                 pool = ThreadPoolExecutor(max_workers=max_workers)
                 futures = {pool.submit(_fetcher, t, min_market_cap): t for t in leftovers}
                 initial = len(scored)

@@ -131,6 +131,37 @@ def test_fetch_asset_generic_error_returns_error_dataclass(mocker):
     sleep.assert_not_called()
 
 
+def test_fetch_stock_flags_from_statements():
+    """Statements present → YoY-improvement flags computed; absent → None."""
+    from investdaytip.data_source import _fetch_stock
+
+    income = pd.DataFrame(
+        {
+            pd.Timestamp("2023-12-31"): {
+                "Net Income": 80.0, "Total Revenue": 350.0, "Gross Profit": 157.5,
+            },
+            pd.Timestamp("2024-12-31"): {
+                "Net Income": 100.0, "Total Revenue": 400.0, "Gross Profit": 200.0,
+            },
+        }
+    )
+    balance = pd.DataFrame(
+        {
+            pd.Timestamp("2023-12-31"): {"Total Assets": 1000.0},
+            pd.Timestamp("2024-12-31"): {"Total Assets": 1000.0},
+        }
+    )
+    data = _fetch_stock(
+        "TEST", {}, pd.DataFrame(), income_stmt=income, balance_sheet=balance
+    )
+    assert data.margin_improving is True  # 0.50 > 0.45
+    assert data.roa_improving is True     # 0.10 > 0.08
+
+    plain = _fetch_stock("TEST", {}, pd.DataFrame())
+    assert plain.margin_improving is None
+    assert plain.roa_improving is None
+
+
 def test_technical_indicators_returns_none_for_short_series():
     short = pd.Series([100.0] * 10)
     rsi, macd = _technical_indicators(short)

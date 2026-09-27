@@ -10,6 +10,7 @@ import pytest
 from investdaytip.financial_health import (
     altman_z_score,
     annual_facts,
+    improvement_flags,
     piotroski_f_score,
 )
 
@@ -204,3 +205,33 @@ def test_annual_facts_empty_frames():
     assert annual_facts(None, None, None, datetime(2025, 3, 1)) == {}
     assert annual_facts(pd.DataFrame(), pd.DataFrame(), pd.DataFrame(),
                         datetime(2025, 3, 1)) == {}
+
+
+# ── improvement_flags ────────────────────────────────────────────────────────
+
+
+def test_improvement_flags_basic():
+    cur = {"GrossProfit": 200.0, "TotalRevenue": 400.0,
+           "NetIncome": 100.0, "TotalAssets": 1000.0}
+    prev = {"GrossProfit": 157.5, "TotalRevenue": 350.0,
+            "NetIncome": 80.0, "TotalAssets": 1000.0}
+    margin, roa = improvement_flags(cur, prev)
+    assert margin is True  # 0.50 > 0.45
+    assert roa is True     # 0.10 > 0.08
+
+
+def test_improvement_flags_deterioration_and_unknown():
+    cur = {"GrossProfit": 160.0, "TotalRevenue": 400.0,
+           "NetIncome": 100.0, "TotalAssets": 1000.0}
+    prev = {"GrossProfit": 157.5, "TotalRevenue": 350.0,
+            "NetIncome": 80.0, "TotalAssets": 1000.0}
+    margin, roa = improvement_flags(cur, prev)
+    assert margin is False  # 0.40 < 0.45
+    assert roa is True
+
+    # missing previous gross profit → unknown, never False
+    margin, _ = improvement_flags(cur, {"TotalRevenue": 350.0})
+    assert margin is None
+    # zero denominator → unknown
+    _, roa = improvement_flags({**cur, "TotalAssets": 0.0}, prev)
+    assert roa is None
