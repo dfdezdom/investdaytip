@@ -18,7 +18,8 @@
 ## Features
 
 - 📈 **Multi-factor scoring** — composite 0-100 score per asset
-- 🔗 **Multiple data sources** — yfinance (default) or Financial Modeling Prep (FMP) with automatic fallback
+- 🔗 **Multiple data sources** — yfinance (default), yahooquery (batch), or Financial Modeling Prep (FMP), with automatic fallback
+- 🧾 **StockFit integration (optional)** — point-in-time SEC filing dates for backtests (`--pit-source stockfit`, works offline from a local snapshot) and a fundamentals insights section in the HTML report (`--fundamental-insights`)
 - 🏦 **Stocks & ETFs** — auto-detected and scored with dedicated models
 - 🌍 **US, European, Asian & Superinvestor markets** — S&P 500, DAX, CAC 40, FTSE 100, Nikkei 225, Hang Seng, NSE, and superinvestor consensus picks from DataRoma 13F filings
 - 💱 **Currency filter** — narrow by native currency (`USD`, `EUR`, `JPY`, …)
@@ -147,6 +148,7 @@ investdaytip --help
 | `-s, --sector TEXT` | Sector/category prefix filter, case-insensitive (e.g. `Financial` matches Financial Services) | disabled |
 | `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
 | `--superinvestor` | Include superinvestor ownership data from DataRoma (adds ~80 HTTP requests, shows column in HTML and CLI) | disabled |
+| `--fundamental-insights` | Add a StockFit fundamentals section to the HTML report (margin trends, FCF/NI quality, balance-sheet health; US stocks only). Uses `STOCKFIT_API_KEY` when set and is omitted gracefully without it | disabled |
 | `--include-technical` | Include RSI + MACD technical indicators in the scoring. **Default is `True` for `quant` and `False` for `classic`.** Use `--no-include-technical` to force-disable. | model-dependent |
 | `--no-include-technical` | Force-disable RSI + MACD technical indicators | disabled |
 | `--data-source {yfinance,yahooquery,fmp}` | Data source (yfinance, yahooquery, or FMP) | `yfinance` |
@@ -278,6 +280,7 @@ investdaytip backtest --interval-months 6      # Semi-annual snapshots
 investdaytip backtest --lag-days 90            # Reporting lag (default: 60)
 investdaytip backtest --period 3y              # Shorter price history
 investdaytip backtest --export-html            # Export to HTML
+investdaytip backtest --pit-source stockfit    # Point-in-time SEC filing dates (StockFit)
 investdaytip backtest --no-cache               # Bypass SQLite cache
 investdaytip backtest --cache-clear            # Purge cache before run
 ```
@@ -285,6 +288,25 @@ investdaytip backtest --cache-clear            # Purge cache before run
 **Note:** Backtest only supports stocks (no ETFs). It simulates quarterly snapshots
 with a configurable reporting lag, scores each stock, and measures forward returns
 against a benchmark.
+
+#### Point-in-time fundamentals (StockFit, opt-in)
+
+`--pit-source stockfit` replaces the fixed reporting-lag assumption with each
+filing's actual SEC acceptance date (`dateFiled`) — every snapshot only sees
+data that was public that day, so slow filers can't leak results back in time.
+US stocks only. Validated on the full US universe: Sharpe 0.74→0.85, max
+drawdown 24%→11%, 12M win rate 50%→56%.
+
+It works **without an API key** when a local snapshot exists
+(`~/.investdaytip/pit/`) — build one while your StockFit key is valid:
+
+```bash
+python scripts/pit_snapshot.py          # full US stock universe (196 tickers)
+python scripts/pit_snapshot.py --status # inspect saved files (offline)
+```
+
+Resolution order, per ticker: live StockFit (when `STOCKFIT_API_KEY` is set)
+→ local snapshot → the classic fixed-lag path.
 
 #### Backtest-Driven Scoring Validation
 
@@ -604,7 +626,10 @@ The cache uses per-thread SQLite connections with a write lock to support concur
 ```
 preview.sh                # Local static server for generated HTML reports
 scripts/
-└── scoring_baseline.py    # Backtest before/after comparison tool
+├── scoring_baseline.py    # Backtest before/after comparison tool
+├── factor_ic.py           # Factor IC analysis (which metrics predict returns)
+├── pit_snapshot.py        # StockFit PIT statement snapshot builder
+└── compare_data_sources.py # yfinance vs yahooquery vs FMP field comparison
 src/investdaytip/
 ├── __init__.py            # Public API: get_recommendations
 ├── main.py                # CLI entry point + rich table rendering
@@ -616,6 +641,9 @@ src/investdaytip/
 ├── cache.py               # SQLite caching layer (per-thread connections, WAL mode)
 ├── data_source.py         # yfinance wrapper + dataclasses (StockData / EtfData)
 ├── data_source_fmp.py     # FMP wrapper (alternative data source, 6 endpoints/ticker)
+├── data_source_yahooquery.py # Yahooquery batch data source
+├── data_source_stockfit.py # StockFit PIT statements + fundamental insights
+├── financial_health.py    # Piotroski F-Score, Altman Z, YoY-improvement flags
 ├── scoring.py             # Pure scoring functions (score_stock, score_etf)
 ├── sentiment.py           # CNN Fear & Greed Index fetch
 ├── universe.py            # US stock universe
@@ -628,6 +656,7 @@ src/investdaytip/
 portfolios/               # Portfolio ticker files
 advisor_recommendations/   # Advisor-generated HTML reports (git-ignored)
 tests/
+├── conftest.py            # Global fixtures (cache off, network guard, temp snapshot dir)
 ├── test_integration.py    # End-to-end integration tests (sorting, filters, CLI, export)
 ├── test_advisor.py        # Advisor tests (VIX, macro regime, bubble risk)
 ├── test_backtest.py       # Backtest engine tests (fetch, snapshots, scoring, cache, interpret)
@@ -635,12 +664,19 @@ tests/
 ├── test_main.py           # CLI helper tests
 ├── test_html_export.py    # HTML export tests
 ├── test_scoring.py        # Stock scoring tests
+├── test_scoring_quant.py  # Quant model tests (five factors, improvement sub-score)
 ├── test_etf_scoring.py    # ETF scoring tests
+├── test_financial_health.py # Piotroski / Altman / improvement-flag tests
 ├── test_sentiment.py      # Fear & Greed sentiment tests
 ├── test_cache.py          # SQLite cache tests
 ├── test_universes.py      # Universe integrity tests
 ├── test_data_source.py    # yfinance data fetching tests
-└── test_data_source_fmp.py # FMP data fetching tests
+├── test_data_source_fmp.py # FMP data fetching tests
+├── test_data_source_yahooquery.py # Yahooquery data source tests
+├── test_data_source_stockfit_pit.py # StockFit PIT layer tests (mocked HTTP)
+├── test_fundamental_insights.py # StockFit insights section tests
+├── test_pit_snapshot.py   # PIT snapshot layer tests
+└── test_dataroma.py       # DataRoma scraper tests
 tickers-files-examples/
 ├── semiconductors_relevant_tickers.txt
 ├── artificial_intelligence_relevant_tickers.txt
