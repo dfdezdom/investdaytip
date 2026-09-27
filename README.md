@@ -19,7 +19,6 @@
 
 - 📈 **Multi-factor scoring** — composite 0-100 score per asset
 - 🔗 **Multiple data sources** — yfinance (default), yahooquery (batch), Financial Modeling Prep (FMP) or StockFit (US stocks, Starter plan), with automatic fallback
-- 🧾 **StockFit integration (optional)** — point-in-time SEC filing dates for backtests (`--pit-source stockfit`, works offline from a local snapshot), a fundamentals insights section in the HTML report (`--fundamental-insights`), per-ticker `deep-dive` reports and a keyless devil's advocate layer (risk signals). Works on every StockFit plan — and without a key at all (`stockfit-status` shows what yours unlocks)
 - 🏦 **Stocks & ETFs** — auto-detected and scored with dedicated models
 - 🌍 **US, European, Asian & Superinvestor markets** — S&P 500, DAX, CAC 40, FTSE 100, Nikkei 225, Hang Seng, NSE, and superinvestor consensus picks from DataRoma 13F filings
 - 💱 **Currency filter** — narrow by native currency (`USD`, `EUR`, `JPY`, …)
@@ -30,8 +29,7 @@
 - 🧠 **Interactive advisor** — market pulse, portfolio review, and tailored buy recommendations via the `advisor` subcommand
 - 🤖 **AI-powered advisor** — chat with an intelligent investment advisor that analyzes markets, reviews portfolios, and recommends buys — powered by [OpenCode](https://opencode.ai) agents
 - 📊 **Backtest validation** — historical backtesting with automated before/after comparison script
-- 📝 **Structured logging** — Python standard logging for errors, warnings, and operational events
-
+- 🧾 **StockFit integration (optional)** — point-in-time SEC filing dates for backtests (`--pit-source stockfit`, works offline from a local snapshot), a fundamentals insights section in the HTML report (`--fundamental-insights`), per-ticker `deep-dive` reports and a keyless devil's advocate layer (risk signals). Works on every StockFit plan — and without a key at all (`stockfit-status` shows what yours unlocks)
 ---
 
 ## Installation
