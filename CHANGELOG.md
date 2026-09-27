@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.14.0 (2026-09-27)
+
+### Features
+
+- **StockFit as a fourth live data source** — `--data-source stockfit` scores US stocks straight from SEC filings (US-only: non-US universes are excluded automatically with a banner note, ETFs are rejected like FMP). Requires `STOCKFIT_API_KEY` plus a Starter plan (tier-aware gate), falls back to yfinance per ticker on failure. Fundamentals are **as-filed fiscal-year** figures — characterized against yfinance on 30 US tickers (Spearman rank correlation 0.441, top-10 overlap 6/10): trend fields match to 8 decimals, but `earnings_growth`/`profit_margin`/`roe`/`trailing_pe` differ by design and **rankings are source-dependent**. No analyst estimates exist in StockFit, so `forward_pe`/`peg_ratio`/`eps_surprise` stay `None`.
+- **Advisor devil's advocate layer** — the OpenCode advisor agent now produces a bear case for every portfolio review and buy recommendation: keyless risk signals via `deep-dive` (layer 1) plus StockFit footnote tools when the MCP server is authenticated (layer 2 — concentration trends, maturity walls, dilution, insider summaries, governance flags). Never fabricates; includes the balanced view of what does *not* support the bear case.
+- **`eps_acceleration` diagnostic** — as-filed EPS growth second derivative derived from three fiscal years (StockFit source and both backtest paths). Tested as an estimates-free fallback for the EPS Revisions factor and **rejected** by factor-IC (−0.059); it is exposed for display use and never scored.
+
+### Performance
+
+- **StockFit source caching** — warm `--data-source stockfit` runs dropped from 2:42 to ~6s on the full US universe: profile + dividends in a 1-day cache entry, statements from the local PIT snapshot when under 7 days old, prices in the shared 15-minute history cache.
+- Cleaner CLI startup: the data-source note is folded into the banner (`us (StockFit: US-only)`) and the US-only exclusion log no longer interleaves with the progress bar.
+
+### Fixes
+
+- The deep-dive DCF link-out is **hidden** while StockFit's valuation platform is in early access — advertising a DCF users cannot open would be misleading. The URL stays reserved for the per-ticker deep link once the app launches.
+
+### Docs
+
+- README CLI reference completed and reordered (subcommand overview, full backtest/deep-dive option tables, missing flags) with `deep-dive` documented before `backtest`.
+
 ## v0.13.0 (2026-09-27)
 
 ### Features
