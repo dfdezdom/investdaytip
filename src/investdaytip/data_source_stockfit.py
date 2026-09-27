@@ -930,6 +930,88 @@ _GICS_TO_YFINANCE_SECTOR = {
 }
 
 
+def _ttm_facts_from(raw: Any) -> dict[str, Any]:
+    """Extract the ``facts`` block from a ``period=ttm`` statements response."""
+    if isinstance(raw, dict) and isinstance(raw.get("data"), list):
+        raw = raw["data"]
+    if isinstance(raw, list):
+        raw = raw[0] if raw else None
+    if isinstance(raw, dict):
+        facts = raw.get("facts")
+        if isinstance(facts, dict):
+            return facts
+    return {}
+
+
+def _fetch_ttm_facts(ticker: str, pit: Optional[PitStatements] = None) -> dict[str, Any]:
+    """Trailing-twelve-month facts for the live source (best-effort).
+
+    ``financials/income-statement?period=ttm`` serves flows summed over the
+    last four reported quarters together with the latest quarter's balances
+    and share counts, in one merged ``facts`` block.  Queried by symbol first —
+    the *current* entity has the freshest quarters — and retried on the PIT
+    CIK (which may be a stitched predecessor) only when the symbol yields
+    nothing.  Any failure returns ``{}`` so the caller keeps the as-filed
+    figures; a rate limit propagates so the ticker falls back to yfinance.
+    """
+    selectors: list[dict[str, str]] = [{"symbol": ticker}]
+    if pit is not None and pit.cik:
+        selectors.append({"cik": str(pit.cik)})
+    for selector in selectors:
+        try:
+            raw = _get("financials/income-statement", {**selector, "period": "ttm"})
+        except StockfitRateLimitError:
+            raise
+        except StockfitError as exc:
+            logger.debug("StockFit TTM fetch failed for %s (%s): %s", ticker, selector, exc)
+            continue
+        facts = _ttm_facts_from(raw)
+        if facts:
+            return facts
+    return {}
+
+
+def _apply_ttm_overlay(fund: _Fundamentals, facts: dict[str, Any]) -> None:
+    """Switch *fund*'s current-period fields to TTM figures, in place.
+
+    Flows come from the last four reported quarters and balances / share
+    counts from the latest quarter — the same trailing semantics yfinance
+    serves, so P/E, P/B, ROE and margins line up across data sources.  Each
+    overridden field shifts its comparison field to the as-filed figure it
+    replaces first, so growth, improvement flags and EPS acceleration read
+    "TTM vs last fiscal year vs prior fiscal year" on consecutive spans.  A
+    fact missing from the TTM block keeps its as-filed value and its
+    untouched comparison chain (``_first`` never discards a real ``0.0``).
+    """
+    def _swap(prev_attr: str, cur_attr: str, *fact_keys: str) -> None:
+        val = _first(*(_safe_fact(facts, key) for key in fact_keys))
+        if val is None:
+            return
+        setattr(fund, prev_attr, getattr(fund, cur_attr))
+        setattr(fund, cur_attr, val)
+
+    _swap("ni_prev", "ni", "netIncome")
+    _swap("rev_prev", "rev", "revenue")
+    _swap("gross_profit_prev", "gross_profit", "grossProfit")
+    _swap("total_assets_prev", "total_assets", "assets")
+    eps_ttm = _first(_safe_fact(facts, "epsDiluted"), _safe_fact(facts, "eps"))
+    if eps_ttm is not None:
+        fund.eps_prev2 = fund.eps_prev
+        fund.eps_prev = fund.eps
+        fund.eps = eps_ttm
+    fund.fcf = _first(_safe_fact(facts, "freeCashFlow"), fund.fcf)
+    fund.equity = _first(_safe_fact(facts, "stockholdersEquity"), fund.equity)
+    fund.total_debt = _first(_safe_fact(facts, "totalDebt"), fund.total_debt)
+    fund.curr_assets = _first(_safe_fact(facts, "currentAssets"), fund.curr_assets)
+    fund.curr_liab = _first(_safe_fact(facts, "currentLiabilities"), fund.curr_liab)
+    fund.shares = _first(
+        _safe_fact(facts, "sharesOutstanding"),
+        _safe_fact(facts, "currentSharesOutstanding"),
+        _safe_fact(facts, "sharesIssued"),
+        fund.shares,
+    )
+
+
 def fetch_asset_stockfit(
     ticker: str, min_market_cap: float = 0.0, with_improvements: bool = True
 ) -> AssetData:
@@ -937,11 +1019,12 @@ def fetch_asset_stockfit(
 
     **US stocks only** (StockFit covers US filers; ETFs are not supported,
     like the FMP source) and it needs a key plus a Starter plan.  Caching makes
-    warm runs ~free: profile + dividends in the 1-day `stockfit_info` entry,
-    statements from the local PIT snapshot when under 7 days old, prices from
-    the shared 15-minute history cache (first run ≈ 6 calls per ticker).  Builds the same ``StockData`` as the yfinance path via the
-    shared ``_derive_stock_data()``; the YoY-improvement flags come free from
-    the statements (``with_improvements`` is accepted for interface
+    warm runs ~free: profile + dividends + TTM facts in the 1-day
+    `stockfit_info` entry, statements from the local PIT snapshot when under 7
+    days old, prices from the shared 15-minute history cache (first run ≈ 7
+    calls per ticker).  Builds the same ``StockData`` as the yfinance path via
+    the shared ``_derive_stock_data()``; the YoY-improvement flags come free
+    from the statements (``with_improvements`` is accepted for interface
     compatibility and always computed).  Forward P/E, PEG and ``eps_surprise``
     stay ``None`` — StockFit has no analyst estimates — so the quant model
     scores Value with one metric fewer and EPS Revisions neutral.
@@ -950,23 +1033,29 @@ def fetch_asset_stockfit(
     yfinance; user errors (ETF ticker, below market-cap threshold) are
     returned as ``data.errors`` and skipped by the orchestrator.
 
-    **Semantics note (characterized 2026-09-27, 30 US tickers vs yfinance):**
-    fundamentals here are **as-filed fiscal-year** figures while yfinance
-    serves TTM/estimate-filled fields — so ``earnings_growth``,
-    ``profit_margin``, ``roe`` and ``trailing_pe`` differ per company and
-    rankings are *source-dependent* (Spearman ≈ 0.39 on that sample). Trend
-    fields match exactly (same adjusted price series). No analyst estimates
-    exist in StockFit, so ``forward_pe``/``peg_ratio``/``eps_surprise`` are
-    always ``None``.
+    **Semantics (2026-09-27):** current fundamentals are **TTM** — flows from
+    the last four reported quarters, balances from the latest quarter — the
+    same trailing semantics yfinance serves, so ``trailing_pe``,
+    ``price_to_book``, ``roe``, ``profit_margin`` & co. line up with the
+    yfinance source (MU P/E 24.5 vs 24.45 after the switch; the previous
+    as-filed fiscal-year basis showed 142.6 because a stale 10-K EPS lagged
+    an earnings explosion).  Comparison fields stay **as-filed fiscal-year**
+    figures, so growth / improvement flags / EPS acceleration read "TTM vs
+    last fiscal year vs prior fiscal year".  Trend fields match yfinance
+    exactly (same adjusted price series).  No analyst estimates exist in
+    StockFit, so ``forward_pe``/``peg_ratio``/``eps_surprise`` are always
+    ``None``.
     """
     now = datetime.now()
     data = StockData(ticker=ticker)
 
-    # 1) Profile + dividends — both change rarely, one 1-day cache entry
-    # (same idea as the FMP `fmp_info` key).
+    # 1) Profile + dividends + TTM facts — all change rarely, one 1-day cache
+    # entry (same idea as the FMP `fmp_info` key).
     cached_info = _load_stockfit_info(ticker)
     profile: dict[str, Any] = cached_info[0] if cached_info else {}
     ttm_div: Optional[float] = cached_info[1] if cached_info else None
+    ttm_facts: Optional[dict[str, Any]] = cached_info[2] if cached_info else None
+    info_dirty = cached_info is None
     if not profile:
         profile = _lookup_profile(ticker)
         if not profile:
@@ -1015,6 +1104,16 @@ def fetch_asset_stockfit(
         fcf=pit_fact_asof(pit.cash_flow, "freeCashFlow", now)[0],
     )
 
+    # 2b) TTM overlay — current fundamentals switch to trailing-twelve-month
+    # figures (last 4 reported quarters for flows, latest quarter for
+    # balances), matching yfinance's trailing semantics.  Best-effort: an
+    # unavailable TTM block keeps the as-filed fiscal-year values above.
+    if ttm_facts is None:
+        ttm_facts = _fetch_ttm_facts(ticker, pit)
+        info_dirty = True
+    if ttm_facts:
+        _apply_ttm_overlay(fund, ttm_facts)
+
     # 3) Prices — 2y of daily adjusted closes (trend + latest price).  The
     # 15-minute history cache is shared with the yfinance path on purpose:
     # both serve the same split/dividend-adjusted closes (verified to 8
@@ -1053,9 +1152,13 @@ def fetch_asset_stockfit(
                 if candidate is not None:
                     ttm_div = candidate
                     break
+    if info_dirty:
         try:
+            # An empty TTM block is stored as null so a transient failure is
+            # retried on the next run instead of sticking for a full day.
             cache_stockfit_info_set(ticker, json.dumps({
                 "profile": profile, "dividend_per_share": ttm_div,
+                "ttm": ttm_facts or None,
             }))
         except (TypeError, ValueError):
             logger.debug("Could not cache StockFit info for %s", ticker)
@@ -1090,8 +1193,10 @@ def _safe_float(value: Any) -> Optional[float]:
     return float(value) if isinstance(value, (int, float)) else None
 
 
-def _load_stockfit_info(ticker: str) -> Optional[tuple[dict[str, Any], Optional[float]]]:
-    """Cached ``(profile, dividend_per_share)`` pair, or ``None``."""
+def _load_stockfit_info(
+    ticker: str,
+) -> Optional[tuple[dict[str, Any], Optional[float], Optional[dict[str, Any]]]]:
+    """Cached ``(profile, dividend_per_share, ttm_facts)`` triple, or ``None``."""
     raw = cache_stockfit_info_get(ticker)
     if raw is None:
         return None
@@ -1102,7 +1207,9 @@ def _load_stockfit_info(ticker: str) -> Optional[tuple[dict[str, Any], Optional[
     if not isinstance(payload, dict):
         return None
     profile = payload.get("profile")
+    ttm = payload.get("ttm")
     return (
         (profile if isinstance(profile, dict) else {}),
         _safe_float(payload.get("dividend_per_share")),
+        (ttm if isinstance(ttm, dict) else None),
     )

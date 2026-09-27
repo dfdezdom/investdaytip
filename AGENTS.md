@@ -271,28 +271,38 @@ Inc"` → results. Two defensive fixes shipped with the snapshot block:
 ## StockFit Live Data Source (`--data-source stockfit`)
 
 Fourth data source for the recommend path: US stocks only, key required, gated
-to **Starter+** via the `live_source` capability (~6 calls per ticker — Free's
+to **Starter+** via the `live_source` capability (~7 calls per ticker — Free's
 300 req/day can't scan universes).
 
 | Aspect | Value |
 |---|---|
 | Scope | US stocks only — non-US universes/tickers are excluded automatically with a warning; ETFs raise `--data-source stockfit supports stocks only` |
 | Fail-fast | no key → exit 1; plan below Starter → exit 1 (CLI banners) |
-| Calls/ticker | `lookup/batch` (profile + type guard) → statements via `fetch_pit_statements()` (also refreshes the PIT snapshot) → `price/history` (2y daily closes) → `earnings/dividend-history` |
-| Caching | profile + dividends in `{ticker}:stockfit_info` (1d); statements from the local PIT snapshot when < 7 days old; prices in the shared `{ticker}:history` (15 min — both sources serve the same adjusted closes). Warm runs ≈ 0 extra calls |
+| Calls/ticker | `lookup/batch` (profile + type guard) → statements via `fetch_pit_statements()` (also refreshes the PIT snapshot) → `financials/income-statement?period=ttm` (TTM overlay) → `price/history` (2y daily closes) → `earnings/dividend-history` |
+| Caching | profile + dividends + TTM facts in `{ticker}:stockfit_info` (1d); statements from the local PIT snapshot when < 7 days old; prices in the shared `{ticker}:history` (15 min — both sources serve the same adjusted closes). Warm runs ≈ 0 extra calls |
 | Fallback | `StockfitError` per ticker → automatic yfinance fallback (same leftovers pattern as FMP); user errors (ETF, below cap) are skipped |
 | Trend parity | `return_12m`, `price_vs_sma200` and the improvement flags match yfinance to 8 decimals (same adjusted price series) |
 
-**Semantics (characterized 2026-09-27, 30 tickers vs yfinance — Spearman
-0.441, mean score delta −6.9, top-10 overlap 6/10):** fundamentals are
-**as-filed fiscal-year** figures while yfinance serves TTM/estimate-filled
-fields — `earnings_growth`, `profit_margin`, `roe`, `trailing_pe` differ per
-company and **rankings are source-dependent**. No analyst estimates exist in
-StockFit, so `forward_pe`/`peg_ratio`/`eps_surprise` are always `None` (Value
-scores with one metric fewer, EPS Revisions neutral). `eps_acceleration` is
-derived (3 FY of EPS) but was **rejected** as the EPS-Revisions fallback
-(factor-IC −0.059) — diagnostic only. Details:
-`stockfit/data_source_stockfit_validation.md`.
+**Semantics (2026-09-27, switched to TTM after the MU P/E report):** current
+fundamentals are **TTM** — flows from the last 4 reported quarters, balances
+and share counts from the latest quarter — fetched in one merged `facts`
+block from `financials/income-statement?period=ttm` and applied by
+`_apply_ttm_overlay()`. This matches yfinance's trailing semantics: MU P/E
+24.5 vs yfinance 24.45 after the switch (the previous **as-filed fiscal-year**
+basis showed 142.6 because the latest 10-K EPS lagged an earnings explosion;
+that old basis was characterized vs yfinance at Spearman 0.441 / top-10
+overlap 6/10 — rankings were source-dependent). Comparison fields stay
+**as-filed fiscal-year** figures, so `earnings_growth`, the improvement flags
+and `eps_acceleration` read "TTM vs last FY vs prior FY" on consecutive
+spans. Per-field graceful degradation: a fact missing from the TTM block (or
+an empty/failed TTM fetch — symbol first, then the PIT CIK for stitched
+entities) keeps its as-filed value and its unshifted comparison chain; a
+`StockfitRateLimitError` on the TTM call propagates so the ticker falls back
+to yfinance. No analyst estimates exist in StockFit, so
+`forward_pe`/`peg_ratio`/`eps_surprise` are always `None` (Value scores with
+one metric fewer, EPS Revisions neutral). `eps_acceleration` is derived but
+was **rejected** as the EPS-Revisions fallback (factor-IC −0.059) —
+diagnostic only. Details: `stockfit/data_source_stockfit_validation.md`.
 
 Robustness fixes found during that validation (keep them):
 - shares fallback chain `sharesOutstanding → currentSharesOutstanding →
@@ -450,7 +460,7 @@ below it: they are omitted with an explicit reason, never fabricated.
   - `superinvestor:holdings` (DataRoma aggregated data, TTL 7 days)
   - `{ticker}:stockfit_insights` (StockFit insight charts, TTL 1d — written only on a complete 3-endpoint fetch)
   - `{ticker}:stockfit_research` (StockFit research summary for `deep-dive`, TTL 1d — written on success)
-  - `{ticker}:stockfit_info` (StockFit profile + latest DPS for `--data-source stockfit`, TTL 1d)
+  - `{ticker}:stockfit_info` (StockFit profile + latest DPS + TTM facts for `--data-source stockfit`, TTL 1d)
   - `_global:stockfit_plan` (detected StockFit plan for tier-aware gating, TTL 1d — never stores `unknown`)
 - `fetch_asset()` defers cache-write until both info and history are fetched (atomic snapshot); partial results cached on history failure
 - Backtest **disables cache entirely** to ensure reproducible results — stale history cache can shift `_latest_common_end()` and produce different snapshot counts; cache state is saved and restored via `try/finally`
