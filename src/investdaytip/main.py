@@ -851,9 +851,6 @@ def main(argv: list[str] | None = None) -> int:
                 f"(detected plan: {plan}).[/red]"
             )
             return 1
-        Console().print(
-            "[yellow]StockFit source: US stocks only, ~6 requests per ticker.[/yellow]"
-        )
 
     from investdaytip.cache import clear_cache
     from investdaytip.cache import set_enabled as cache_set_enabled
@@ -865,9 +862,13 @@ def main(argv: list[str] | None = None) -> int:
     console = Console()
     region_str = ", ".join(args.region) if isinstance(args.region, list) else args.region
     currency_str = ", ".join(args.currency) if isinstance(args.currency, list) else args.currency
+    ac_str = str(args.asset_class)
+    if args.data_source == "stockfit":
+        # StockFit is US stocks only — say it once, in the banner.
+        ac_str, region_str = "stocks", "us (StockFit: US-only)"
     console.print(
         f"[bold cyan]InvestDayTip[/bold cyan] — analyzing markets "
-        f"([italic]{args.asset_class} · {region_str} · {currency_str}[/italic])...\n"
+        f"([italic]{ac_str} · {region_str} · {currency_str}[/italic])...\n"
     )
 
     # Warm-up superinvestor cache before the main scoring loop so that

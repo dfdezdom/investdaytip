@@ -40,6 +40,7 @@ import threading
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
+from io import StringIO
 from pathlib import Path
 from typing import Any, Optional
 from urllib.error import HTTPError, URLError
@@ -49,6 +50,10 @@ from urllib.request import Request, urlopen
 import pandas as pd
 
 from investdaytip.cache import (
+    cache_history_get,
+    cache_history_set,
+    cache_stockfit_info_get,
+    cache_stockfit_info_set,
     cache_stockfit_insights_get,
     cache_stockfit_insights_set,
     cache_stockfit_plan_get,
@@ -512,6 +517,23 @@ def _snapshot_path(ticker: str) -> Path:
     return snapshot_dir() / f"{ticker}.json"
 
 
+def _fresh_pit_snapshot(ticker: str, max_age_days: float = 7.0) -> Optional[PitStatements]:
+    """Local PIT snapshot when it is younger than *max_age_days*.
+
+    Filings arrive quarterly, so a week-old snapshot is fresh enough for the
+    live source — and reusing it means warm `--data-source stockfit` runs cost
+    ~2 calls per ticker instead of 6.  `fetch_pit_statements()` refreshes the
+    snapshot on every live fetch, so the cache heals itself.
+    """
+    try:
+        path = _snapshot_path(ticker)
+        if path.is_file() and (time.time() - path.stat().st_mtime) < max_age_days * 86400:
+            return load_pit_snapshot(ticker)
+    except OSError:
+        pass
+    return None
+
+
 def _serialize_periods(periods: list[PitPeriod]) -> list[dict[str, Any]]:
     return [
         {
@@ -900,8 +922,10 @@ def fetch_asset_stockfit(
     """StockFit-backed stock fetch — the ``--data-source stockfit`` workhorse.
 
     **US stocks only** (StockFit covers US filers; ETFs are not supported,
-    like the FMP source) and it needs a key plus a Starter plan (~6 calls per
-    ticker).  Builds the same ``StockData`` as the yfinance path via the
+    like the FMP source) and it needs a key plus a Starter plan.  Caching makes
+    warm runs ~free: profile + dividends in the 1-day `stockfit_info` entry,
+    statements from the local PIT snapshot when under 7 days old, prices from
+    the shared 15-minute history cache (first run ≈ 6 calls per ticker).  Builds the same ``StockData`` as the yfinance path via the
     shared ``_derive_stock_data()``; the YoY-improvement flags come free from
     the statements (``with_improvements`` is accepted for interface
     compatibility and always computed).  Forward P/E, PEG and ``eps_surprise``
@@ -924,18 +948,24 @@ def fetch_asset_stockfit(
     now = datetime.now()
     data = StockData(ticker=ticker)
 
-    # 1) Profile — also the stocks-only guard.
-    profile = _lookup_profile(ticker)
+    # 1) Profile + dividends — both change rarely, one 1-day cache entry
+    # (same idea as the FMP `fmp_info` key).
+    cached_info = _load_stockfit_info(ticker)
+    profile: dict[str, Any] = cached_info[0] if cached_info else {}
+    ttm_div: Optional[float] = cached_info[1] if cached_info else None
     if not profile:
-        raise StockfitError(f"StockFit: unknown ticker {ticker}")
+        profile = _lookup_profile(ticker)
+        if not profile:
+            raise StockfitError(f"StockFit: unknown ticker {ticker}")
     ptype = (profile.get("type") or "stock").lower()
     if ptype != "stock":
         data.errors.append(f"--data-source stockfit supports stocks only (type={ptype})")
         return data
 
     # 2) Statements — reuses the PIT client (which also refreshes the local
-    # snapshot), giving current + previous fiscal year facts.
-    pit = fetch_pit_statements(ticker)
+    # snapshot), giving current + previous fiscal year facts.  A fresh local
+    # snapshot short-circuits the fetch entirely.
+    pit = _fresh_pit_snapshot(ticker) or fetch_pit_statements(ticker)
     if not pit.income:
         raise StockfitError(f"StockFit: no statements for {ticker}")
     fund = _Fundamentals(
@@ -963,32 +993,50 @@ def fetch_asset_stockfit(
         fcf=pit_fact_asof(pit.cash_flow, "freeCashFlow", now)[0],
     )
 
-    # 3) Prices — 2y of daily adjusted closes (trend + latest price).
-    hist_raw = _get("price/history", {
-        "symbol": ticker,
-        "resolution": "1d",
-        "from": (now - timedelta(days=730)).strftime("%Y-%m-%d"),
-    })
-    points = hist_raw.get("data") if isinstance(hist_raw, dict) else None
-    if not points:
-        raise StockfitError(f"StockFit: no price history for {ticker}")
-    history = pd.DataFrame(
-        {"Close": [float(v) for _, v in points]},
-        index=pd.DatetimeIndex([datetime.fromtimestamp(ts / 1000) for ts, _ in points]),
-    )
+    # 3) Prices — 2y of daily adjusted closes (trend + latest price).  The
+    # 15-minute history cache is shared with the yfinance path on purpose:
+    # both serve the same split/dividend-adjusted closes (verified to 8
+    # decimals), and every consumer here reads only the `Close` column.
+    history_str = cache_history_get(ticker)
+    history = None
+    if history_str is not None:
+        try:
+            history = pd.read_json(StringIO(history_str))
+        except Exception:
+            history = None
+    if history is None or history.empty or "Close" not in history:
+        hist_raw = _get("price/history", {
+            "symbol": ticker,
+            "resolution": "1d",
+            "from": (now - timedelta(days=730)).strftime("%Y-%m-%d"),
+        })
+        points = hist_raw.get("data") if isinstance(hist_raw, dict) else None
+        if not points:
+            raise StockfitError(f"StockFit: no price history for {ticker}")
+        history = pd.DataFrame(
+            {"Close": [float(v) for _, v in points]},
+            index=pd.DatetimeIndex([datetime.fromtimestamp(ts / 1000) for ts, _ in points]),
+        )
+        cache_history_set(ticker, history.to_json())
     price = float(history["Close"].iloc[-1])
 
     # 4) Dividends — latest fiscal-year DPS ≈ TTM (payout is derived from it,
     # same convention as the yfinance path).  Some filers return empty shells
     # (all-None rows, e.g. JNJ) — scan a few rows and degrade to None cleanly.
-    div_rows = _get("earnings/dividend-history", {"symbol": ticker, "limit": "5"})
-    ttm_div = None
-    for row in div_rows if isinstance(div_rows, list) else []:
-        if isinstance(row, dict):
-            candidate = _safe_float(row.get("dividendPerShare"))
-            if candidate is not None:
-                ttm_div = candidate
-                break
+    if cached_info is None:
+        div_rows = _get("earnings/dividend-history", {"symbol": ticker, "limit": "5"})
+        for row in div_rows if isinstance(div_rows, list) else []:
+            if isinstance(row, dict):
+                candidate = _safe_float(row.get("dividendPerShare"))
+                if candidate is not None:
+                    ttm_div = candidate
+                    break
+        try:
+            cache_stockfit_info_set(ticker, json.dumps({
+                "profile": profile, "dividend_per_share": ttm_div,
+            }))
+        except (TypeError, ValueError):
+            logger.debug("Could not cache StockFit info for %s", ticker)
 
     sector_raw = profile.get("sector")
     sector = sector_raw if isinstance(sector_raw, str) else None
@@ -1018,3 +1066,21 @@ def fetch_asset_stockfit(
 
 def _safe_float(value: Any) -> Optional[float]:
     return float(value) if isinstance(value, (int, float)) else None
+
+
+def _load_stockfit_info(ticker: str) -> Optional[tuple[dict[str, Any], Optional[float]]]:
+    """Cached ``(profile, dividend_per_share)`` pair, or ``None``."""
+    raw = cache_stockfit_info_get(ticker)
+    if raw is None:
+        return None
+    try:
+        payload = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    profile = payload.get("profile")
+    return (
+        (profile if isinstance(profile, dict) else {}),
+        _safe_float(payload.get("dividend_per_share")),
+    )

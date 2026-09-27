@@ -279,6 +279,7 @@ to **Starter+** via the `live_source` capability (~6 calls per ticker — Free's
 | Scope | US stocks only — non-US universes/tickers are excluded automatically with a warning; ETFs raise `--data-source stockfit supports stocks only` |
 | Fail-fast | no key → exit 1; plan below Starter → exit 1 (CLI banners) |
 | Calls/ticker | `lookup/batch` (profile + type guard) → statements via `fetch_pit_statements()` (also refreshes the PIT snapshot) → `price/history` (2y daily closes) → `earnings/dividend-history` |
+| Caching | profile + dividends in `{ticker}:stockfit_info` (1d); statements from the local PIT snapshot when < 7 days old; prices in the shared `{ticker}:history` (15 min — both sources serve the same adjusted closes). Warm runs ≈ 0 extra calls |
 | Fallback | `StockfitError` per ticker → automatic yfinance fallback (same leftovers pattern as FMP); user errors (ETF, below cap) are skipped |
 | Trend parity | `return_12m`, `price_vs_sma200` and the improvement flags match yfinance to 8 decimals (same adjusted price series) |
 
@@ -437,7 +438,7 @@ below it: they are omitted with an explicit reason, never fabricated.
 
 ### Caching
 - `CacheDB` in `cache.py`: SQLite with `threading.local()` per-thread connections, WAL mode, write lock via `threading.Lock`
-- Ten cache entry types:
+- Twelve cache entry types:
   - `{ticker}:info` (fundamentals, TTL 1d — flat yfinance-style dict)
   - `{ticker}:fmp_info` (FMP `{"profile", "ratios_ttm"}` schema, TTL 1d) — separate key so FMP's incompatible schema never poisons the shared yfinance-style `info` entry (and vice versa)
   - `{ticker}:history` (prices, TTL 15min)
@@ -447,6 +448,7 @@ below it: they are omitted with an explicit reason, never fabricated.
   - `superinvestor:holdings` (DataRoma aggregated data, TTL 7 days)
   - `{ticker}:stockfit_insights` (StockFit insight charts, TTL 1d — written only on a complete 3-endpoint fetch)
   - `{ticker}:stockfit_research` (StockFit research summary for `deep-dive`, TTL 1d — written on success)
+  - `{ticker}:stockfit_info` (StockFit profile + latest DPS for `--data-source stockfit`, TTL 1d)
   - `_global:stockfit_plan` (detected StockFit plan for tier-aware gating, TTL 1d — never stores `unknown`)
 - `fetch_asset()` defers cache-write until both info and history are fetched (atomic snapshot); partial results cached on history failure
 - Backtest **disables cache entirely** to ensure reproducible results — stale history cache can shift `_latest_common_end()` and produce different snapshot counts; cache state is saved and restored via `try/finally`
