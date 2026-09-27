@@ -35,6 +35,12 @@ from investdaytip.backtest import (  # noqa: E402
     _latest_available_quarter,
     _latest_common_end,
 )
+from investdaytip.financial_health import (  # noqa: E402
+    _PIOTROSKI_CHECKS,
+    altman_z_score,
+    annual_facts,
+    piotroski_f_score,
+)
 from investdaytip.scoring import QuantStockScorer  # noqa: E402
 
 
@@ -171,6 +177,32 @@ def main() -> None:
                 else None
             )
 
+            # Financial-health candidates (Piotroski / Altman), computed from
+            # the same annual statements the model already loads.
+            cur_facts = annual_facts(
+                td.get("income_stmt"), td.get("balance_sheet"),
+                td.get("cash_flow"), quarter_date,
+            )
+            prev_facts = annual_facts(
+                td.get("income_stmt"), td.get("balance_sheet"),
+                td.get("cash_flow"), quarter_date, years_back=1,
+            )
+            pio = piotroski_f_score(cur_facts, prev_facts)
+            shares = cur_facts.get("OrdinarySharesNumber")
+            mcap_asof = (
+                stock.current_price * shares
+                if (stock.current_price and shares)
+                else stock.market_cap
+            )
+            alt = altman_z_score(cur_facts, mcap_asof)
+            pio_row: dict[str, Optional[float]] = {
+                f"pio_{k}": None for k in _PIOTROSKI_CHECKS
+            }
+            if pio is not None:
+                pio_row.update(
+                    {f"pio_{k}": (1.0 if v else 0.0) for k, v in pio.checks.items()}
+                )
+
             rows.append({
                 # factor scores (current model)
                 "F_value": value,
@@ -199,6 +231,10 @@ def main() -> None:
                 "pct_off_52w_high": _pct_off_high(close),
                 "volatility_LOW": -vol_1y if vol_1y is not None else None,
                 "rsi_14": stock.rsi_14,
+                # financial-health candidates
+                "piotroski": float(pio.score) if pio is not None else None,
+                "altman_z": alt.z_score if alt is not None else None,
+                **pio_row,
                 "fwd_6m": fwd,
             })
 
