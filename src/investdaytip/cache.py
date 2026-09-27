@@ -289,6 +289,20 @@ def cache_stockfit_insights_set(ticker: str, insights_json: str) -> None:
     get_db().set(_cache_key(ticker, "stockfit_insights"), insights_json, TTL_FUNDAMENTALS)
 
 
+def cache_stockfit_research_get(ticker: str) -> str | None:
+    """Return cached StockFit research-summary JSON string or None."""
+    if not enabled:
+        return None
+    return get_db().get(_cache_key(ticker, "stockfit_research"))
+
+
+def cache_stockfit_research_set(ticker: str, research_json: str) -> None:
+    """Store StockFit research-summary JSON string with fundamentals TTL."""
+    if not enabled:
+        return
+    get_db().set(_cache_key(ticker, "stockfit_research"), research_json, TTL_FUNDAMENTALS)
+
+
 def clear_cache() -> None:
     """Purge all cached data."""
     get_db().clear()

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import importlib.metadata
 import logging
+import os
 import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -502,6 +503,38 @@ def _render_backtest_result(console: Console, result: BacktestResult) -> None:
     console.print(f"\n[italic]{_interpret_backtest(result)}[/italic]")
 
 
+def _run_deep_dive_cli(args) -> int:
+    """``deep-dive`` subcommand: per-ticker report, Rich + optional HTML."""
+    from investdaytip.cache import set_enabled as cache_set_enabled
+    from investdaytip.deep_dive import build_deep_dive, render_html, render_rich
+
+    console = Console()
+    if args.no_cache:
+        cache_set_enabled(False)
+
+    tickers = _split_ticker_args(args.tickers) or []
+    if not tickers:
+        console.print("[red]No tickers given.[/red]")
+        return 1
+
+    if not os.environ.get("STOCKFIT_API_KEY"):
+        console.print(
+            "[yellow]No STOCKFIT_API_KEY — StockFit research summary will be "
+            "omitted; local Piotroski/Altman diagnostics still render.[/yellow]"
+        )
+
+    items = [build_deep_dive(t, scoring_model=args.scoring_model) for t in tickers]
+    render_rich(items, console=console)
+
+    if args.export_html is not None:
+        path = args.export_html or (
+            f"deep-dive-{datetime.now().strftime('%Y%m%d-%H%M')}.html"
+        )
+        Path(path).write_text(render_html(items), encoding="utf-8")
+        console.print(f"\nHTML report exported: {path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.WARNING,
@@ -615,6 +648,20 @@ def main(argv: list[str] | None = None) -> int:
                          "filing dates instead of a fixed reporting lag "
                          "(requires STOCKFIT_API_KEY; default: none).")
 
+    dd = sub.add_parser(
+        "deep-dive",
+        help="Per-ticker deep report: score, StockFit research summary and "
+             "Piotroski/Altman health diagnostics (never scored).",
+    )
+    dd.add_argument("-t", "--tickers", nargs="+", required=True,
+                    help="Ticker(s) to analyse, e.g. -t AAPL MSFT.")
+    dd.add_argument("--export-html", nargs="?", const="", default=None,
+                    help="Export the report to HTML (auto-named when omitted).")
+    dd.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",
+                    help="Scoring model to use (default: quant).")
+    dd.add_argument("--no-cache", action="store_true",
+                    help="Skip SQLite cache for the underlying fetches.")
+
     main_grp = parser.add_argument_group("Main options")
     main_grp.add_argument("-n", "--top", type=int, default=None,
                           help="Number of recommendations (default: 5, or all if -t tickers are given).")
@@ -702,6 +749,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "backtest":
         return _run_backtest_cli(args)
+
+    if args.command == "deep-dive":
+        return _run_deep_dive_cli(args)
 
     file_tickers: list[str] = []
     if args.tickers_file:
