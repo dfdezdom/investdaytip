@@ -30,6 +30,8 @@ from yfinance.exceptions import YFRateLimitError
 from investdaytip.data_source import (
     StockData,
     _compute_eps_surprise,
+    _derive_stock_data,
+    _Fundamentals,
     _suppress_stderr,
     _technical_indicators,
     _trend_metrics,
@@ -41,7 +43,6 @@ from investdaytip.data_source_stockfit import (
     fetch_pit_statements,
     pit_fact_asof,
 )
-from investdaytip.financial_health import improvement_flags
 from investdaytip.recommender import _build_universe
 from investdaytip.scoring import ScoredAsset, resolve_include_technical, score_stock
 
@@ -404,27 +405,6 @@ def _compute_historical_eps_surprise(
     return _compute_eps_surprise(filtered, lookback_quarters)
 
 
-@dataclass
-class _Fundamentals:
-    """Raw fundamental inputs shared by the classic and PIT snapshot builders."""
-
-    ni: Optional[float] = None
-    rev: Optional[float] = None
-    eps: Optional[float] = None
-    ni_prev: Optional[float] = None
-    rev_prev: Optional[float] = None
-    gross_profit: Optional[float] = None
-    gross_profit_prev: Optional[float] = None
-    total_assets_prev: Optional[float] = None
-    equity: Optional[float] = None
-    total_assets: Optional[float] = None
-    total_debt: Optional[float] = None
-    curr_assets: Optional[float] = None
-    curr_liab: Optional[float] = None
-    shares: Optional[float] = None
-    fcf: Optional[float] = None
-
-
 def _snapshot_price_trend(
     price_history: pd.DataFrame, snapshot_date: datetime
 ) -> tuple[Optional[float], tuple, Optional[float], Optional[float]]:
@@ -448,137 +428,6 @@ def _snapshot_price_trend(
         hist_slice["Close"].dropna()
     ) if "Close" in hist_slice else (None, None)
     return price, trend_vals, rsi_14, macd_histogram
-
-
-def _derive_stock_data(
-    ticker: str,
-    info: dict,
-    price: Optional[float],
-    trend_vals: tuple,
-    rsi_14: Optional[float],
-    macd_histogram: Optional[float],
-    fund: _Fundamentals,
-    ttm_div: Optional[float],
-    eps_surprise: Optional[float],
-) -> StockData:
-    """Derive ``StockData`` metrics from raw fundamentals.
-
-    Single derivation path shared by the classic (fixed reporting-lag) and
-    StockFit point-in-time snapshot builders — a data-source comparison
-    only changes the inputs, never the math.
-    """
-    price_vs_sma200, return_1m, return_12m, sma200_slope, _vol, daily_change = trend_vals
-
-    ni, rev, eps = fund.ni, fund.rev, fund.eps
-    equity = fund.equity
-    total_assets = fund.total_assets
-    total_debt = fund.total_debt
-    curr_assets = fund.curr_assets
-    curr_liab = fund.curr_liab
-    shares = fund.shares
-    fcf = fund.fcf
-
-    earnings_growth = _pct_change(ni, fund.ni_prev)
-    revenue_growth = _pct_change(rev, fund.rev_prev)
-
-    # Debt/Equity: yfinance reports as percentage, divide by 100.
-    # Negative equity makes the ratio meaningless (and sign flips can clamp
-    # to a perfect score in the scorers), so it is treated as missing — the
-    # same way yfinance reports None for unusable ratios in the live path.
-    debt_to_equity = (
-        (total_debt / equity) * 100.0
-        if (total_debt is not None and equity is not None and equity > 0)
-        else None
-    )
-
-    current_ratio = (
-        curr_assets / curr_liab
-        if (curr_assets is not None and curr_liab is not None and curr_liab > 0)
-        else None
-    )
-
-    # Trailing P/E (meaningless for loss-making companies → None, like yfinance)
-    trailing_pe = (
-        (price / eps) if (price is not None and eps is not None and eps > 0) else None
-    )
-
-    # Price/Book (meaningless with negative equity → None)
-    bvps = (
-        equity / shares
-        if (equity is not None and equity > 0 and shares is not None and shares > 0)
-        else None
-    )
-    price_to_book = (
-        (price / bvps) if (price is not None and bvps is not None and bvps > 0) else None
-    )
-
-    # ROE / ROA (ROE with negative equity sign-flips → None)
-    roe = (ni / equity) if (ni is not None and equity is not None and equity > 0) else None
-    roa = (
-        (ni / total_assets)
-        if (ni is not None and total_assets is not None and total_assets > 0)
-        else None
-    )
-
-    # Profit margin
-    profit_margin = (ni / rev) if (ni is not None and rev is not None and rev > 0) else None
-
-    # YoY improvement flags (Piotroski-style Δ checks) — shared semantics
-    # with the live path via financial_health.improvement_flags().
-    margin_improving, roa_improving = improvement_flags(
-        {"GrossProfit": fund.gross_profit, "TotalRevenue": rev,
-         "NetIncome": ni, "TotalAssets": total_assets},
-        {"GrossProfit": fund.gross_profit_prev, "TotalRevenue": fund.rev_prev,
-         "NetIncome": fund.ni_prev, "TotalAssets": fund.total_assets_prev},
-    )
-
-    # Market cap
-    market_cap = (price * shares) if (price and shares) else None
-
-    # Dividend yield (TTM) — the TTM window is chosen by the caller
-    # (quarter_date for the classic path, snapshot_date for PIT).
-    dividend_yield = (
-        (ttm_div / price) if (ttm_div is not None and price and price > 0) else None
-    )
-
-    # Payout ratio
-    payout_ratio = (
-        (ttm_div / eps) if (ttm_div and eps and eps != 0) else None
-    )
-
-    return StockData(
-        ticker=ticker,
-        name=info.get("shortName") or info.get("longName"),
-        sector=info.get("sector"),
-        currency=info.get("currency"),
-        exchange=info.get("exchange"),
-        trailing_pe=trailing_pe,
-        forward_pe=None,
-        price_to_book=price_to_book,
-        peg_ratio=None,
-        return_on_equity=roe,
-        return_on_assets=roa,
-        profit_margin=profit_margin,
-        earnings_growth=earnings_growth,
-        revenue_growth=revenue_growth,
-        margin_improving=margin_improving,
-        roa_improving=roa_improving,
-        debt_to_equity=debt_to_equity,
-        current_ratio=current_ratio,
-        free_cashflow=fcf,
-        dividend_yield=dividend_yield,
-        payout_ratio=payout_ratio,
-        eps_surprise=eps_surprise,
-        market_cap=market_cap,
-        current_price=price,
-        price_vs_sma200=price_vs_sma200,
-        return_1m=return_1m,
-        return_12m=return_12m,
-        sma200_slope=sma200_slope,
-        daily_change=daily_change,
-        rsi_14=rsi_14,
-        macd_histogram=macd_histogram,
-    )
 
 
 def _build_historical_stock_data(
@@ -697,12 +546,6 @@ def _build_pit_stock_data(
         ticker, info, price, trend_vals, rsi_14, macd_histogram,
         fund, ttm_div, eps_surprise,
     )
-
-
-def _pct_change(current: Optional[float], previous: Optional[float]) -> Optional[float]:
-    if current is None or previous is None or previous == 0:
-        return None
-    return (current - previous) / abs(previous)
 
 
 # ── Data fetching ────────────────────────────────────────────────────────────

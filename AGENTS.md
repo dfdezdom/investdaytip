@@ -268,6 +268,41 @@ Inc"` → results. Two defensive fixes shipped with the snapshot block:
 - The XOM reorg is the regression case for stitching; keep the
   `_search_queries("ExxonMobil Holdings Corp")` assertions green.
 
+## StockFit Live Data Source (`--data-source stockfit`)
+
+Fourth data source for the recommend path: US stocks only, key required, gated
+to **Starter+** via the `live_source` capability (~6 calls per ticker — Free's
+300 req/day can't scan universes).
+
+| Aspect | Value |
+|---|---|
+| Scope | US stocks only — non-US universes/tickers are excluded automatically with a warning; ETFs raise `--data-source stockfit supports stocks only` |
+| Fail-fast | no key → exit 1; plan below Starter → exit 1 (CLI banners) |
+| Calls/ticker | `lookup/batch` (profile + type guard) → statements via `fetch_pit_statements()` (also refreshes the PIT snapshot) → `price/history` (2y daily closes) → `earnings/dividend-history` |
+| Fallback | `StockfitError` per ticker → automatic yfinance fallback (same leftovers pattern as FMP); user errors (ETF, below cap) are skipped |
+| Trend parity | `return_12m`, `price_vs_sma200` and the improvement flags match yfinance to 8 decimals (same adjusted price series) |
+
+**Semantics (characterized 2026-09-27, 30 tickers vs yfinance — Spearman
+0.441, mean score delta −6.9, top-10 overlap 6/10):** fundamentals are
+**as-filed fiscal-year** figures while yfinance serves TTM/estimate-filled
+fields — `earnings_growth`, `profit_margin`, `roe`, `trailing_pe` differ per
+company and **rankings are source-dependent**. No analyst estimates exist in
+StockFit, so `forward_pe`/`peg_ratio`/`eps_surprise` are always `None` (Value
+scores with one metric fewer, EPS Revisions neutral). Details:
+`stockfit/data_source_stockfit_validation.md`.
+
+Robustness fixes found during that validation (keep them):
+- shares fallback chain `sharesOutstanding → currentSharesOutstanding →
+  sharesIssued` (CVX/JNJ tag the second one — without it P/B and market cap
+  went `None`);
+- dividend rows are scanned for the first non-`dividendPerShare=None` entry
+  (JNJ returns all-None shells) — otherwise degrades to `None`.
+
+GICS sector names are mapped to yfinance-style (`Information Technology` →
+`Technology`) so `-s` filters and the advisor sector tilt behave identically.
+Tests: `tests/test_data_source_stockfit_live.py` (fetcher, guards, gates,
+US-only filtering, yfinance fallback).
+
 ## StockFit Fundamental Insights (`--fundamental-insights`)
 
 Opt-in section in the recommendations HTML report with SEC-derived fundamentals
@@ -363,7 +398,8 @@ below it: they are omitted with an explicit reason, never fabricated.
 - `data_source_stockfit.CAPABILITIES` maps each capability to its minimum
   plan (`None` = works keyless): `pit_statements` keyless (local snapshot),
   `fundamental_insights` free, `deep_dive_summary` starter,
-  `economic_model` stock, `footnotes` pro.
+  `economic_model` stock, `footnotes` pro, `live_source` starter
+  (`--data-source stockfit`).
 - `detect_plan()` — StockFit exposes no plan endpoint, but gated endpoints
   answer **HTTP 403** ("Feature not available on current plan"), so the plan
   is detected by probing the tier boundaries top-down
