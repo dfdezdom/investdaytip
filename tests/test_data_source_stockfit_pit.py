@@ -413,6 +413,82 @@ def test_build_pit_stock_data_empty_pit_yields_neutral_values():
     assert sd.current_price == 100.0  # price history still drives trend data
 
 
+def test_build_pit_stock_data_flags_yoy_improvements():
+    from investdaytip.backtest import _build_pit_stock_data
+
+    inc = [
+        _row("2025-09-30", "2025-11-01", 2025,
+             {"revenue": 400e9, "netIncome": 100e9, "eps": 7.0,
+              "grossProfit": 200e9}),  # margin 0.50, ROA 0.286
+        _row("2024-09-30", "2024-11-02", 2024,
+             {"revenue": 350e9, "netIncome": 90e9, "eps": 6.0,
+              "grossProfit": 157.5e9}),  # margin 0.45, ROA 0.281
+    ]
+    bal = [
+        _row("2025-09-30", "2025-11-03", 2025, {"assets": 350e9}),
+        _row("2024-09-30", "2024-11-05", 2024, {"assets": 320e9}),
+    ]
+    pit = PitStatements(
+        ticker="TEST", cik=1,
+        income=_parse_periods(inc),
+        balance=_parse_periods(bal),
+    )
+    sd = _build_pit_stock_data(
+        ticker="TEST", info={}, price_history=_price_history(),
+        snapshot_date=datetime(2025, 12, 1), pit=pit,
+        dividends=pd.Series(dtype=float),
+    )
+    assert sd.margin_improving is True   # 0.50 > 0.45
+    assert sd.roa_improving is True      # 100/350 > 90/320
+
+
+def test_build_pit_stock_data_flags_deterioration_and_missing():
+    from investdaytip.backtest import _build_pit_stock_data
+
+    inc = [
+        _row("2025-09-30", "2025-11-01", 2025,
+             {"revenue": 400e9, "netIncome": 100e9, "eps": 7.0,
+              "grossProfit": 160e9}),  # margin 0.40 — worse than FY2024
+        _row("2024-09-30", "2024-11-02", 2024,
+             {"revenue": 350e9, "netIncome": 90e9, "eps": 6.0,
+              "grossProfit": 157.5e9}),
+    ]
+    bal = [
+        _row("2025-09-30", "2025-11-03", 2025, {"assets": 350e9}),
+        _row("2024-09-30", "2024-11-05", 2024, {"assets": 320e9}),
+    ]
+    pit = PitStatements(
+        ticker="TEST", cik=1,
+        income=_parse_periods(inc),
+        balance=_parse_periods(bal),
+    )
+    sd = _build_pit_stock_data(
+        ticker="TEST", info={}, price_history=_price_history(),
+        snapshot_date=datetime(2025, 12, 1), pit=pit,
+        dividends=pd.Series(dtype=float),
+    )
+    assert sd.margin_improving is False
+    assert sd.roa_improving is True
+
+    # No gross-profit facts at all → margin flag unknown, ROA flag still known
+    inc_no_gp = [
+        _row("2025-09-30", "2025-11-01", 2025, {"revenue": 400e9, "netIncome": 100e9}),
+        _row("2024-09-30", "2024-11-02", 2024, {"revenue": 350e9, "netIncome": 90e9}),
+    ]
+    pit2 = PitStatements(
+        ticker="TEST", cik=1,
+        income=_parse_periods(inc_no_gp),
+        balance=_parse_periods(bal),
+    )
+    sd2 = _build_pit_stock_data(
+        ticker="TEST", info={}, price_history=_price_history(),
+        snapshot_date=datetime(2025, 12, 1), pit=pit2,
+        dividends=pd.Series(dtype=float),
+    )
+    assert sd2.margin_improving is None
+    assert sd2.roa_improving is True
+
+
 def test_build_pit_stock_data_derives_shares_from_eps():
     """Balance sheets without share counts (e.g. FLWS) → net income / basic EPS."""
     from investdaytip.backtest import _build_pit_stock_data

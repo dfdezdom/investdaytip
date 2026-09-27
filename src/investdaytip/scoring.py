@@ -317,11 +317,31 @@ class QuantStockScorer:
         roe = _linear(d.return_on_equity, best=0.30, worst=0.05)
         roa = _linear(d.return_on_assets, best=0.15, worst=0.01)
         margin = _linear(d.profit_margin, best=0.25, worst=0.02)
+        # YoY-improvement sub-score (Δgross margin, ΔROA): the strongest
+        # factor-IC candidates in the 2026-09-27 full-US run (mean IC +0.13,
+        # 86% hit rate) — "fundamentals improving" carries signal that the
+        # *levels* above do not. Neutral 50 when statements are unavailable.
+        # Weight 0.30 = pre-registered single iteration after the first
+        # before/after came back MIXED at 0.20 (signal too diluted at 5% of
+        # the total score). Stop rule: not Ship here → display-only.
+        improving = self._improvement_score(d)
         if d.return_on_equity is not None and d.return_on_equity > 0.15:
             notes.append(f"strong ROE of {d.return_on_equity * 100:.1f}%")
         if d.profit_margin is not None and d.profit_margin > 0.15:
             notes.append(f"healthy profit margin of {d.profit_margin * 100:.1f}%")
-        return (roe * 0.45) + (margin * 0.35) + (roa * 0.20), notes
+        if d.margin_improving and d.roa_improving:
+            notes.append("fundamentals improving (margin and ROA expanding YoY)")
+        return (roe * 0.30) + (margin * 0.25) + (roa * 0.15) + (improving * 0.30), notes
+
+    @staticmethod
+    def _improvement_score(d: StockData) -> float:
+        """Mean of the known YoY-improvement checks (100 pass / 0 fail); 50 when none known."""
+        known = [
+            100.0 if flag else 0.0
+            for flag in (d.margin_improving, d.roa_improving)
+            if flag is not None
+        ]
+        return sum(known) / len(known) if known else 50.0
 
     def _momentum_score(self, d: StockData) -> tuple[float, list[str]]:
         notes: list[str] = []

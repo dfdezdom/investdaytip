@@ -1,5 +1,7 @@
 """Tests for the optional ``quant`` scoring model."""
 
+from dataclasses import replace
+
 import pytest
 
 from investdaytip.data_source import StockData
@@ -24,6 +26,8 @@ def _base_data() -> StockData:
         profit_margin=0.20,
         earnings_growth=0.15,
         revenue_growth=0.12,
+        margin_improving=True,
+        roa_improving=True,
         debt_to_equity=30,
         current_ratio=2.2,
         free_cashflow=1_000_000_000,
@@ -230,3 +234,36 @@ def test_quant_negative_pe_pb_give_neutral():
     )
     s = score_stock(d, model="quant")
     assert s.total < 90
+
+
+def test_quant_improvement_flags_raise_profitability():
+    """Known YoY improvements beat unknown, which beats deterioration."""
+    scorer = QuantStockScorer()
+    neutral = replace(_base_data(), margin_improving=None, roa_improving=None)
+    base, _ = scorer._profitability_score(neutral)
+    up, _ = scorer._profitability_score(
+        replace(neutral, margin_improving=True, roa_improving=True)
+    )
+    down, _ = scorer._profitability_score(
+        replace(neutral, margin_improving=False, roa_improving=False)
+    )
+    assert down < base < up
+
+
+def test_quant_improvement_score_semantics():
+    scorer = QuantStockScorer()
+    neutral = replace(_base_data(), margin_improving=None, roa_improving=None)
+    assert scorer._improvement_score(neutral) == 50.0  # unknown = neutral
+    assert scorer._improvement_score(
+        replace(neutral, margin_improving=True)
+    ) == 100.0  # single known check is used as-is
+    assert scorer._improvement_score(
+        replace(neutral, margin_improving=False, roa_improving=True)
+    ) == 50.0  # mean of the known checks
+
+
+def test_quant_improvement_note_when_both_true():
+    _, notes = QuantStockScorer()._profitability_score(
+        replace(_base_data(), margin_improving=True, roa_improving=True)
+    )
+    assert any("fundamentals improving" in n for n in notes)

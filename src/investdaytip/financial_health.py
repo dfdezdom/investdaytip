@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Mapping, Optional
 
 import pandas as pd
 
@@ -117,6 +117,44 @@ def annual_facts(
 
 
 # ── Piotroski F-Score ────────────────────────────────────────────────────────
+
+
+def improvement_flags(
+    cur: Mapping[str, Optional[float]], prev: Mapping[str, Optional[float]]
+) -> tuple[Optional[bool], Optional[bool]]:
+    """YoY improvement flags ``(margin_improving, roa_improving)``.
+
+    ``True`` when the ratio strictly improved vs the previous fiscal year,
+    ``False`` when it deteriorated, ``None`` when either year is missing or a
+    denominator is non-positive — "unknown" is never "improving".  Fact keys:
+    ``GrossProfit``, ``TotalRevenue``, ``NetIncome``, ``TotalAssets`` (the
+    names produced by :func:`annual_facts`).
+
+    Shared by the live path and the backtest snapshot builders so both mean
+    exactly the same thing.
+    """
+    gp, rev = cur.get("GrossProfit"), cur.get("TotalRevenue")
+    ni, ta = cur.get("NetIncome"), cur.get("TotalAssets")
+    p_gp, p_rev = prev.get("GrossProfit"), prev.get("TotalRevenue")
+    p_ni, p_ta = prev.get("NetIncome"), prev.get("TotalAssets")
+
+    margin_improving = (
+        (gp / rev) > (p_gp / p_rev)
+        if (
+            gp is not None and rev is not None and rev > 0
+            and p_gp is not None and p_rev is not None and p_rev > 0
+        )
+        else None
+    )
+    roa_improving = (
+        (ni / ta) > (p_ni / p_ta)
+        if (
+            ni is not None and ta is not None and ta > 0
+            and p_ni is not None and p_ta is not None and p_ta > 0
+        )
+        else None
+    )
+    return margin_improving, roa_improving
 
 
 def _require(*values: Optional[float]) -> Optional[tuple[float, ...]]:

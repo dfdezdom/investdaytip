@@ -33,6 +33,7 @@ the convention is `Optional[...]` for dataclass fields, not `X | None`.
 | FMP data source | `data_source_fmp.py` | FMP wrapper, `fetch_asset()` alternative, 4 endpoints/ticker, rate-limit auto-fallback to yfinance |
 | Caching | `cache.py` | SQLite cache with per-thread connections, WAL mode, write lock |
 | Scoring | `scoring.py` | pure functions only — no I/O, no side effects |
+| Fundamental health | `financial_health.py` | Piotroski F-Score, Altman Z, YoY-improvement flags — pure functions, no I/O |
 | HTML export | `html_export.py` | self-contained report with inline CSS/JS |
 | Backtest | `backtest.py` | historical scoring validation (stocks only) |
 | Sentiment | `sentiment.py` | CNN Fear & Greed Index, no yfinance (uses `urllib`) |
@@ -406,6 +407,8 @@ Two stock-scoring models are available, selectable via `--scoring-model {classic
 
 - **`quant`** (default) — Seeking-Alpha-inspired five-factor model:
   - Value 25%, Growth 20%, Profitability 25%, Momentum 15%, EPS Revisions 15%
+  - Profitability sub-weights: ROE 30%, margin 25%, ROA 15%, **YoY-improvement 30%** (Δgross margin + ΔROA vs previous fiscal year; neutral 50 when unknown). Shared logic in `financial_health.improvement_flags()`; flags live on `StockData.margin_improving`/`roa_improving`, filled by the live path (`fetch_asset(with_improvements=True)` — 2 statement calls, 7d cache; skipped for `classic`) and by both backtest builders. Validated 2026-09-27 (full US, top-5, min-cap 0): factor-IC +0.134/+0.126 mean (86% hit — top of the table), before/after 5y alpha 6.85%→7.60% (MaxDD unchanged), 3y alpha 7.69%→13.37%, Sharpe 1.16→1.30, win12M 50%→62.5%.
+  - **Piotroski F-Score composite and Altman Z were tested and REJECTED as scoring factors** (mean IC +0.039/+0.014 = noise; 5 of the 9 Piotroski checks are negative on large-caps). `financial_health.piotroski_f_score()` / `altman_z_score()` stay available for display/analysis (e.g. a future insights HTML panel); the useful subset of Piotroski is the two improvement checks above.
   - Momentum uses **12-1 momentum** (12m return excluding the most recent month, derived from `return_12m`/`return_1m`; falls back to raw 12m when `return_1m` is missing) — the last month is short-term reversal, not momentum. Validated via factor-IC + before/after backtests (2026-07-17): alpha +0.5pp and Sharpe +0.03 on the 5y wide universe, never worse on 3y/standard configs.
   - EPS Revisions uses the average EPS surprise (Reported EPS vs Estimate) over the last four reported quarters; `lxml` is required for yfinance to expose this data.
   - Disqualifying grades cap the total score at neutral when a factor falls into red-flag territory

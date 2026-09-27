@@ -20,7 +20,7 @@ from investdaytip.scoring import ScoredAsset
 
 
 class TestRecommendFullFlow:
-    def _mock_fetch(self, ticker: str, min_market_cap: float = 0.0) -> StockData:
+    def _mock_fetch(self, ticker: str, min_market_cap: float = 0.0, **_kwargs) -> StockData:
         """Deterministic data: BBB > AAA > CCC."""
         vals = {
             "BBB": dict(
@@ -89,7 +89,13 @@ class TestRecommendFullFlow:
         fetch = mocker.patch("investdaytip.recommender.fetch_asset", return_value=StockData(ticker="X"))
         mocker.patch("investdaytip.recommender.close_db")
         recommend(tickers=["X"], top_n=10, min_market_cap=2e9)
-        fetch.assert_called_once_with("X", 2e9)
+        fetch.assert_called_once_with("X", 2e9, with_improvements=True)
+
+    def test_classic_model_skips_improvement_fetch(self, mocker):
+        fetch = mocker.patch("investdaytip.recommender.fetch_asset", return_value=StockData(ticker="X"))
+        mocker.patch("investdaytip.recommender.close_db")
+        recommend(tickers=["X"], top_n=10, scoring_model="classic")
+        fetch.assert_called_once_with("X", 0.0, with_improvements=False)
 
     def test_progress_cb_called(self, mocker):
         mocker.patch("investdaytip.recommender.fetch_asset", side_effect=self._mock_fetch)
@@ -101,7 +107,7 @@ class TestRecommendFullFlow:
         assert last_call[0][1] == 2
 
     def test_etf_scoring_mixed_with_stocks(self, mocker):
-        def _fetch(ticker, min_market_cap=0.0):
+        def _fetch(ticker, min_market_cap=0.0, **_kwargs):
             if ticker == "VOO":
                 return EtfData(
                     ticker="VOO", currency="USD", category="Large Blend",
@@ -286,7 +292,7 @@ class TestBacktestCLI:
 
 class TestGetRecommendations:
     def test_returns_scored_assets(self, mocker):
-        def _fetch(ticker, min_market_cap=0.0):
+        def _fetch(ticker, min_market_cap=0.0, **_kwargs):
             return StockData(
                 ticker=ticker, currency="USD", market_cap=10e9,
                 return_on_equity=0.20, profit_margin=0.15,
@@ -303,7 +309,7 @@ class TestGetRecommendations:
         assert out[0].total >= out[1].total
 
     def test_top_n_limits_results(self, mocker):
-        def _fetch(ticker, min_market_cap=0.0):
+        def _fetch(ticker, min_market_cap=0.0, **_kwargs):
             return StockData(ticker=ticker, currency="USD", market_cap=10e9)
 
         mocker.patch("investdaytip.recommender.fetch_asset", side_effect=_fetch)
@@ -315,7 +321,7 @@ class TestGetRecommendations:
         assert len(out) == 3
 
     def test_sector_filter(self, mocker):
-        def _fetch(ticker, min_market_cap=0.0):
+        def _fetch(ticker, min_market_cap=0.0, **_kwargs):
             sector = "Technology" if ticker in ("AAPL", "MSFT") else "Financial"
             return StockData(ticker=ticker, currency="USD", market_cap=10e9, sector=sector)
 

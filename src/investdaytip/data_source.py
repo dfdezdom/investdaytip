@@ -14,12 +14,15 @@ import os
 import time
 from contextlib import contextmanager, redirect_stderr
 from dataclasses import dataclass, field
+from datetime import datetime
 from io import StringIO
 from typing import Optional, Union
 
 import pandas as pd
 import yfinance as yf
 from yfinance.exceptions import YFRateLimitError
+
+from investdaytip.financial_health import annual_facts, improvement_flags
 
 # Silence yfinance's verbose logging (delisted symbols, HTTP errors)
 for _name in ("yfinance", "yfinance.ticker", "yfinance.utils", "yfinance.data", "peewee"):
@@ -52,6 +55,9 @@ class StockData:
     profit_margin: Optional[float] = None
     earnings_growth: Optional[float] = None
     revenue_growth: Optional[float] = None
+    # YoY fundamental improvements (statement-derived; None = unknown)
+    margin_improving: Optional[bool] = None
+    roa_improving: Optional[bool] = None
     # Health
     debt_to_equity: Optional[float] = None
     current_ratio: Optional[float] = None
@@ -384,6 +390,8 @@ def _fetch_stock(
     history: pd.DataFrame,
     dividends: pd.Series | None = None,
     earnings_dates: pd.DataFrame | None = None,
+    income_stmt: pd.DataFrame | None = None,
+    balance_sheet: pd.DataFrame | None = None,
 ) -> StockData:
     data = StockData(ticker=ticker)
     data.name = info.get("shortName") or info.get("longName") or None
@@ -420,6 +428,15 @@ def _fetch_stock(
         data.eps_surprise = _compute_eps_surprise(earnings_dates)
     else:
         data.eps_surprise = _safe_get(info, "epsSurprise")
+
+    # YoY improvement flags from annual statements (None = unknown when the
+    # statements are unavailable — same semantics as the backtest builders).
+    if income_stmt is not None and balance_sheet is not None:
+        cur = annual_facts(income_stmt, balance_sheet, None, datetime.now())
+        prev = annual_facts(
+            income_stmt, balance_sheet, None, datetime.now(), years_back=1
+        )
+        data.margin_improving, data.roa_improving = improvement_flags(cur, prev)
 
     return data
 
@@ -464,7 +481,35 @@ def _enrich_etf_info(t: yf.Ticker, info: dict) -> None:
         pass
 
 
-def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> AssetData:
+def _fetch_statement_frames(ticker: str) -> tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
+    """Annual income statement + balance sheet (7-day cache) for the YoY flags."""
+    from investdaytip.cache import cache_financial_get, cache_financial_set
+
+    out: list[Optional[pd.DataFrame]] = []
+    for kind in ("income_stmt", "balance_sheet"):
+        df: Optional[pd.DataFrame] = None
+        raw = cache_financial_get(ticker, kind)
+        if raw is not None:
+            try:
+                df = pd.read_json(StringIO(raw))
+            except Exception:
+                df = None
+        if df is None or df.empty:
+            df = None
+            try:
+                with _suppress_stderr():
+                    df = getattr(yf.Ticker(ticker), kind)
+                if df is not None and not df.empty:
+                    cache_financial_set(ticker, kind, df.to_json())
+                else:
+                    df = None
+            except Exception:
+                df = None
+        out.append(df)
+    return out[0], out[1]
+
+
+def fetch_asset(ticker: str, min_market_cap: float = 0.0, with_improvements: bool = True) -> AssetData:
     """Fetch data for a ticker, auto-dispatching stock vs ETF.
 
     Uses a SQLite cache (``~/.investdaytip/cache.db``) to avoid redundant
@@ -475,6 +520,11 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> AssetData:
     Retries up to 3 times with exponential backoff on rate-limit errors.
     When ``min_market_cap > 0``, skips the expensive ``t.history()`` call
     for tickers whose market cap / AUM is below the threshold.
+
+    ``with_improvements`` (stocks only) fetches the annual income statement
+    and balance sheet (7-day cache) to populate the YoY-improvement flags
+    used by the quant model; pass ``False`` for the classic model to skip
+    the two extra calls.
     """
     from investdaytip.cache import (
         cache_dividends_get,
@@ -617,6 +667,13 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> AssetData:
             except Exception:
                 earnings_dates = None
 
+    # ── Step 4b: annual statements (stocks only) ─────────────────────────
+    # Feeds the YoY-improvement flags (Δgross margin, ΔROA); 7-day cache.
+    income_stmt: pd.DataFrame | None = None
+    balance_sheet: pd.DataFrame | None = None
+    if quote_type != "ETF" and with_improvements:
+        income_stmt, balance_sheet = _fetch_statement_frames(ticker)
+
     # ── Step 5: construct result ─────────────────────────────────────────
     if quote_type == "ETF":
         return _fetch_etf(ticker, info, history)
@@ -627,10 +684,12 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0) -> AssetData:
         if earnings_dates.index.duplicated().any():
             earnings_dates = earnings_dates[~earnings_dates.index.duplicated(keep="last")]
         cache_earnings_dates_set(ticker, earnings_dates.to_json(date_format="iso"))
-    return _fetch_stock(ticker, info, history, dividends, earnings_dates)
+    return _fetch_stock(
+        ticker, info, history, dividends, earnings_dates, income_stmt, balance_sheet
+    )
 
 
 # Backwards-compatible alias
-def fetch_stock(ticker: str, min_market_cap: float = 0.0) -> AssetData:
-    return fetch_asset(ticker, min_market_cap)
+def fetch_stock(ticker: str, min_market_cap: float = 0.0, with_improvements: bool = True) -> AssetData:
+    return fetch_asset(ticker, min_market_cap, with_improvements=with_improvements)
 
