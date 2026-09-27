@@ -49,6 +49,8 @@ from urllib.request import Request, urlopen
 from investdaytip.cache import (
     cache_stockfit_insights_get,
     cache_stockfit_insights_set,
+    cache_stockfit_plan_get,
+    cache_stockfit_plan_set,
     cache_stockfit_research_get,
     cache_stockfit_research_set,
 )
@@ -73,6 +75,99 @@ class StockfitError(Exception):
 
 class StockfitRateLimitError(StockfitError):
     """StockFit rate limit reached (HTTP 429)."""
+
+
+class StockfitPlanError(StockfitError):
+    """Endpoint not available on the caller's plan (HTTP 403)."""
+
+
+# ── Tier awareness ───────────────────────────────────────────────────────────
+# InvestDayTip works on every StockFit tier — and without a key at all:
+# features degrade gracefully and never fabricate.  StockFit exposes no plan
+# endpoint, but gated endpoints answer HTTP 403 ("Feature not available on
+# current plan"), so the plan is detected by probing the tier boundaries.
+
+PLAN_ORDER: dict[str, int] = {
+    "none": -1, "unknown": -1, "free": 0, "starter": 1, "stock": 2, "pro": 3,
+}
+
+#: capability -> minimum plan that unlocks it (``None`` = works without a key)
+CAPABILITIES: dict[str, Optional[str]] = {
+    "pit_statements": None,          # backtest --pit-source stockfit + snapshot
+    "fundamental_insights": "free",  # --fundamental-insights charts (any key)
+    "deep_dive_summary": "starter",  # company/research-summary
+    "economic_model": "stock",       # company/economic-model
+    "footnotes": "pro",              # footnotes/* — rich devil's advocate
+}
+
+#: probed highest tier first: (plan, gated endpoint)
+_PLAN_PROBES: tuple[tuple[str, str], ...] = (
+    ("pro", "footnotes/concentration"),
+    ("stock", "company/economic-model"),
+    ("starter", "financials/scores"),
+)
+
+_plan_cache: Optional[str] = None
+
+
+def detect_plan(force: bool = False) -> str:
+    """Detect the caller's StockFit plan: none/free/starter/stock/pro.
+
+    ``"none"`` without a key, ``"unknown"`` when detection cannot run (network
+    errors — never blocks a feature), otherwise the highest tier whose probe
+    endpoint answers.  Cached in-process and in the SQLite cache (1 day).
+    """
+    global _plan_cache
+    if not os.environ.get("STOCKFIT_API_KEY"):
+        return "none"
+    if _plan_cache is not None and not force:
+        return _plan_cache
+    cached = cache_stockfit_plan_get()
+    if cached is not None and not force:
+        _plan_cache = cached
+        return cached
+
+    plan = "free"
+    for candidate, path in _PLAN_PROBES:
+        try:
+            _get(path, {"symbol": "AAPL"})
+            plan = candidate
+            break
+        except StockfitPlanError:
+            continue
+        except StockfitError:
+            plan = "unknown"
+            break
+    _plan_cache = plan
+    if plan != "unknown":
+        cache_stockfit_plan_set(plan)
+    return plan
+
+
+def plan_allows(plan: str, capability: str) -> bool:
+    """True when *plan* unlocks *capability* (``"unknown"`` never blocks).
+
+    ``None`` requirements are keyless-capable features (e.g. PIT backtests
+    from the local snapshot) — they work on every plan, including no key.
+    """
+    required = CAPABILITIES.get(capability, "missing")
+    if required == "missing":
+        raise KeyError(f"Unknown StockFit capability: {capability!r}")
+    if required is None:
+        return True
+    if plan == "unknown":
+        return True  # detection failed — try and degrade at the fetch
+    return PLAN_ORDER.get(plan, -1) >= PLAN_ORDER[required]
+
+
+def stockfit_status() -> dict[str, Any]:
+    """Key presence, detected plan and the capability matrix (CLI/tests)."""
+    plan = detect_plan()
+    return {
+        "key_present": bool(os.environ.get("STOCKFIT_API_KEY")),
+        "plan": plan,
+        "capabilities": {cap: plan_allows(plan, cap) for cap in CAPABILITIES},
+    }
 
 
 class _RateLimiter:
@@ -132,6 +227,11 @@ def _get(path: str, params: dict[str, str] | None = None) -> Any:
                 return []  # unknown ticker — empty series, not an error
             if exc.code == 429:
                 raise StockfitRateLimitError(f"StockFit rate limit (HTTP 429): {exc}") from exc
+            if exc.code == 403:
+                # Plan gate ("Feature not available on current plan") — no retry.
+                raise StockfitPlanError(
+                    f"StockFit feature not available on current plan ({path})"
+                ) from exc
             if attempt < len(STOCKFIT_RETRY_DELAYS):
                 time.sleep(STOCKFIT_RETRY_DELAYS[attempt])
                 continue

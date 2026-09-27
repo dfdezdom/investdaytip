@@ -353,6 +353,33 @@ investdaytip deep-dive -t "AAPL MSFT" --export-html report.html
   Mock `investdaytip.deep_dive.fetch_asset` / `fetch_statement_frames` /
   `fetch_cash_flow_frame` (never yfinance).
 
+## Tier-aware degradation (product principle)
+
+**InvestDayTip works on every StockFit tier — and without a key at all.**
+Features unlock more with a higher tier (or any key) and degrade gracefully
+below it: they are omitted with an explicit reason, never fabricated.
+
+- `data_source_stockfit.CAPABILITIES` maps each capability to its minimum
+  plan (`None` = works keyless): `pit_statements` keyless (local snapshot),
+  `fundamental_insights` free, `deep_dive_summary` starter,
+  `economic_model` stock, `footnotes` pro.
+- `detect_plan()` — StockFit exposes no plan endpoint, but gated endpoints
+  answer **HTTP 403** ("Feature not available on current plan"), so the plan
+  is detected by probing the tier boundaries top-down
+  (`footnotes/concentration` → pro, `company/economic-model` → stock,
+  `financials/scores` → starter, else free). Returns `none` without a key and
+  `unknown` on network errors — **`unknown` never blocks a feature** (try and
+  degrade at the fetch). Cached in-process + `_global:stockfit_plan` (1d).
+- `StockfitPlanError(StockfitError)` is raised by `_get` on HTTP 403 (no retry).
+- `plan_allows(plan, capability)` is the single gate used by features (e.g.
+  `deep_dive` skips the research-summary fetch below Starter and says
+  "requires Starter plan (current plan: free)").
+- `investdaytip stockfit-status` prints the detected plan + capability matrix
+  so any user can see what their scenario unlocks.
+- Tests: `tests/test_stockfit_plan.py` (detection per tier, matrix incl.
+  keyless/unknown, gated skip in deep-dive). `conftest.py` strips any ambient
+  `STOCKFIT_API_KEY` so tests can never hit the live API.
+
 ## Conventions & Gotchas
 
 - `from __future__ import annotations` in every annotated module (not in `__init__.py` or universe files)
@@ -373,7 +400,7 @@ investdaytip deep-dive -t "AAPL MSFT" --export-html report.html
 
 ### Caching
 - `CacheDB` in `cache.py`: SQLite with `threading.local()` per-thread connections, WAL mode, write lock via `threading.Lock`
-- Nine cache entry types:
+- Ten cache entry types:
   - `{ticker}:info` (fundamentals, TTL 1d — flat yfinance-style dict)
   - `{ticker}:fmp_info` (FMP `{"profile", "ratios_ttm"}` schema, TTL 1d) — separate key so FMP's incompatible schema never poisons the shared yfinance-style `info` entry (and vice versa)
   - `{ticker}:history` (prices, TTL 15min)
@@ -383,6 +410,7 @@ investdaytip deep-dive -t "AAPL MSFT" --export-html report.html
   - `superinvestor:holdings` (DataRoma aggregated data, TTL 7 days)
   - `{ticker}:stockfit_insights` (StockFit insight charts, TTL 1d — written only on a complete 3-endpoint fetch)
   - `{ticker}:stockfit_research` (StockFit research summary for `deep-dive`, TTL 1d — written on success)
+  - `_global:stockfit_plan` (detected StockFit plan for tier-aware gating, TTL 1d — never stores `unknown`)
 - `fetch_asset()` defers cache-write until both info and history are fetched (atomic snapshot); partial results cached on history failure
 - Backtest **disables cache entirely** to ensure reproducible results — stale history cache can shift `_latest_common_end()` and produce different snapshot counts; cache state is saved and restored via `try/finally`
 - Connections are tracked so `CacheDB.close_all()` / module-level `close_db()` can release **worker-thread** connections; `recommend()` calls `close_db()` in a `finally` after the pool tears down

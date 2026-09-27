@@ -157,6 +157,7 @@ def test_build_deep_dive_with_key_includes_research(mocker, monkeypatch):
         return_value=StockData(ticker="AAPL", market_cap=1e12),
     )
     _patch_statements(mocker)
+    mocker.patch("investdaytip.deep_dive.detect_plan", return_value="pro")
     mocker.patch(
         "investdaytip.deep_dive.fetch_research_summary",
         return_value=ResearchSummary(ticker="AAPL", snapshot=_RESEARCH_PAYLOAD["snapshot"]),
@@ -164,6 +165,22 @@ def test_build_deep_dive_with_key_includes_research(mocker, monkeypatch):
     dd = build_deep_dive("AAPL")
     assert dd.research is not None
     assert dd.research.snapshot["eps"] == 7.0
+
+
+def test_build_deep_dive_plan_gated_skips_research(mocker, monkeypatch):
+    """Below Starter the summary is skipped — never fetched, never fabricated."""
+    monkeypatch.setenv("STOCKFIT_API_KEY", "k")
+    mocker.patch(
+        "investdaytip.deep_dive.fetch_asset",
+        return_value=StockData(ticker="AAPL", market_cap=1e12),
+    )
+    _patch_statements(mocker)
+    mocker.patch("investdaytip.deep_dive.detect_plan", return_value="free")
+    research_mock = mocker.patch("investdaytip.deep_dive.fetch_research_summary")
+
+    dd = build_deep_dive("AAPL")
+    assert dd.research is None
+    research_mock.assert_not_called()
 
 
 # ── rendering ────────────────────────────────────────────────────────────────
@@ -195,6 +212,15 @@ def test_render_rich_smoke():
     assert "Altman" in out
     assert "Devil's advocate" in out
     assert "no significant risk signals" in out
+
+
+def test_render_html_plan_gated_reason(mocker, monkeypatch):
+    monkeypatch.setenv("STOCKFIT_API_KEY", "k")
+    mocker.patch("investdaytip.deep_dive.detect_plan", return_value="free")
+    dd = _sample_dive()
+    dd.research = None
+    html = render_html([dd])
+    assert "requires Starter plan (current plan: free)" in html
 
 
 def test_render_html_smoke():

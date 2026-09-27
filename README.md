@@ -367,6 +367,23 @@ investdaytip deep-dive -t "AAPL MSFT" --export-html # Self-contained HTML page
 Piotroski/Altman are **informative diagnostics — never scored** (they were
 validated and rejected as scoring factors).
 
+### StockFit integration & tiers
+
+InvestDayTip works **on every StockFit plan — and without a key at all**:
+features unlock more as the tier rises and degrade gracefully below it
+(omitted with the reason, never fabricated). See what your setup unlocks:
+
+```bash
+investdaytip stockfit-status
+```
+
+| Feature | Needs |
+|---|---|
+| PIT backtests + snapshot (`--pit-source stockfit`) | keyless (local snapshot) |
+| HTML fundamental insights (`--fundamental-insights`) | any key (Free) |
+| deep-dive earnings snapshot | Starter |
+| Rich devil's advocate footnotes (roadmap) | Pro |
+
 ### When to use technical indicators
 
 The `--include-technical` flag adds RSI-14 and MACD histogram to the Momentum factor (15% weight, blended at 30%). Under the **quant** model this is now enabled by default; under **classic** it remains opt-in.
@@ -698,6 +715,7 @@ tests/
 ├── test_fundamental_insights.py # StockFit insights section tests
 ├── test_pit_snapshot.py   # PIT snapshot layer tests
 ├── test_deep_dive.py      # Deep-dive report tests
+├── test_stockfit_plan.py  # StockFit tier detection & capability gating tests
 └── test_dataroma.py       # DataRoma scraper tests
 tickers-files-examples/
 ├── semiconductors_relevant_tickers.txt

@@ -535,6 +535,41 @@ def _run_deep_dive_cli(args) -> int:
     return 0
 
 
+def _run_stockfit_status_cli(_args) -> int:
+    """``stockfit-status`` subcommand: key/plan + capability matrix."""
+    from investdaytip.data_source_stockfit import CAPABILITIES, stockfit_status
+
+    console = Console()
+    status = stockfit_status()
+    console.print("\n[bold]StockFit integration[/bold]")
+    if status["key_present"]:
+        console.print("  API key: present")
+    else:
+        console.print("  API key: [yellow]not set[/yellow] (local features only)")
+    console.print(f"  Detected plan: [bold]{status['plan']}[/bold]")
+
+    labels = {
+        "pit_statements": "PIT backtests + snapshot (--pit-source stockfit)",
+        "fundamental_insights": "HTML fundamental insights (--fundamental-insights)",
+        "deep_dive_summary": "deep-dive earnings snapshot (research-summary)",
+        "economic_model": "Economic model (reserved)",
+        "footnotes": "Rich devil's advocate footnotes (Fase 3)",
+    }
+    table = Table(title="Features on your plan")
+    table.add_column("Feature")
+    table.add_column("Needs")
+    table.add_column("Available")
+    for cap, required in CAPABILITIES.items():
+        ok = status["capabilities"][cap]
+        table.add_row(
+            labels.get(cap, cap),
+            required if required else "keyless",
+            "[green]✓[/green]" if ok else "[red]✗[/red]",
+        )
+    console.print(table)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.WARNING,
@@ -662,6 +697,11 @@ def main(argv: list[str] | None = None) -> int:
     dd.add_argument("--no-cache", action="store_true",
                     help="Skip SQLite cache for the underlying fetches.")
 
+    sub.add_parser(
+        "stockfit-status",
+        help="Show your StockFit key/plan and which features unlock on it.",
+    )
+
     main_grp = parser.add_argument_group("Main options")
     main_grp.add_argument("-n", "--top", type=int, default=None,
                           help="Number of recommendations (default: 5, or all if -t tickers are given).")
@@ -752,6 +792,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "deep-dive":
         return _run_deep_dive_cli(args)
+
+    if args.command == "stockfit-status":
+        return _run_stockfit_status_cli(args)
 
     file_tickers: list[str] = []
     if args.tickers_file:

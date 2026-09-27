@@ -27,6 +27,12 @@ def pit_snapshot_dir(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def stockfit_env(monkeypatch):
+    """Never inherit a real StockFit key — tests opt in explicitly."""
+    monkeypatch.delenv("STOCKFIT_API_KEY", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def no_network(monkeypatch, request):
     """Fail fast if a test instantiates ``yf.Ticker`` without mocking it.
 
