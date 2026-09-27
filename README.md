@@ -89,9 +89,9 @@ That's it. You'll see the top 5 buys scored across 300+ stocks & ETFs.
 | Command | What it does | Section |
 |---|---|---|
 | `investdaytip [flags]` | Top recommendations from the curated universes | below |
+| `investdaytip advisor` | Interactive market pulse, portfolio review, buys | [Advisor](#advisor-subcommand) |
 | `investdaytip deep-dive` | Per-ticker deep report (score + research + diagnostics) | [Deep-dive](#deep-dive-subcommand) |
 | `investdaytip backtest` | Historical validation of the scoring model | [Backtest](#backtest-subcommand) |
-| `investdaytip advisor` | Interactive market pulse, portfolio review, buys | [Advisor](#advisor-subcommand) |
 | `investdaytip stockfit-status` | Your StockFit plan + which features unlock | [Tiers](#stockfit-integration--tiers) |
 
 ```bash
@@ -135,14 +135,17 @@ investdaytip --no-cache                # Bypass SQLite cache, fetch fresh data
 investdaytip --cache-clear           # Purge all cached data before running
 investdaytip --workers 20            # More parallelism
 
+investdaytip advisor                    # Interactive mode (asks for risk, region, etc.)
+
+investdaytip deep-dive -t AAPL          # Deep report: score + research + risk signals
+investdaytip deep-dive -t NVDA --export-html nvda.html
+
 investdaytip backtest -n 10 -r us       # Backtest stock scoring on US market (stocks only)
 investdaytip backtest -t AAPL MSFT VOO  # Backtest on custom ticker list
 investdaytip backtest --export-html     # Export backtest results to HTML
 investdaytip backtest --no-cache        # Bypass cache in backtest
 investdaytip backtest --cache-clear     # Purge cache before backtest
 
-investdaytip deep-dive -t AAPL          # Deep report: score + research + risk signals
-investdaytip deep-dive -t NVDA --export-html nvda.html
 investdaytip stockfit-status            # Your StockFit plan and unlocked features
 
 investdaytip --help
