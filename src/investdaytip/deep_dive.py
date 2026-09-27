@@ -9,10 +9,11 @@ Combines three sources into one report per ticker:
    Z-Score + zone, computed from the ticker's own annual statements.
 
 Piotroski/Altman are **informative only — never scored** (validated and
-rejected as scoring factors, see AGENTS.md).  The DCF link-out points to
-StockFit's public site: as of 2026-09-27 the valuation platform is in early
-access (no per-ticker routes exist yet), so a deep-link is deferred until
-the app launches — upgrade ``DCF_URL`` then.
+rejected as scoring factors, see AGENTS.md).  The DCF link-out is
+intentionally **not rendered** while StockFit's valuation platform is in
+early access (user decision 2026-09-27): advertising a DCF that users cannot
+open would be misleading.  ``DCF_URL`` is reserved for the deep link once the
+app actually launches.
 """
 from __future__ import annotations
 
@@ -47,14 +48,15 @@ from investdaytip.financial_health import (
 from investdaytip.risk_signals import RiskSignal, risk_signals
 from investdaytip.scoring import ScoredAsset, resolve_include_technical, score_stock
 
-# StockFit's DCF model lives in their web platform, which is in early access
-# (2026-09-27: only the landing page is public — no per-ticker routes).  When
-# the app launches this can become a deep link like https://www.stockfit.io/dcf/{ticker}.
+# RESERVED, not rendered: StockFit's DCF model lives in their web platform,
+# which is in early access (2026-09-27 — only the landing page is public, no
+# per-ticker routes).  Render the link-out again (and make this a deep link
+# like https://www.stockfit.io/dcf/{ticker}) only when the app actually works.
 DCF_URL = (
     "https://www.stockfit.io"
     "?utm_source=investdaytip&utm_medium=referral&utm_campaign=deep-dive-dcf"
 )
-DCF_LABEL = "Modelo DCF y workspace en la plataforma StockFit (early access)"
+DCF_LABEL = "Modelo DCF y workspace en la plataforma StockFit"
 
 
 @dataclass
@@ -231,9 +233,6 @@ def render_rich(items: list[DeepDive], console: Optional[Console] = None) -> Non
         else:
             console.print("  [green]✓ no significant risk signals[/green]")
 
-        console.print(f"  [underline]DCF valuation[/underline] {DCF_LABEL}")
-        console.print(f"  [dim]{DCF_URL.split('?')[0]}[/dim]")
-
         for err in dd.errors:
             console.print(f"  [red]⚠ {err}[/red]")
 
@@ -332,11 +331,6 @@ def render_html(items: list[DeepDive], generated_at: Optional[datetime] = None) 
                 f'<p class="score">{dd.altman.z_score:.2f} '
                 f'<span class="zone-{_h(dd.altman.zone)}">{_h(dd.altman.zone)}</span></p></div>'
             )
-        rows.append(
-            f'<div class="block"><h3>DCF valuation</h3>'
-            f'<p><a href="{_h(DCF_URL)}" target="_blank" rel="noopener">'
-            f'{_h(DCF_LABEL)} ↗</a></p></div>'
-        )
         if dd.risks:
             risk_items = "".join(
                 f'<li class="risk-{_h(s.severity)}"><strong>{_h(s.label)}</strong>'
