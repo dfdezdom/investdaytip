@@ -63,5 +63,13 @@
     "skill": "allow",
     "edit": "ask",
     "write": "ask"
+  },
+  "mcp": {
+    "servers": {
+      "stockfit": {
+        "type": "remote",
+        "url": "https://api.stockfit.io/mcp"
+      }
+    }
   }
 }
