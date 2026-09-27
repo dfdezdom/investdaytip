@@ -39,12 +39,14 @@ import re
 import threading
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+
+import pandas as pd
 
 from investdaytip.cache import (
     cache_stockfit_insights_get,
@@ -53,6 +55,14 @@ from investdaytip.cache import (
     cache_stockfit_plan_set,
     cache_stockfit_research_get,
     cache_stockfit_research_set,
+)
+from investdaytip.data_source import (
+    AssetData,
+    StockData,
+    _apply_history_common,
+    _derive_stock_data,
+    _first,
+    _Fundamentals,
 )
 
 logger = logging.getLogger(__name__)
@@ -98,6 +108,7 @@ CAPABILITIES: dict[str, Optional[str]] = {
     "deep_dive_summary": "starter",  # company/research-summary
     "economic_model": "stock",       # company/economic-model
     "footnotes": "pro",              # footnotes/* — rich devil's advocate
+    "live_source": "starter",        # --data-source stockfit (quota: ~6 calls/ticker)
 }
 
 #: probed highest tier first: (plan, gated endpoint)
@@ -867,3 +878,143 @@ def fetch_research_summary(ticker: str) -> Optional[ResearchSummary]:
     except (TypeError, ValueError):
         logger.debug("Could not cache StockFit research summary for %s", ticker)
     return summary
+
+
+# ── Live data source (`--data-source stockfit`) ──────────────────────────────
+
+#: StockFit reports GICS sector names; map to yfinance-style names so the
+#: ``-s`` sector filter and the advisor sector tilt behave identically.
+_GICS_TO_YFINANCE_SECTOR = {
+    "Information Technology": "Technology",
+    "Consumer Discretionary": "Consumer Cyclical",
+    "Consumer Staples": "Consumer Defensive",
+    "Health Care": "Healthcare",
+    "Financials": "Financial Services",
+    "Materials": "Basic Materials",
+}
+
+
+def fetch_asset_stockfit(
+    ticker: str, min_market_cap: float = 0.0, with_improvements: bool = True
+) -> AssetData:
+    """StockFit-backed stock fetch — the ``--data-source stockfit`` workhorse.
+
+    **US stocks only** (StockFit covers US filers; ETFs are not supported,
+    like the FMP source) and it needs a key plus a Starter plan (~6 calls per
+    ticker).  Builds the same ``StockData`` as the yfinance path via the
+    shared ``_derive_stock_data()``; the YoY-improvement flags come free from
+    the statements (``with_improvements`` is accepted for interface
+    compatibility and always computed).  Forward P/E, PEG and ``eps_surprise``
+    stay ``None`` — StockFit has no analyst estimates — so the quant model
+    scores Value with one metric fewer and EPS Revisions neutral.
+
+    Fetch failures raise :exc:`StockfitError` so the caller can fall back to
+    yfinance; user errors (ETF ticker, below market-cap threshold) are
+    returned as ``data.errors`` and skipped by the orchestrator.
+
+    **Semantics note (characterized 2026-09-27, 30 US tickers vs yfinance):**
+    fundamentals here are **as-filed fiscal-year** figures while yfinance
+    serves TTM/estimate-filled fields — so ``earnings_growth``,
+    ``profit_margin``, ``roe`` and ``trailing_pe`` differ per company and
+    rankings are *source-dependent* (Spearman ≈ 0.39 on that sample). Trend
+    fields match exactly (same adjusted price series). No analyst estimates
+    exist in StockFit, so ``forward_pe``/``peg_ratio``/``eps_surprise`` are
+    always ``None``.
+    """
+    now = datetime.now()
+    data = StockData(ticker=ticker)
+
+    # 1) Profile — also the stocks-only guard.
+    profile = _lookup_profile(ticker)
+    if not profile:
+        raise StockfitError(f"StockFit: unknown ticker {ticker}")
+    ptype = (profile.get("type") or "stock").lower()
+    if ptype != "stock":
+        data.errors.append(f"--data-source stockfit supports stocks only (type={ptype})")
+        return data
+
+    # 2) Statements — reuses the PIT client (which also refreshes the local
+    # snapshot), giving current + previous fiscal year facts.
+    pit = fetch_pit_statements(ticker)
+    if not pit.income:
+        raise StockfitError(f"StockFit: no statements for {ticker}")
+    fund = _Fundamentals(
+        ni=pit_fact_asof(pit.income, "netIncome", now)[0],
+        rev=pit_fact_asof(pit.income, "revenue", now)[0],
+        eps=_first(
+            pit_fact_asof(pit.income, "epsDiluted", now)[0],
+            pit_fact_asof(pit.income, "eps", now)[0],
+        ),
+        ni_prev=pit_fact_asof(pit.income, "netIncome", now)[1],
+        rev_prev=pit_fact_asof(pit.income, "revenue", now)[1],
+        gross_profit=pit_fact_asof(pit.income, "grossProfit", now)[0],
+        gross_profit_prev=pit_fact_asof(pit.income, "grossProfit", now)[1],
+        total_assets_prev=pit_fact_asof(pit.balance, "assets", now)[1],
+        equity=pit_fact_asof(pit.balance, "stockholdersEquity", now)[0],
+        total_assets=pit_fact_asof(pit.balance, "assets", now)[0],
+        total_debt=pit_fact_asof(pit.balance, "totalDebt", now)[0],
+        curr_assets=pit_fact_asof(pit.balance, "currentAssets", now)[0],
+        curr_liab=pit_fact_asof(pit.balance, "currentLiabilities", now)[0],
+        shares=_first(
+            pit_fact_asof(pit.balance, "sharesOutstanding", now)[0],
+            pit_fact_asof(pit.balance, "currentSharesOutstanding", now)[0],
+            pit_fact_asof(pit.balance, "sharesIssued", now)[0],
+        ),
+        fcf=pit_fact_asof(pit.cash_flow, "freeCashFlow", now)[0],
+    )
+
+    # 3) Prices — 2y of daily adjusted closes (trend + latest price).
+    hist_raw = _get("price/history", {
+        "symbol": ticker,
+        "resolution": "1d",
+        "from": (now - timedelta(days=730)).strftime("%Y-%m-%d"),
+    })
+    points = hist_raw.get("data") if isinstance(hist_raw, dict) else None
+    if not points:
+        raise StockfitError(f"StockFit: no price history for {ticker}")
+    history = pd.DataFrame(
+        {"Close": [float(v) for _, v in points]},
+        index=pd.DatetimeIndex([datetime.fromtimestamp(ts / 1000) for ts, _ in points]),
+    )
+    price = float(history["Close"].iloc[-1])
+
+    # 4) Dividends — latest fiscal-year DPS ≈ TTM (payout is derived from it,
+    # same convention as the yfinance path).  Some filers return empty shells
+    # (all-None rows, e.g. JNJ) — scan a few rows and degrade to None cleanly.
+    div_rows = _get("earnings/dividend-history", {"symbol": ticker, "limit": "5"})
+    ttm_div = None
+    for row in div_rows if isinstance(div_rows, list) else []:
+        if isinstance(row, dict):
+            candidate = _safe_float(row.get("dividendPerShare"))
+            if candidate is not None:
+                ttm_div = candidate
+                break
+
+    sector_raw = profile.get("sector")
+    sector = sector_raw if isinstance(sector_raw, str) else None
+    data = _derive_stock_data(
+        ticker,
+        {
+            "shortName": profile.get("name"),
+            "longName": profile.get("name"),
+            "sector": _GICS_TO_YFINANCE_SECTOR.get(sector, sector) if sector else None,
+            "currency": "USD",
+            "exchange": (profile.get("exchanges") or [None])[0],
+        },
+        price,
+        (None, None, None, None, None, None),
+        None,
+        None,
+        fund,
+        ttm_div,
+        None,  # eps_surprise — no analyst estimates in StockFit
+    )
+    _apply_history_common(data, history)
+
+    if min_market_cap and data.market_cap and data.market_cap < min_market_cap:
+        data.errors.append("market cap below threshold")
+    return data
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    return float(value) if isinstance(value, (int, float)) else None

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from functools import partial
@@ -17,6 +18,12 @@ from investdaytip.data_source_fmp import (
     FmpError,
     FmpRateLimitError,
     check_rate_limit,
+)
+from investdaytip.data_source_stockfit import (
+    StockfitError,
+    detect_plan,
+    fetch_asset_stockfit,
+    plan_allows,
 )
 from investdaytip.dataroma import get_superinvestor_data
 from investdaytip.etf_universe import DEFAULT_ETF_UNIVERSE
@@ -167,7 +174,9 @@ def recommend(
             resolves to ``True`` for the ``"quant"`` model and ``False`` for
             ``"classic"``.
         scoring_model: ``"quant"`` (default) or ``"classic"``.
-        data_source: ``"yfinance"`` (default), ``"yahooquery"`` or ``"fmp"``.
+        data_source: ``"yfinance"`` (default), ``"yahooquery"``, ``"fmp"`` or
+            ``"stockfit"`` (US stocks only; requires ``STOCKFIT_API_KEY`` and a
+            Starter plan — non-US tickers are excluded automatically).
     """
     include_technical = resolve_include_technical(include_technical, scoring_model)
 
@@ -177,7 +186,34 @@ def recommend(
         else:
             min_market_cap = 2_000_000_000.0
 
-    universe = _build_universe(tickers, asset_class, region, currency)
+    universe_ac = asset_class
+    if data_source == "stockfit":
+        if str(asset_class) == "etfs":
+            raise ValueError("--data-source stockfit supports stocks only")
+        if not os.environ.get("STOCKFIT_API_KEY"):
+            raise ValueError(
+                "--data-source stockfit requires STOCKFIT_API_KEY "
+                "(free key at https://developer.stockfit.io)"
+            )
+        plan = detect_plan()
+        if not plan_allows(plan, "live_source"):
+            raise ValueError(
+                f"--data-source stockfit needs a Starter plan (detected plan: {plan})"
+            )
+        universe_ac = "stocks"  # ETFs are not supported by the StockFit source
+
+    universe = _build_universe(tickers, universe_ac, region, currency)
+
+    if data_source == "stockfit" and universe:
+        from investdaytip.html_export import infer_region_from_ticker
+
+        us_universe = [t for t in universe if infer_region_from_ticker(t) == "us"]
+        if len(us_universe) != len(universe):
+            logger.warning(
+                "StockFit is US-only — excluding %d non-US tickers",
+                len(universe) - len(us_universe),
+            )
+        universe = us_universe
     total = len(universe)
     scored: list[ScoredAsset] = []
 
@@ -197,6 +233,8 @@ def recommend(
         if data_source == "fmp":
             from investdaytip.data_source_fmp import fetch_asset as _fmp_fetch
             _fetcher = cast(Callable[[str, float], AssetData], _fmp_fetch)
+        elif data_source == "stockfit":
+            _fetcher = cast(Callable[[str, float], AssetData], fetch_asset_stockfit)
         else:
             _fetcher = _yf_fetcher
 
@@ -296,6 +334,10 @@ def recommend(
                             leftovers.append(ticker)
                             logger.warning("FMP rate limit hit for %s", ticker)
                             continue
+                        except StockfitError:
+                            leftovers.append(ticker)
+                            logger.warning("StockFit fetch failed for %s — falling back", ticker)
+                            continue
                         except (TimeoutError, FuturesTimeoutError):
                             # concurrent.futures.TimeoutError only aliases the
                             # builtin from Python 3.11; catch both for 3.10.
@@ -320,9 +362,13 @@ def recommend(
                 finally:
                     pool.shutdown(wait=True)
 
-            # ── Fallback to yfinance for FMP rate-limited tickers ────
-            if leftovers and data_source == "fmp":
-                _log_fallback("FMP rate limit / unavailable", len(leftovers))
+            # ── Fallback to yfinance for FMP/StockFit failures ───────
+            if leftovers and data_source in ("fmp", "stockfit"):
+                reason = (
+                    "FMP rate limit / unavailable" if data_source == "fmp"
+                    else "StockFit failures"
+                )
+                _log_fallback(reason, len(leftovers))
                 _fetcher = _yf_fetcher
                 pool = ThreadPoolExecutor(max_workers=max_workers)
                 futures = {pool.submit(_fetcher, t, min_market_cap): t for t in leftovers}

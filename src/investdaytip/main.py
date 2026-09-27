@@ -554,6 +554,7 @@ def _run_stockfit_status_cli(_args) -> int:
         "deep_dive_summary": "deep-dive earnings snapshot (research-summary)",
         "economic_model": "Economic model (reserved)",
         "footnotes": "Rich devil's advocate footnotes (Fase 3)",
+        "live_source": "Live data source (--data-source stockfit)",
     }
     table = Table(title="Features on your plan")
     table.add_column("Feature")
@@ -626,8 +627,8 @@ def main(argv: list[str] | None = None) -> int:
                      help="Include superinvestor ownership data.")
     adv.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",
                      help="Scoring model to use (default: quant).")
-    adv.add_argument("--data-source", choices=["yfinance", "yahooquery", "fmp"], default="yfinance",
-                     help="Data source (default: yfinance). FMP requires FMP_API_KEY env var.")
+    adv.add_argument("--data-source", choices=["yfinance", "yahooquery", "fmp", "stockfit"], default="yfinance",
+                     help="Data source (default: yfinance). FMP requires FMP_API_KEY; stockfit (US stocks only) requires STOCKFIT_API_KEY + Starter plan.")
     adv.add_argument("-n", "--top", type=int, default=10,
                      help="Number of buy recommendations to show (default: 10).")
     adv_tech = adv.add_mutually_exclusive_group()
@@ -740,8 +741,8 @@ def main(argv: list[str] | None = None) -> int:
                             help="Filter by sector prefix (case-insensitive).")
 
     data_grp = parser.add_argument_group("Data")
-    data_grp.add_argument("--data-source", choices=["yfinance", "yahooquery", "fmp"], default="yfinance",
-                          help="Data source (default: yfinance). yahooquery uses Yahoo's internal API (faster, more stable). FMP requires FMP_API_KEY env var.")
+    data_grp.add_argument("--data-source", choices=["yfinance", "yahooquery", "fmp", "stockfit"], default="yfinance",
+                          help="Data source (default: yfinance). yahooquery uses Yahoo's internal API (faster, more stable). FMP requires FMP_API_KEY env var. stockfit (US stocks only) requires STOCKFIT_API_KEY + Starter plan.")
     data_grp.add_argument("--superinvestor", action="store_true",
                           help="Include superinvestor ownership data.")
     data_grp.add_argument("--fundamental-insights", action="store_true",
@@ -831,6 +832,27 @@ def main(argv: list[str] | None = None) -> int:
         Console().print(
             "[yellow]FMP free tier: 250\u202frequests/day (~40\u202ftickers), "
             "10\u202fs timeout per request.[/yellow]"
+        )
+
+    if args.data_source == "stockfit":
+        from investdaytip.data_source_stockfit import detect_plan, plan_allows
+
+        if not os.environ.get("STOCKFIT_API_KEY"):
+            Console().print(
+                "[red]StockFit data source requires the STOCKFIT_API_KEY environment variable.[/red]\n"
+                "  Get a free key at [underline]https://developer.stockfit.io[/underline]\n"
+                "  Then set:  [bold]export STOCKFIT_API_KEY=your_key_here[/bold]"
+            )
+            return 1
+        plan = detect_plan()
+        if not plan_allows(plan, "live_source"):
+            Console().print(
+                "[red]--data-source stockfit needs a Starter plan "
+                f"(detected plan: {plan}).[/red]"
+            )
+            return 1
+        Console().print(
+            "[yellow]StockFit source: US stocks only, ~6 requests per ticker.[/yellow]"
         )
 
     from investdaytip.cache import clear_cache

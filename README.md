@@ -18,7 +18,7 @@
 ## Features
 
 - 📈 **Multi-factor scoring** — composite 0-100 score per asset
-- 🔗 **Multiple data sources** — yfinance (default), yahooquery (batch), or Financial Modeling Prep (FMP), with automatic fallback
+- 🔗 **Multiple data sources** — yfinance (default), yahooquery (batch), Financial Modeling Prep (FMP) or StockFit (US stocks, Starter plan), with automatic fallback
 - 🧾 **StockFit integration (optional)** — point-in-time SEC filing dates for backtests (`--pit-source stockfit`, works offline from a local snapshot), a fundamentals insights section in the HTML report (`--fundamental-insights`), per-ticker `deep-dive` reports and a keyless devil's advocate layer (risk signals). Works on every StockFit plan — and without a key at all (`stockfit-status` shows what yours unlocks)
 - 🏦 **Stocks & ETFs** — auto-detected and scored with dedicated models
 - 🌍 **US, European, Asian & Superinvestor markets** — S&P 500, DAX, CAC 40, FTSE 100, Nikkei 225, Hang Seng, NSE, and superinvestor consensus picks from DataRoma 13F filings
@@ -169,7 +169,7 @@ investdaytip --help
 | `--include-technical` | Include RSI + MACD technical indicators in the scoring. **Default is `True` for `quant` and `False` for `classic`.** Use `--no-include-technical` to force-disable. | model-dependent |
 | `--no-include-technical` | Force-disable RSI + MACD technical indicators | disabled |
 | `--scoring-model {classic,quant}` | Stock/ETF scoring model | `quant` |
-| `--data-source {yfinance,yahooquery,fmp}` | Data source (yfinance, yahooquery, or FMP) | `yfinance` |
+| `--data-source {yfinance,yahooquery,fmp,stockfit}` | Data source. `stockfit` = US stocks only, requires `STOCKFIT_API_KEY` + Starter plan (rankings differ from yfinance — as-filed FY semantics) | `yfinance` |
 | `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable; see [Market Cap Classification](#market-cap-classification)) | `0` with tickers, `2B` otherwise |
 | `--no-cache` | Skip SQLite cache, fetch all data live from Yahoo Finance | disabled |
 | `--cache-clear` | Purge the SQLite cache before running | disabled |
