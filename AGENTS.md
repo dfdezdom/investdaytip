@@ -331,8 +331,10 @@ investdaytip deep-dive -t "AAPL MSFT" --export-html report.html
   `revenueGrowth`/`epsGrowth` are decimals — `deep_dive._norm_snap()`
   converts percent-form to decimals once so both renderers share one
   formatting path.
-- The DCF link-out to StockFit's web app is intentionally **not rendered**
-  yet (URL pending).
+- **DCF link-out** points at `https://www.stockfit.io` (their public site).
+  As of 2026-09-27 the valuation platform is in **early access** — only the
+  landing page is public, no per-ticker routes — so a deep-link is deferred
+  until the app launches (upgrade `deep_dive.DCF_URL` then).
 - Statements come via `data_source.fetch_statement_frames()` (income +
   balance, 7d cache) and `data_source.fetch_cash_flow_frame()` (needed for
   Piotroski's OCF check). Stocks only — an ETF gets a "stocks only" error
