@@ -481,32 +481,40 @@ def _enrich_etf_info(t: yf.Ticker, info: dict) -> None:
         pass
 
 
-def _fetch_statement_frames(ticker: str) -> tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
-    """Annual income statement + balance sheet (7-day cache) for the YoY flags."""
+def _cached_statement_frame(ticker: str, kind: str) -> Optional[pd.DataFrame]:
+    """One annual statement frame (7-day cache), ``None`` when unavailable."""
     from investdaytip.cache import cache_financial_get, cache_financial_set
 
-    out: list[Optional[pd.DataFrame]] = []
-    for kind in ("income_stmt", "balance_sheet"):
-        df: Optional[pd.DataFrame] = None
-        raw = cache_financial_get(ticker, kind)
-        if raw is not None:
-            try:
-                df = pd.read_json(StringIO(raw))
-            except Exception:
-                df = None
-        if df is None or df.empty:
-            df = None
-            try:
-                with _suppress_stderr():
-                    df = getattr(yf.Ticker(ticker), kind)
-                if df is not None and not df.empty:
-                    cache_financial_set(ticker, kind, df.to_json())
-                else:
-                    df = None
-            except Exception:
-                df = None
-        out.append(df)
-    return out[0], out[1]
+    raw = cache_financial_get(ticker, kind)
+    if raw is not None:
+        try:
+            df = pd.read_json(StringIO(raw))
+            if not df.empty:
+                return df
+        except Exception:
+            pass
+    try:
+        with _suppress_stderr():
+            df = getattr(yf.Ticker(ticker), kind)
+        if df is not None and not df.empty:
+            cache_financial_set(ticker, kind, df.to_json())
+            return df
+    except Exception:
+        pass
+    return None
+
+
+def fetch_statement_frames(ticker: str) -> tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
+    """Annual income statement + balance sheet (7-day cache) for the YoY flags."""
+    return (
+        _cached_statement_frame(ticker, "income_stmt"),
+        _cached_statement_frame(ticker, "balance_sheet"),
+    )
+
+
+def fetch_cash_flow_frame(ticker: str) -> Optional[pd.DataFrame]:
+    """Annual cash-flow statement (7-day cache) — needed for Piotroski's OCF check."""
+    return _cached_statement_frame(ticker, "cash_flow")
 
 
 def fetch_asset(ticker: str, min_market_cap: float = 0.0, with_improvements: bool = True) -> AssetData:
@@ -672,7 +680,7 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0, with_improvements: boo
     income_stmt: pd.DataFrame | None = None
     balance_sheet: pd.DataFrame | None = None
     if quote_type != "ETF" and with_improvements:
-        income_stmt, balance_sheet = _fetch_statement_frames(ticker)
+        income_stmt, balance_sheet = fetch_statement_frames(ticker)
 
     # ── Step 5: construct result ─────────────────────────────────────────
     if quote_type == "ETF":

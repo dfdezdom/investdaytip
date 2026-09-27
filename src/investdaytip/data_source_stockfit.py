@@ -46,7 +46,12 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from investdaytip.cache import cache_stockfit_insights_get, cache_stockfit_insights_set
+from investdaytip.cache import (
+    cache_stockfit_insights_get,
+    cache_stockfit_insights_set,
+    cache_stockfit_research_get,
+    cache_stockfit_research_set,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -690,3 +695,75 @@ def fetch_fundamental_insights(ticker: str) -> Optional[FundamentalInsights]:
         except (TypeError, ValueError):
             logger.debug("Could not cache StockFit insights for %s", ticker)
     return insights
+
+
+# ── Research summary (deep-dive) ─────────────────────────────────────────────
+
+
+@dataclass
+class ResearchSummary:
+    """Aggregated per-ticker research data from StockFit (Starter tier).
+
+    ``profile``: company details.  ``snapshot``: EPS, margins, returns,
+    health scores, predicted dates.  ``key_metrics``: sector-aware metrics.
+    Sections may be empty dicts when StockFit omits them.
+    """
+
+    ticker: str
+    profile: dict[str, Any] = field(default_factory=dict)
+    snapshot: dict[str, Any] = field(default_factory=dict)
+    key_metrics: dict[str, Any] = field(default_factory=dict)
+
+
+def _dict_or_empty(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def fetch_research_summary(ticker: str) -> Optional[ResearchSummary]:
+    """Fetch StockFit's aggregated research summary for *ticker*.
+
+    Single ``company/research-summary`` call (Starter tier).  Never raises:
+    returns ``None`` on failure so the deep-dive report can degrade to its
+    keyless local sections.  Successful fetches are cached for one day.
+    """
+    cached = cache_stockfit_research_get(ticker)
+    if cached is not None:
+        try:
+            payload = json.loads(cached)
+            return ResearchSummary(
+                ticker=ticker,
+                profile=_dict_or_empty(payload.get("profile")),
+                snapshot=_dict_or_empty(payload.get("snapshot")),
+                key_metrics=_dict_or_empty(payload.get("key_metrics")),
+            )
+        except (TypeError, ValueError):
+            logger.debug("Corrupt research-summary cache for %s", ticker)
+
+    try:
+        raw = _get("company/research-summary", {"symbol": ticker})
+    except StockfitError as exc:
+        logger.debug("StockFit research-summary failed for %s: %s", ticker, exc)
+        return None
+    if not isinstance(raw, dict) or not raw:
+        return None
+
+    summary = ResearchSummary(
+        ticker=ticker,
+        profile=_dict_or_empty(raw.get("profile")),
+        snapshot=_dict_or_empty(raw.get("snapshot")),
+        key_metrics=_dict_or_empty(raw.get("keyMetrics")),
+    )
+    try:
+        cache_stockfit_research_set(
+            ticker,
+            json.dumps(
+                {
+                    "profile": summary.profile,
+                    "snapshot": summary.snapshot,
+                    "key_metrics": summary.key_metrics,
+                }
+            ),
+        )
+    except (TypeError, ValueError):
+        logger.debug("Could not cache StockFit research summary for %s", ticker)
+    return summary

@@ -37,8 +37,9 @@ the convention is `Optional[...]` for dataclass fields, not `X | None`.
 | HTML export | `html_export.py` | self-contained report with inline CSS/JS |
 | Backtest | `backtest.py` | historical scoring validation (stocks only) |
 | Sentiment | `sentiment.py` | CNN Fear & Greed Index, no yfinance (uses `urllib`) |
+| Deep-dive report | `deep_dive.py` | Per-ticker report: score + StockFit research-summary + keyless Piotroski/Altman diagnostics |
 | Universes | `*_universe.py` (7 modules) | curated ticker lists wired in `recommender._build_universe()` (deduplicated case-insensitively) |
-| Tests | `tests/` | 9 files, no live network calls (autouse network guard in `conftest.py`) |
+| Tests | `tests/` | 21 test files, no live network calls (autouse network guard in `conftest.py`) |
 | OpenCode agent | `.opencode/agents/advisor.md` | advisor subagent: permissions, interactive flow, execution methods, and interpretation guide |
 
 Data flow: `CLI → recommender → data_source (yfinance|yahooquery|fmp) → scoring → html_export / Rich table`
@@ -306,6 +307,42 @@ investdaytip -t "AAPL MSFT" -n 5 --export-html report.html --fundamental-insight
   trend arrows, negative-red), CLI wiring (flag on/off/without `--export-html`), and
   `_fetch_report_insights` filtering (US-stocks-only, per-ticker failures).
 
+## Deep-dive Subcommand (`investdaytip deep-dive`)
+
+Product Fase 2: per-ticker report combining three sources, rendered to the
+terminal (Rich) and optionally to a self-contained HTML page.
+
+```bash
+investdaytip deep-dive -t AAPL
+investdaytip deep-dive -t "AAPL MSFT" --export-html report.html
+```
+
+| Section | Source | Needs key? |
+|---|---|---|
+| InvestDayTip score + factor breakdown | live `fetch_asset` + `score_stock` | no |
+| Earnings snapshot (EPS, margins, ROE/ROIC, FCF, growth, next dates) | StockFit `company/research-summary` (Starter tier) | yes — omitted with a note otherwise |
+| Piotroski F-Score (9 checks ✓/✗) + Altman Z + zone | **local** (`financial_health`) from the ticker's own annual statements | no |
+
+- Piotroski/Altman are **diagnostics, never scored** (validated and rejected
+  as scoring factors); both renders label them as such.
+- **Unit convention (verified live 2026-09-27)**: StockFit snapshot
+  margins/returns (`grossMargin`, `operatingMargin`, `netMargin`, `roe`,
+  `roic`, `fcfToNetIncome`) are **percent-form** (40.31 = 40.31%) while
+  `revenueGrowth`/`epsGrowth` are decimals — `deep_dive._norm_snap()`
+  converts percent-form to decimals once so both renderers share one
+  formatting path.
+- The DCF link-out to StockFit's web app is intentionally **not rendered**
+  yet (URL pending).
+- Statements come via `data_source.fetch_statement_frames()` (income +
+  balance, 7d cache) and `data_source.fetch_cash_flow_frame()` (needed for
+  Piotroski's OCF check). Stocks only — an ETF gets a "stocks only" error
+  note in its report.
+- Cache: `{ticker}:stockfit_research`, TTL 1d (written on success).
+- Tests: `tests/test_deep_dive.py` — research fetch/parse/cache, build with
+  and without key, render smoke (incl. unit normalization), CLI wiring.
+  Mock `investdaytip.deep_dive.fetch_asset` / `fetch_statement_frames` /
+  `fetch_cash_flow_frame` (never yfinance).
+
 ## Conventions & Gotchas
 
 - `from __future__ import annotations` in every annotated module (not in `__init__.py` or universe files)
@@ -326,7 +363,7 @@ investdaytip -t "AAPL MSFT" -n 5 --export-html report.html --fundamental-insight
 
 ### Caching
 - `CacheDB` in `cache.py`: SQLite with `threading.local()` per-thread connections, WAL mode, write lock via `threading.Lock`
-- Eight cache entry types:
+- Nine cache entry types:
   - `{ticker}:info` (fundamentals, TTL 1d — flat yfinance-style dict)
   - `{ticker}:fmp_info` (FMP `{"profile", "ratios_ttm"}` schema, TTL 1d) — separate key so FMP's incompatible schema never poisons the shared yfinance-style `info` entry (and vice versa)
   - `{ticker}:history` (prices, TTL 15min)
@@ -335,6 +372,7 @@ investdaytip -t "AAPL MSFT" -n 5 --export-html report.html --fundamental-insight
   - `_global:fear_greed` (CNN Fear & Greed Index, TTL 1h)
   - `superinvestor:holdings` (DataRoma aggregated data, TTL 7 days)
   - `{ticker}:stockfit_insights` (StockFit insight charts, TTL 1d — written only on a complete 3-endpoint fetch)
+  - `{ticker}:stockfit_research` (StockFit research summary for `deep-dive`, TTL 1d — written on success)
 - `fetch_asset()` defers cache-write until both info and history are fetched (atomic snapshot); partial results cached on history failure
 - Backtest **disables cache entirely** to ensure reproducible results — stale history cache can shift `_latest_common_end()` and produce different snapshot counts; cache state is saved and restored via `try/finally`
 - Connections are tracked so `CacheDB.close_all()` / module-level `close_db()` can release **worker-thread** connections; `recommend()` calls `close_db()` in a `finally` after the pool tears down

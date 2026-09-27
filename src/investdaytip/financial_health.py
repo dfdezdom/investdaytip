@@ -168,7 +168,7 @@ def _require(*values: Optional[float]) -> Optional[tuple[float, ...]]:
 
 
 def piotroski_f_score(
-    cur: dict[str, float], prev: dict[str, Optional[float]]
+    cur: Mapping[str, Optional[float]], prev: Mapping[str, Optional[float]]
 ) -> Optional[PiotroskiResult]:
     """Piotroski F-Score (0-9) over two consecutive fiscal years.
 
@@ -183,7 +183,7 @@ def piotroski_f_score(
     non-positive — a score built from fewer than nine checks would not be
     comparable across companies.
     """
-    def _get(d: dict, key: str) -> Optional[float]:
+    def _get(d: Mapping[str, Optional[float]], key: str) -> Optional[float]:
         v = d.get(key)
         return v if isinstance(v, (int, float)) else None
 
@@ -226,7 +226,7 @@ def piotroski_f_score(
 
 
 def altman_z_score(
-    cur: dict[str, float], market_cap: Optional[float]
+    cur: Mapping[str, Optional[float]], market_cap: Optional[float]
 ) -> Optional[AltmanResult]:
     """Altman Z-Score (1968, manufacturing model) and its zone.
 

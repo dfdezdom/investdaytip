@@ -347,6 +347,25 @@ Decision rules:
 - **Consider**: Alpha ↑ OR Sharpe ↑ (mixed, review drawdown)
 - **Reject / iterate**: Alpha ↓ AND Sharpe ↓
 
+### Deep-dive subcommand
+
+Per-ticker deep report combining the InvestDayTip score, StockFit's research
+summary and keyless health diagnostics:
+
+```bash
+investdaytip deep-dive -t AAPL                      # Rich terminal report
+investdaytip deep-dive -t "AAPL MSFT" --export-html # Self-contained HTML page
+```
+
+| Section | Source | Needs `STOCKFIT_API_KEY`? |
+|---|---|---|
+| Score + factor breakdown | live data + the scoring model | no |
+| Earnings snapshot (margins, ROE/ROIC, FCF, growth, next dates) | StockFit `company/research-summary` | yes (omitted gracefully otherwise) |
+| Piotroski F-Score (9 checks) + Altman Z + zone | local computation from the ticker's own statements | no |
+
+Piotroski/Altman are **informative diagnostics — never scored** (they were
+validated and rejected as scoring factors).
+
 ### When to use technical indicators
 
 The `--include-technical` flag adds RSI-14 and MACD histogram to the Momentum factor (15% weight, blended at 30%). Under the **quant** model this is now enabled by default; under **classic** it remains opt-in.
@@ -644,6 +663,7 @@ src/investdaytip/
 ├── data_source_yahooquery.py # Yahooquery batch data source
 ├── data_source_stockfit.py # StockFit PIT statements + fundamental insights
 ├── financial_health.py    # Piotroski F-Score, Altman Z, YoY-improvement flags
+├── deep_dive.py           # Per-ticker deep report (score + research + diagnostics)
 ├── scoring.py             # Pure scoring functions (score_stock, score_etf)
 ├── sentiment.py           # CNN Fear & Greed Index fetch
 ├── universe.py            # US stock universe
@@ -676,6 +696,7 @@ tests/
 ├── test_data_source_stockfit_pit.py # StockFit PIT layer tests (mocked HTTP)
 ├── test_fundamental_insights.py # StockFit insights section tests
 ├── test_pit_snapshot.py   # PIT snapshot layer tests
+├── test_deep_dive.py      # Deep-dive report tests
 └── test_dataroma.py       # DataRoma scraper tests
 tickers-files-examples/
 ├── semiconductors_relevant_tickers.txt
