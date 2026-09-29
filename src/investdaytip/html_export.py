@@ -353,7 +353,7 @@ def _render_insights_section(insights: dict[str, FundamentalInsights]) -> str:
         cr_series = [p.current_ratio for p in reversed(periods)]
 
         summary_rows.append(
-            "<tr>"
+            f'<tr data-insight-ticker="{escape(ticker)}">'
             f"<td><strong>{escape(ticker)}</strong></td>"
             f"<td>FY{escape(latest.period_end[:4])}</td>"
             f'<td class="num">{_insight_metric(latest.revenue, _fmt_big)}'
@@ -389,7 +389,7 @@ def _render_insights_section(insights: dict[str, FundamentalInsights]) -> str:
                 for p in periods
             )
             detail_blocks.append(
-                f'<details class="insights-detail">'
+                f'<details class="insights-detail" data-insight-ticker="{escape(ticker)}">'
                 f"<summary>{escape(ticker)} — {len(periods)} fiscal years</summary>"
                 '<table><thead><tr>'
                 "<th>FY</th><th class=\"num\">Revenue</th><th class=\"num\">Gross</th>"
@@ -403,7 +403,7 @@ def _render_insights_section(insights: dict[str, FundamentalInsights]) -> str:
     if not summary_rows:
         return ""
     return (
-        '<section class="insights" aria-label="Fundamental insights">'
+        '<section class="insights" id="fundamentalInsights" aria-label="Fundamental insights">'
         "<h2>Fundamental insights</h2>"
         '<p class="insights-note">Source: StockFit — SEC filings (10-K/10-Q) as filed · '
         "US stocks only · absolute figures in USD · margins and ratios per fiscal year</p>"
@@ -886,8 +886,28 @@ def export_recommendations_html(
       $("tbody").innerHTML = body || '<tr><td colspan="' + {col_count} + '" class="muted">No rows match the selected filters.</td></tr>';
     }}
 
+    function renderInsights(filtered) {{
+      const section = $("fundamentalInsights");
+      if (!section) return;
+
+      const visibleTickers = new Set(filtered.map(r => r.ticker.toLowerCase()));
+      const insightItems = Array.from(section.querySelectorAll("[data-insight-ticker]"));
+      insightItems.forEach(item => {{
+        item.hidden = !visibleTickers.has(item.dataset.insightTicker.toLowerCase());
+      }});
+
+      // Do not leave an empty insights heading/table when the active filters
+      // remove every ticker for which insight data was fetched.
+      const hasVisibleSummary = section.querySelector(
+        "tbody tr[data-insight-ticker]:not([hidden])"
+      ) !== null;
+      section.hidden = !hasVisibleSummary;
+    }}
+
     function rerender() {{
-      renderTable(sortRows(applyFilters()));
+      const filtered = applyFilters();
+      renderTable(sortRows(filtered));
+      renderInsights(filtered);
       renderSortIndicators();
     }}
 

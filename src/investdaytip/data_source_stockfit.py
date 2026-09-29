@@ -76,6 +76,7 @@ STOCKFIT_BASE = "https://api.stockfit.io/v1/api"
 STOCKFIT_REQUEST_TIMEOUT = 25  # seconds per HTTP request
 STOCKFIT_MIN_ANNUAL = 3        # below this, the entity-stitching fallback kicks in
 _MAX_STITCH_PROBES = 5         # predecessor CIKs probed per fallback
+STITCH_MAX_PERIOD_AGE_DAYS = 550  # ≈18 months — see _series_is_recent()
 STOCKFIT_RETRY_DELAYS = [2, 5]
 USER_AGENT = "InvestDayTip"
 
@@ -271,6 +272,16 @@ def _get(path: str, params: dict[str, str] | None = None) -> Any:
     raise StockfitError(f"StockFit retries exhausted for {path}")
 
 
+def _norm_ticker(ticker: str) -> str:
+    """Canonical ticker spelling (``meta`` → ``META``).
+
+    StockFit's ``lookup/batch`` keys its response by the uppercase symbol and
+    every cache key / snapshot filename is case-sensitive, so a lowercase
+    query used to miss all of them and silently fall back to yfinance.
+    """
+    return ticker.strip().upper()
+
+
 def _safe_fact(facts: dict[str, Any], key: str) -> Optional[float]:
     """Extract a finite float from a StockFit facts dict, else ``None``."""
     val = facts.get(key)
@@ -329,6 +340,28 @@ def _parse_periods(raw: Any) -> list[PitPeriod]:
     return periods
 
 
+def _series_is_recent(periods: list[PitPeriod], *, now: Optional[datetime] = None) -> bool:
+    """True when *periods*' latest fiscal period is recent enough for a **live** predecessor.
+
+    The entity-stitching fallback exists for holdco reorgs (XOM → ExxonMobil),
+    where the predecessor keeps filing — its last fiscal year is therefore
+    never more than about a year and a half old.  It must never graft a
+    **defunct, unrelated filer**: a name search for "Sandisk Corp" also returns
+    the old SanDisk (CIK 1000180, acquired by WDC in 2016) whose 12-FY series
+    ends at FY2015, longer than the current Sandisk Corp's (CIK 2023554,
+    spun off 2025) — so SNDK ended up scoring 2015 fundamentals (growth read
+    −61% with the TTM overlay, +2843% without it).
+
+    550 days (≈18 months) is the widest legitimate gap: an FY ending in June
+    whose 10-K lands in September is ~450 days old in the days just before the
+    next one replaces it.  Anything older stopped filing → not a predecessor.
+    """
+    ends = [p.period_end for p in periods if p.period_end]
+    if not ends:
+        return False
+    return ((now or datetime.now()) - max(ends)).days <= STITCH_MAX_PERIOD_AGE_DAYS
+
+
 def _fetch_statements(selector: dict[str, Any]) -> tuple[list[PitPeriod], list[PitPeriod], list[PitPeriod]]:
     """Fetch the three annual statements for a selector (symbol or cik)."""
     inc = _parse_periods(_get("financials/income-statement", {**selector, "period": "annual", "limit": "12"}))
@@ -338,16 +371,22 @@ def _fetch_statements(selector: dict[str, Any]) -> tuple[list[PitPeriod], list[P
 
 
 def _lookup_profile(ticker: str) -> dict[str, Any]:
-    """Return the StockFit profile for *ticker* (empty dict on failure)."""
+    """Return the StockFit profile for *ticker* (empty dict on failure).
+
+    ``lookup/batch`` keys its response by the uppercase symbol regardless of
+    the query spelling (``meta`` → ``{"META": ...}``), so the key match is
+    case-insensitive.
+    """
     try:
         res = _get("lookup/batch", {"symbols": ticker})
     except StockfitError as exc:
         logger.debug("lookup/batch failed for %s: %s", ticker, exc)
         return {}
     if isinstance(res, dict):
-        prof = res.get(ticker)
-        if isinstance(prof, dict):
-            return prof
+        wanted = _norm_ticker(ticker)
+        for key, prof in res.items():
+            if _norm_ticker(str(key)) == wanted and isinstance(prof, dict):
+                return prof
     return {}
 
 
@@ -427,7 +466,9 @@ def _fetch_pit_statements_live(ticker: str) -> PitStatements:
     """Fetch annual statements with filing dates for *ticker* (network).
 
     Applies the entity-stitching fallback when the directly-resolved entity
-    has an empty/short annual series (holdco reorgs, e.g. XOM).
+    has an empty/short annual series (holdco reorgs, e.g. XOM).  A candidate
+    predecessor must also pass :func:`_series_is_recent` — otherwise a name
+    match to a long-dead filer (old SanDisk) outranks the live company.
 
     Raises :exc:`StockfitError` on endpoint failures; per-ticker "no data"
     results come back as empty lists.
@@ -448,6 +489,12 @@ def _fetch_pit_statements_live(ticker: str) -> PitStatements:
                 cand_inc, cand_bal, cand_cf = _fetch_statements({"cik": cik})
             except StockfitError as exc:
                 logger.debug("Stitch probe CIK %s failed for %s: %s", cik, ticker, exc)
+                continue
+            if not _series_is_recent(cand_inc):
+                logger.debug(
+                    "Stitch candidate CIK %s skipped for %s: latest fiscal period %s is stale",
+                    cik, ticker, max((p.period_end for p in cand_inc), default=None),
+                )
                 continue
             if len(cand_inc) > original_count and (
                 best is None or len(cand_inc) > len(best[0])
@@ -514,7 +561,7 @@ def check_pit_access() -> None:
 
 
 def _snapshot_path(ticker: str) -> Path:
-    return snapshot_dir() / f"{ticker}.json"
+    return snapshot_dir() / f"{_norm_ticker(ticker)}.json"
 
 
 def _fresh_pit_snapshot(ticker: str, max_age_days: float = 7.0) -> Optional[PitStatements]:
@@ -602,6 +649,7 @@ def save_pit_snapshot(statements: PitStatements) -> bool:
 
 def load_pit_snapshot(ticker: str) -> Optional[PitStatements]:
     """Load *ticker*'s snapshot from disk (``None`` when missing/corrupt/empty)."""
+    ticker = _norm_ticker(ticker)
     try:
         payload = json.loads(_snapshot_path(ticker).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -611,11 +659,22 @@ def load_pit_snapshot(ticker: str) -> Optional[PitStatements]:
     income = _deserialize_periods(payload.get("income"))
     if not income:
         return None
+    stitched = bool(payload.get("stitched"))
+    if stitched and not _series_is_recent(income):
+        # Built from the wrong predecessor (a defunct name-match — see
+        # _series_is_recent): discard it so the next run refetches the right
+        # entity, or degrades to yfinance, instead of scoring a company that
+        # stopped filing a decade ago forever.
+        logger.warning(
+            "Discarding stale stitched PIT snapshot for %s: latest fiscal period %s",
+            ticker, income[0].period_end.date(),
+        )
+        return None
     cik = payload.get("cik")
     return PitStatements(
         ticker=ticker,
         cik=cik if isinstance(cik, int) else None,
-        stitched=bool(payload.get("stitched")),
+        stitched=stitched,
         income=income,
         balance=_deserialize_periods(payload.get("balance")),
         cash_flow=_deserialize_periods(payload.get("cash_flow")),
@@ -636,6 +695,7 @@ def fetch_pit_statements(ticker: str) -> PitStatements:
     Never raises for missing access; use :func:`check_pit_access` for the
     fail-fast check at startup.
     """
+    ticker = _norm_ticker(ticker)
     live: Optional[PitStatements] = None
     if os.environ.get("STOCKFIT_API_KEY"):
         try:
@@ -816,6 +876,7 @@ def fetch_fundamental_insights(ticker: str) -> Optional[FundamentalInsights]:
     and a fully failed fetch returns ``None`` so the caller can skip the
     ticker.  Complete results are cached for one day.
     """
+    ticker = _norm_ticker(ticker)
     cached = cache_stockfit_insights_get(ticker)
     if cached is not None:
         parsed = _insights_from_cache(ticker, cached)
@@ -873,6 +934,7 @@ def fetch_research_summary(ticker: str) -> Optional[ResearchSummary]:
     returns ``None`` on failure so the deep-dive report can degrade to its
     keyless local sections.  Successful fetches are cached for one day.
     """
+    ticker = _norm_ticker(ticker)
     cached = cache_stockfit_research_get(ticker)
     if cached is not None:
         try:
@@ -972,32 +1034,43 @@ def _fetch_ttm_facts(ticker: str, pit: Optional[PitStatements] = None) -> dict[s
 
 
 def _apply_ttm_overlay(fund: _Fundamentals, facts: dict[str, Any]) -> None:
-    """Switch *fund*'s current-period fields to TTM figures, in place.
+    """Switch *fund*'s current-period **levels** to TTM figures, in place.
 
     Flows come from the last four reported quarters and balances / share
     counts from the latest quarter — the same trailing semantics yfinance
-    serves, so P/E, P/B, ROE and margins line up across data sources.  Each
-    overridden field shifts its comparison field to the as-filed figure it
-    replaces first, so growth, improvement flags and EPS acceleration read
-    "TTM vs last fiscal year vs prior fiscal year" on consecutive spans.  A
-    fact missing from the TTM block keeps its as-filed value and its
-    untouched comparison chain (``_first`` never discards a real ``0.0``).
+    serves, so P/E, P/B, ROE and margins line up across data sources.  The
+    displaced as-filed figure is parked in the matching ``*_asfiled`` field
+    and the comparison chain (``*_prev``, ``eps_prev``, ``eps_prev2``) is
+    deliberately **left alone**, so growth, the improvement flags and EPS
+    acceleration keep comparing non-overlapping fiscal years (FY(n) vs
+    FY(n−1) vs FY(n−2)) — the same basis the backtest builders use.
+
+    Shifting the chain instead (the pre-2026-09 behaviour) compares a TTM
+    window against the latest filed year, which mixes spans and collapses to
+    exactly **0%** whenever no quarter has been filed since the fiscal year
+    closed: MSFT's FY2026 closed 30-jun and was filed 29-jul, so TTM ≡
+    FY2026 → ``earnings_growth = 0.0`` → Growth 18 → "growth flagged as
+    disqualifying" → the score got capped although the company grew +31%.
+
+    A fact missing from the TTM block keeps its as-filed value in the plain
+    field, leaves ``*_asfiled`` as ``None`` and the derivation falls back to
+    the as-filed figure (``_first`` never discards a real ``0.0``).
     """
-    def _swap(prev_attr: str, cur_attr: str, *fact_keys: str) -> None:
+
+    def _override(cur_attr: str, asfiled_attr: str, *fact_keys: str) -> None:
         val = _first(*(_safe_fact(facts, key) for key in fact_keys))
         if val is None:
             return
-        setattr(fund, prev_attr, getattr(fund, cur_attr))
+        setattr(fund, asfiled_attr, getattr(fund, cur_attr))
         setattr(fund, cur_attr, val)
 
-    _swap("ni_prev", "ni", "netIncome")
-    _swap("rev_prev", "rev", "revenue")
-    _swap("gross_profit_prev", "gross_profit", "grossProfit")
-    _swap("total_assets_prev", "total_assets", "assets")
+    _override("ni", "ni_asfiled", "netIncome")
+    _override("rev", "rev_asfiled", "revenue")
+    _override("gross_profit", "gross_profit_asfiled", "grossProfit")
+    _override("total_assets", "total_assets_asfiled", "assets")
     eps_ttm = _first(_safe_fact(facts, "epsDiluted"), _safe_fact(facts, "eps"))
     if eps_ttm is not None:
-        fund.eps_prev2 = fund.eps_prev
-        fund.eps_prev = fund.eps
+        fund.eps_asfiled = fund.eps
         fund.eps = eps_ttm
     fund.fcf = _first(_safe_fact(facts, "freeCashFlow"), fund.fcf)
     fund.equity = _first(_safe_fact(facts, "stockholdersEquity"), fund.equity)
@@ -1039,13 +1112,16 @@ def fetch_asset_stockfit(
     ``price_to_book``, ``roe``, ``profit_margin`` & co. line up with the
     yfinance source (MU P/E 24.5 vs 24.45 after the switch; the previous
     as-filed fiscal-year basis showed 142.6 because a stale 10-K EPS lagged
-    an earnings explosion).  Comparison fields stay **as-filed fiscal-year**
-    figures, so growth / improvement flags / EPS acceleration read "TTM vs
-    last fiscal year vs prior fiscal year".  Trend fields match yfinance
+    an earnings explosion).  The YoY comparisons (``earnings_growth``,
+    ``revenue_growth``, the improvement flags, ``eps_acceleration``) never
+    read the TTM figures: they compare the **as-filed fiscal years**
+    (FY(n) vs FY(n−1) vs FY(n−2)), the same non-overlapping basis the
+    backtest builders use.  Trend fields match yfinance
     exactly (same adjusted price series).  No analyst estimates exist in
     StockFit, so ``forward_pe``/``peg_ratio``/``eps_surprise`` are always
     ``None``.
     """
+    ticker = _norm_ticker(ticker)
     now = datetime.now()
     data = StockData(ticker=ticker)
 

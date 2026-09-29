@@ -229,7 +229,7 @@ class TestHtmlExport:
     def test_includes_section_summary_and_detail(self, tmp_path: Path):
         out = tmp_path / "report.html"
         export_recommendations_html(
-            [],
+            [_scored("AAPL")],
             str(out),
             top_n=5,
             asset_class="all",
@@ -245,6 +245,14 @@ class TestHtmlExport:
         assert '<span class="pos">↗</span>' in html   # margin trend (0.433 → 0.469)
         assert "AAPL — 2 fiscal years" in html        # <details> block
         assert "OCF/NI" in html                       # detail grid columns
+        assert '<section class="insights" id="fundamentalInsights"' in html
+        assert '<tr data-insight-ticker="AAPL">' in html
+        assert '<details class="insights-detail" data-insight-ticker="AAPL">' in html
+        # The same active main-table filters drive both the summary row and
+        # per-ticker details, and hide the section when no insights remain.
+        assert "function renderInsights(filtered)" in html
+        assert "renderInsights(filtered)" in html
+        assert "section.hidden = !hasVisibleSummary" in html
 
     def test_negative_metric_rendered_red(self, tmp_path: Path):
         out = tmp_path / "report.html"

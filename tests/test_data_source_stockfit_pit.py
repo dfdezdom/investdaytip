@@ -16,7 +16,9 @@ from investdaytip.data_source_stockfit import (
     _search_queries,
     check_api_key,
     fetch_pit_statements,
+    load_pit_snapshot,
     pit_fact_asof,
+    save_pit_snapshot,
 )
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -273,6 +275,56 @@ def test_entity_stitching_via_short_query(mocker):
     assert stmts.cik == 34088
     assert len(stmts.income) == 3
     assert "Exxon" in searches
+
+
+def test_entity_stitching_skips_stale_predecessor(mocker):
+    """SNDK: the name match is a *defunct* filer (old SanDisk, last FY2015).
+
+    Its 12-FY series is longer than the live company's short one, so the old
+    "keep the longest series" rule grafted 2015 fundamentals onto the current
+    Sandisk Corp — growth read −61% (or +2843% with the TTM overlay) and the
+    ticker scored as if the memory cycle never happened.
+    """
+    short = [_row("2026-06-30", "2026-09-01", 2026, {"netIncome": 1e9, "revenue": 5e9})]
+    defunct = [
+        _row(f"{year}-03-31", f"{year}-05-10", year, {"netIncome": 9e8, "revenue": 4e9})
+        for year in range(2015, 2003, -1)  # 12 FYs, far longer than `short`
+    ]
+
+    def mock_get(path: str, params: dict | None = None) -> Any:
+        params = params or {}
+        if path == "lookup/batch":
+            return {"SNDK": {"cik": 2023554, "name": "Sandisk Corp"}}
+        if path == "lookup/search":
+            return [{"cik": 1000180, "type": "stock", "name": "SanDisk Corp"}]
+        if params.get("symbol") == "SNDK":
+            return short if path == "financials/income-statement" else []
+        if params.get("cik") == 1000180:
+            return defunct if path == "financials/income-statement" else []
+        raise AssertionError(f"unexpected: {path} {params}")
+
+    mocker.patch("investdaytip.data_source_stockfit._get", side_effect=mock_get)
+    stmts = fetch_pit_statements("SNDK")
+    assert stmts.stitched is False   # stale candidate refused
+    assert stmts.cik == 2023554      # the live entity, not the dead one
+    assert len(stmts.income) == 1    # short-but-real series kept
+
+
+def test_stale_stitched_snapshot_is_rejected():
+    """A snapshot grafted from a dead predecessor self-heals on load."""
+    stale = PitStatements(
+        ticker="SNDK", cik=1000180, stitched=True,
+        income=_parse_periods([_row("2015-03-31", "2016-02-12", 2015,
+                                    {"netIncome": 388e6, "revenue": 5.5e9})]),
+    )
+    assert save_pit_snapshot(stale) is True
+    assert load_pit_snapshot("SNDK") is None  # → refetch with a key, else yfinance
+
+    # …but a *non-stitched* series of a company that simply stopped filing is
+    # that company's own data and must stay usable.
+    own = PitStatements(ticker="OLD", stitched=False, income=stale.income)
+    assert save_pit_snapshot(own) is True
+    assert load_pit_snapshot("OLD") is not None
 
 
 def test_unknown_ticker_returns_empty_statements(mocker):

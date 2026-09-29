@@ -403,6 +403,15 @@ class _Fundamentals:
     gross_profit: Optional[float] = None
     gross_profit_prev: Optional[float] = None
     total_assets_prev: Optional[float] = None
+    # As-filed fiscal-year figure displaced by the StockFit TTM overlay.
+    # Levels (ROE, margins, P/E) read the TTM value in the plain field; the
+    # YoY comparisons read these so both sides come from non-overlapping
+    # fiscal years.  None whenever there was no overlay (classic + backtest).
+    ni_asfiled: Optional[float] = None
+    rev_asfiled: Optional[float] = None
+    eps_asfiled: Optional[float] = None
+    gross_profit_asfiled: Optional[float] = None
+    total_assets_asfiled: Optional[float] = None
     equity: Optional[float] = None
     total_assets: Optional[float] = None
     total_debt: Optional[float] = None
@@ -462,8 +471,22 @@ def _derive_stock_data(
     shares = fund.shares
     fcf = fund.fcf
 
-    earnings_growth = _pct_change(ni, fund.ni_prev)
-    revenue_growth = _pct_change(rev, fund.rev_prev)
+    # YoY comparisons read the *as-filed* fiscal years, never the TTM levels
+    # above: the StockFit overlay swaps trailing figures into ``ni``/``rev``/
+    # ``eps`` for the levels, and comparing a TTM window against the latest
+    # filed year mixes spans — collapsing to exactly 0% whenever no quarter
+    # has been filed since the fiscal year closed (MSFT FY2026 filed
+    # 29-jul-2026, TTM ≡ FY2026 → Growth 18 → disqualifying cap).
+    # No overlay (classic + backtest PIT) → all ``*_asfiled`` are None and
+    # ``_first`` resolves to the as-filed ``ni``/``rev``/... as before.
+    ni_yoy = _first(fund.ni_asfiled, fund.ni)
+    rev_yoy = _first(fund.rev_asfiled, fund.rev)
+    eps_yoy = _first(fund.eps_asfiled, fund.eps)
+    gross_profit_yoy = _first(fund.gross_profit_asfiled, fund.gross_profit)
+    total_assets_yoy = _first(fund.total_assets_asfiled, fund.total_assets)
+
+    earnings_growth = _pct_change(ni_yoy, fund.ni_prev)
+    revenue_growth = _pct_change(rev_yoy, fund.rev_prev)
 
     # Debt/Equity: yfinance reports as percentage, divide by 100.
     # Negative equity makes the ratio meaningless (and sign flips can clamp
@@ -510,8 +533,8 @@ def _derive_stock_data(
     # YoY improvement flags (Piotroski-style Δ checks) — shared semantics
     # with the live path via financial_health.improvement_flags().
     margin_improving, roa_improving = improvement_flags(
-        {"GrossProfit": fund.gross_profit, "TotalRevenue": rev,
-         "NetIncome": ni, "TotalAssets": total_assets},
+        {"GrossProfit": gross_profit_yoy, "TotalRevenue": rev_yoy,
+         "NetIncome": ni_yoy, "TotalAssets": total_assets_yoy},
         {"GrossProfit": fund.gross_profit_prev, "TotalRevenue": fund.rev_prev,
          "NetIncome": fund.ni_prev, "TotalAssets": fund.total_assets_prev},
     )
@@ -531,7 +554,7 @@ def _derive_stock_data(
     )
 
     # EPS-revisions fallback: as-filed EPS growth acceleration.
-    accel = _eps_acceleration(eps, fund.eps_prev, fund.eps_prev2)
+    accel = _eps_acceleration(eps_yoy, fund.eps_prev, fund.eps_prev2)
 
     return StockData(
         ticker=ticker,

@@ -123,6 +123,68 @@ class TestRecommend:
         assert out == []
         assert any("Failed to fetch" in rec.message for rec in caplog.records)
 
+    def test_stockfit_enriches_missing_market_cap_and_eps_surprise(self, mocker, monkeypatch):
+        """StockFit remains primary; Yahoo fills missing cap/revisions only."""
+        monkeypatch.setenv("STOCKFIT_API_KEY", "test-key")
+        mocker.patch("investdaytip.recommender.detect_plan", return_value="starter")
+        mocker.patch("investdaytip.recommender.plan_allows", return_value=True)
+        mocker.patch("investdaytip.recommender.get_superinvestor_data", return_value={})
+        mocker.patch("investdaytip.recommender.close_db")
+
+        stockfit = StockData(
+            ticker="META", currency="USD", current_price=700.0,
+            market_cap=None, eps_surprise=None,
+        )
+        yahoo = StockData(
+            ticker="META", currency="USD", current_price=701.0,
+            market_cap=1.7e12, eps_surprise=8.0,
+        )
+        mocker.patch(
+            "investdaytip.recommender.fetch_asset_stockfit", return_value=stockfit
+        )
+        yf_fetch = mocker.patch("investdaytip.recommender.fetch_asset", return_value=yahoo)
+
+        out = recommend(
+            tickers=["META"], top_n=1, data_source="stockfit",
+            min_market_cap=2e9,
+        )
+
+        assert len(out) == 1
+        assert out[0].data.market_cap == 1.7e12
+        assert out[0].data.eps_surprise == 8.0
+        assert out[0].data.current_price == 700.0  # StockFit stays primary
+        yf_fetch.assert_called_once_with("META", 0.0, with_improvements=True)
+
+    def test_stockfit_enrichment_does_not_overwrite_present_values(self, mocker, monkeypatch):
+        """Only missing StockFit fields may be filled from Yahoo."""
+        monkeypatch.setenv("STOCKFIT_API_KEY", "test-key")
+        mocker.patch("investdaytip.recommender.detect_plan", return_value="starter")
+        mocker.patch("investdaytip.recommender.plan_allows", return_value=True)
+        mocker.patch("investdaytip.recommender.get_superinvestor_data", return_value={})
+        mocker.patch("investdaytip.recommender.close_db")
+
+        stockfit = StockData(
+            ticker="META", currency="USD", current_price=700.0,
+            market_cap=1.6e12, eps_surprise=None,
+        )
+        yahoo = StockData(
+            ticker="META", currency="USD", current_price=701.0,
+            market_cap=1.7e12, eps_surprise=8.0,
+        )
+        mocker.patch(
+            "investdaytip.recommender.fetch_asset_stockfit", return_value=stockfit
+        )
+        mocker.patch("investdaytip.recommender.fetch_asset", return_value=yahoo)
+
+        out = recommend(
+            tickers=["META"], top_n=1, data_source="stockfit",
+            min_market_cap=2e9,
+        )
+
+        assert len(out) == 1
+        assert out[0].data.market_cap == 1.6e12
+        assert out[0].data.eps_surprise == 8.0
+
     def test_yahooquery_fallback_to_yfinance(self, mocker):
         """When yahooquery fails for a ticker, recommend falls back to yfinance."""
         from investdaytip.data_source_yahooquery import fetch_batch_yq
