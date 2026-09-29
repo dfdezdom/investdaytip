@@ -12,7 +12,7 @@ from typing import Callable, Iterable, Literal, cast
 from investdaytip.asia_etf_universe import ASIA_ETF_UNIVERSE
 from investdaytip.asia_universe import ASIA_UNIVERSE
 from investdaytip.cache import close_db
-from investdaytip.data_source import AssetData, fetch_asset
+from investdaytip.data_source import AssetData, StockData, fetch_asset
 from investdaytip.data_source_fmp import (
     FMP_TICKER_TIMEOUT,
     FmpError,
@@ -236,7 +236,43 @@ def recommend(
             from investdaytip.data_source_fmp import fetch_asset as _fmp_fetch
             _fetcher = cast(Callable[[str, float], AssetData], _fmp_fetch)
         elif data_source == "stockfit":
-            _fetcher = cast(Callable[[str, float], AssetData], fetch_asset_stockfit)
+            def _fetch_stockfit_enriched(ticker: str, cap: float) -> AssetData:
+                """Keep StockFit primary; fill only its missing cap / EPS surprise."""
+                data = fetch_asset_stockfit(ticker, cap)
+                if data.errors or not isinstance(data, StockData):
+                    return data
+
+                missing_market_cap = data.market_cap is None
+                missing_eps_surprise = data.eps_surprise is None
+                if not (missing_market_cap or missing_eps_surprise):
+                    return data
+
+                try:
+                    # Use a zero cap threshold here; the final recommendation
+                    # filter applies the requested cap after we have had a
+                    # chance to fill a missing StockFit market cap.
+                    yahoo = _yf_fetcher(ticker, 0.0)
+                except Exception as exc:
+                    logger.warning(
+                        "Could not enrich StockFit data for %s from yfinance: %s",
+                        ticker, exc,
+                    )
+                    return data
+
+                if yahoo.errors or not isinstance(yahoo, StockData):
+                    logger.debug(
+                        "Yfinance enrichment unavailable for %s: %s",
+                        ticker, "; ".join(yahoo.errors) if yahoo.errors else "not a stock",
+                    )
+                    return data
+
+                if missing_market_cap and yahoo.market_cap is not None:
+                    data.market_cap = yahoo.market_cap
+                if missing_eps_surprise and yahoo.eps_surprise is not None:
+                    data.eps_surprise = yahoo.eps_surprise
+                return data
+
+            _fetcher = cast(Callable[[str, float], AssetData], _fetch_stockfit_enriched)
         else:
             _fetcher = _yf_fetcher
 
@@ -336,9 +372,11 @@ def recommend(
                             leftovers.append(ticker)
                             logger.warning("FMP rate limit hit for %s", ticker)
                             continue
-                        except StockfitError:
+                        except StockfitError as exc:
                             leftovers.append(ticker)
-                            logger.warning("StockFit fetch failed for %s — falling back", ticker)
+                            logger.warning(
+                                "StockFit fetch failed for %s: %s — falling back", ticker, exc
+                            )
                             continue
                         except (TimeoutError, FuturesTimeoutError):
                             # concurrent.futures.TimeoutError only aliases the

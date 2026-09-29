@@ -112,13 +112,14 @@ def test_fetch_asset_stockfit_happy_path(mocker):
     assert data.trailing_pe == pytest.approx(data.current_price / 8.0)
     assert data.price_to_book == pytest.approx(data.current_price / (230e9 / 14e9))
     assert data.profit_margin == pytest.approx(120e9 / 420e9)
-    # Comparisons read "TTM vs last as-filed fiscal year":
-    assert data.earnings_growth == pytest.approx((120e9 - 100e9) / 100e9)
-    assert data.revenue_growth == pytest.approx((420e9 - 400e9) / 400e9)
-    assert data.margin_improving is True   # 220/420 > 200/400
-    assert data.roa_improving is True      # 120/410 > 100/400
-    # EPS acceleration chains TTM → FY2025 → FY2024 (consecutive spans):
-    assert data.eps_acceleration == pytest.approx((8 / 7 - 1) - (7 / 6 - 1))
+    # Comparisons read the as-filed fiscal years (FY2025 vs FY2024) — never
+    # the TTM figures, which would mix spans (and read 0% when TTM ≡ FY):
+    assert data.earnings_growth == pytest.approx((100e9 - 90e9) / 90e9)
+    assert data.revenue_growth == pytest.approx((400e9 - 350e9) / 350e9)
+    assert data.margin_improving is True   # 200/400 > 157.5/350
+    assert data.roa_improving is True      # 100/400 > 90/380
+    # EPS acceleration chains the as-filed FY2025 → FY2024 → FY2023:
+    assert data.eps_acceleration == pytest.approx((7 / 6 - 1) - (6 / 5 - 1))
     assert data.dividend_yield == pytest.approx(2.0 / data.current_price)
     assert data.payout_ratio == pytest.approx(2.0 / 8.0)
     assert data.return_12m is not None     # trend from the price series
@@ -184,7 +185,7 @@ def test_fetch_asset_stockfit_uses_fresh_snapshot(mocker):
     mocker.patch("investdaytip.data_source_stockfit._get", side_effect=_fake_get)
     data = fetch_asset_stockfit("AAPL")
     fetch_mock.assert_not_called()
-    assert data.earnings_growth == pytest.approx((120e9 - 100e9) / 100e9)  # TTM vs FY2025
+    assert data.earnings_growth == pytest.approx((100e9 - 90e9) / 90e9)  # FY2025 vs FY2024
 
 
 def test_fetch_asset_stockfit_stale_snapshot_refetches(mocker):
@@ -339,7 +340,12 @@ def test_fetch_asset_stockfit_empty_ttm_not_cached(enabled_temp_cache, mocker):
 
 
 def test_apply_ttm_overlay_partial_facts_keep_asfiled():
-    """A partial TTM block shifts only the fields it actually carries."""
+    """A partial TTM block overrides only the fields it actually carries.
+
+    The comparison chain must NOT shift: the displaced as-filed figure goes
+    to ``*_asfiled`` and ``*_prev`` keeps pointing at the prior fiscal year,
+    so the YoY pairs stay non-overlapping.
+    """
     from investdaytip.data_source import _Fundamentals
     from investdaytip.data_source_stockfit import _apply_ttm_overlay
 
@@ -348,14 +354,60 @@ def test_apply_ttm_overlay_partial_facts_keep_asfiled():
         eps=7.0, eps_prev=6.0, eps_prev2=5.0, shares=15.0,
     )
     _apply_ttm_overlay(fund, {"netIncome": 120.0})  # only NI in the block
-    assert fund.ni == 120.0
-    assert fund.ni_prev == 100.0   # comparison shifted to the latest FY
-    assert fund.rev == 400.0       # untouched fields keep their chain
+    assert fund.ni == 120.0            # level switches to TTM
+    assert fund.ni_asfiled == 100.0    # as-filed FY parked for the comparisons
+    assert fund.ni_prev == 90.0        # chain untouched → FY2025 vs FY2024
+    assert fund.rev == 400.0           # untouched fields keep their chain
     assert fund.rev_prev == 350.0
+    assert fund.rev_asfiled is None    # no TTM revenue → derivation falls back
     assert fund.eps == 7.0
     assert fund.eps_prev == 6.0
     assert fund.eps_prev2 == 5.0
     assert fund.shares == 15.0
+
+
+def test_ttm_equal_to_asfiled_fy_keeps_growth(mocker):
+    """Regression (MSFT, 2026-09-29): TTM ≡ latest filed FY must not read 0%.
+
+    MSFT's FY2026 closed 30-jun-2026 and was filed 29-jul with no quarter
+    reported since, so the trailing window *is* the fiscal year.  Shifting
+    the comparison chain compared FY2026 with itself → ``earnings_growth``
+    0.0 → Growth 18 → "growth flagged as disqualifying" → the score got
+    capped even though the company grew +31% YoY.
+    """
+    from investdaytip.scoring import score_stock
+
+    # TTM block identical to the latest as-filed FY (the MSFT situation)
+    same_as_fy = {
+        "revenue": 400e9, "netIncome": 100e9, "epsDiluted": 7.0,
+        "grossProfit": 200e9, "freeCashFlow": 95e9,
+        "assets": 400e9, "stockholdersEquity": 220e9, "totalDebt": 100e9,
+        "currentAssets": 150e9, "currentLiabilities": 130e9,
+        "sharesOutstanding": 15e9,
+    }
+
+    def fake_get(path, params=None, **_kw):
+        if path == "financials/income-statement":
+            return _ttm_row(same_as_fy)
+        return _fake_get(path, params)
+
+    mocker.patch("investdaytip.data_source_stockfit._lookup_profile", return_value=dict(_PROFILE))
+    mocker.patch("investdaytip.data_source_stockfit.fetch_pit_statements", return_value=_pit())
+    mocker.patch("investdaytip.data_source_stockfit._get", side_effect=fake_get)
+
+    data = fetch_asset_stockfit("AAPL")
+    # YoY reads the as-filed fiscal years — non-zero, like yfinance
+    assert data.earnings_growth == pytest.approx((100e9 - 90e9) / 90e9)
+    assert data.revenue_growth == pytest.approx((400e9 - 350e9) / 350e9)
+    assert data.eps_acceleration == pytest.approx((7 / 6 - 1) - (6 / 5 - 1))
+    assert data.margin_improving is True
+    assert data.roa_improving is True
+    # levels still read the TTM block (here identical to the FY, as in MSFT)
+    assert data.trailing_pe == pytest.approx(data.current_price / 7.0)
+    # …and Growth no longer trips the disqualifying cap
+    scored = score_stock(data, model="quant")
+    assert scored.breakdown["Growth"] >= 20.0
+    assert not any("growth flagged" in note for note in scored.rationale)
 
 
 def test_ttm_facts_from_response_shapes():
@@ -390,6 +442,51 @@ def test_fetch_asset_stockfit_no_prices_raises(mocker):
     mocker.patch("investdaytip.data_source_stockfit._get", return_value={"data": []})
     with pytest.raises(StockfitError, match="no price history"):
         fetch_asset_stockfit("AAPL")
+
+
+# ── ticker case normalization ────────────────────────────────────────────────
+
+
+def test_fetch_asset_stockfit_lower_ticker_resolves(mocker):
+    """`-t meta` must fetch StockFit like `META` (regression: silent yfinance
+    fallback because `lookup/batch` keys its response uppercase)."""
+    seen: list[str] = []
+
+    def fake_get(path, params=None, **_kw):
+        if path == "lookup/batch":
+            seen.append((params or {}).get("symbols", ""))
+            return {"META": dict(_PROFILE)}  # canonical key, like the live API
+        return _fake_get(path, params)
+
+    mocker.patch("investdaytip.data_source_stockfit.fetch_pit_statements", return_value=_pit())
+    mocker.patch("investdaytip.data_source_stockfit._get", side_effect=fake_get)
+    data = fetch_asset_stockfit("meta")
+    assert data.errors == []
+    assert data.ticker == "META"
+    assert data.name == "Apple Inc."
+    assert seen == ["META"]  # the request itself is canonical too
+
+
+def test_lookup_profile_matches_canonical_key_case(mocker):
+    from investdaytip.data_source_stockfit import _lookup_profile
+
+    mocker.patch(
+        "investdaytip.data_source_stockfit._get", return_value={"META": dict(_PROFILE)}
+    )
+    assert _lookup_profile("meta")["name"] == "Apple Inc."
+    assert _lookup_profile("Meta")["name"] == "Apple Inc."
+    assert _lookup_profile("META")["name"] == "Apple Inc."
+    assert _lookup_profile("OTHER") == {}
+
+
+def test_pit_snapshot_lookup_is_case_insensitive():
+    from investdaytip.data_source_stockfit import load_pit_snapshot, save_pit_snapshot
+
+    save_pit_snapshot(_pit())
+    snap = load_pit_snapshot("aapl")
+    assert snap is not None
+    assert snap.ticker == "AAPL"
+    assert len(snap.income) == 3
 
 
 # ── recommender wiring ───────────────────────────────────────────────────────
@@ -439,7 +536,7 @@ def test_recommend_stockfit_excludes_non_us(mocker, monkeypatch):
     assert called == ["AAPL"]  # SAP.DE excluded — StockFit is US-only
 
 
-def test_recommend_stockfit_falls_back_to_yfinance(mocker, monkeypatch):
+def test_recommend_stockfit_falls_back_to_yfinance(mocker, monkeypatch, caplog):
     from investdaytip.recommender import recommend
 
     monkeypatch.setenv("STOCKFIT_API_KEY", "k")
@@ -461,3 +558,4 @@ def test_recommend_stockfit_falls_back_to_yfinance(mocker, monkeypatch):
     results = recommend(tickers=["AAPL", "MSFT"], top_n=5, data_source="stockfit")
     assert yf_fetch.call_count == 2  # both tickers fell back
     assert {r.data.ticker for r in results} == {"AAPL", "MSFT"}
+    assert "boom" in caplog.text  # the fallback warning carries the reason

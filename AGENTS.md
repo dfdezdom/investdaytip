@@ -186,6 +186,20 @@ that was public on that date instead of a fixed reporting lag.
   `lookup/search?includeDelisted=true`, probes ≤5 candidate CIKs
   (`type == "stock"`, current CIK excluded, deduped) and keeps the **longest**
   series (XOM → CIK 34088, 12+ FYs). Verified live: `stitched=True`.
+- **Staleness guard on stitching** (`_series_is_recent()`,
+  `STITCH_MAX_PERIOD_AGE_DAYS = 550`) — a candidate predecessor is skipped
+  when its latest fiscal period ended >550 days ago (~18 months; the widest
+  gap a live annual filer shows). Without it the "longest series" rule grafts
+  a **defunct name-match** onto the live ticker: `SNDK` name-searches to the
+  old SanDisk (CIK 1000180, acquired 2016, last FY2015, 12 FYs) instead of
+  the current Sandisk Corp (CIK 2023554, spun off 2025, <3 FYs) → SNDK scored
+  2015 fundamentals (growth −61% with the TTM overlay, +2843% without).
+  `load_pit_snapshot()` applies the same guard **only to stitched snapshots**,
+  so a poisoned file self-heals (refetch with a key, else fall back to
+  yfinance) while a non-stitched series of a company that simply stopped
+  filing stays usable. Regression tests:
+  `test_entity_stitching_skips_stale_predecessor`,
+  `test_stale_stitched_snapshot_is_rejected`.
 - **Shares fallback** — balance sheets without `sharesOutstanding` (e.g. FLWS
   reports none) derive basic shares as `netIncome / eps` from the same filing;
   non-positive results → `None`.
@@ -278,9 +292,9 @@ to **Starter+** via the `live_source` capability (~7 calls per ticker — Free's
 |---|---|
 | Scope | US stocks only — non-US universes/tickers are excluded automatically with a warning; ETFs raise `--data-source stockfit supports stocks only` |
 | Fail-fast | no key → exit 1; plan below Starter → exit 1 (CLI banners) |
-| Calls/ticker | `lookup/batch` (profile + type guard) → statements via `fetch_pit_statements()` (also refreshes the PIT snapshot) → `financials/income-statement?period=ttm` (TTM overlay) → `price/history` (2y daily closes) → `earnings/dividend-history` |
-| Caching | profile + dividends + TTM facts in `{ticker}:stockfit_info` (1d); statements from the local PIT snapshot when < 7 days old; prices in the shared `{ticker}:history` (15 min — both sources serve the same adjusted closes). Warm runs ≈ 0 extra calls |
-| Fallback | `StockfitError` per ticker → automatic yfinance fallback (same leftovers pattern as FMP); user errors (ETF, below cap) are skipped |
+| Calls/ticker | `lookup/batch` (profile + type guard) → statements via `fetch_pit_statements()` (also refreshes the PIT snapshot) → `financials/income-statement?period=ttm` (TTM overlay) → `price/history` (2y daily closes) → `earnings/dividend-history`; then yfinance enrichment when `market_cap` or `eps_surprise` is missing |
+| Caching | profile + dividends + TTM facts in `{ticker}:stockfit_info` (1d); statements from the local PIT snapshot when < 7 days old; prices in the shared `{ticker}:history` (15 min — both sources serve the same adjusted closes); yfinance fundamentals/statements use their existing cache |
+| Fallback | `StockfitError` per ticker → automatic full yfinance fallback (same leftovers pattern as FMP); on StockFit success, yfinance fills only missing `market_cap` and `eps_surprise` (StockFit values and all other fields remain primary); user errors (ETF, below cap) are skipped |
 | Trend parity | `return_12m`, `price_vs_sma200` and the improvement flags match yfinance to 8 decimals (same adjusted price series) |
 
 **Semantics (2026-09-27, switched to TTM after the MU P/E report):** current
@@ -291,17 +305,31 @@ block from `financials/income-statement?period=ttm` and applied by
 24.5 vs yfinance 24.45 after the switch (the previous **as-filed fiscal-year**
 basis showed 142.6 because the latest 10-K EPS lagged an earnings explosion;
 that old basis was characterized vs yfinance at Spearman 0.441 / top-10
-overlap 6/10 — rankings were source-dependent). Comparison fields stay
-**as-filed fiscal-year** figures, so `earnings_growth`, the improvement flags
-and `eps_acceleration` read "TTM vs last FY vs prior FY" on consecutive
-spans. Per-field graceful degradation: a fact missing from the TTM block (or
+overlap 6/10 — rankings were source-dependent). Levels (P/E, P/B, ROE,
+margins, D/E) read TTM, but the **YoY comparisons never do**:
+`earnings_growth`, `revenue_growth`, the improvement flags and
+`eps_acceleration` compare the **as-filed fiscal years** (FY(n) vs FY(n−1)
+vs FY(n−2)) — `_apply_ttm_overlay()` parks the displaced figure in
+`*_asfiled` instead of shifting the `*_prev` chain, so both sides of every
+comparison are non-overlapping 12-month spans, the same basis the backtest
+builders use. (2026-09-29 fix: the previous "shift the chain" behaviour
+compared a TTM window against the latest filed year — which degenerates to
+**exactly 0%** whenever no quarter has been filed since the fiscal year
+closed: MSFT's FY2026 was filed 29-jul-2026, TTM ≡ FY2026 →
+`earnings_growth = 0.0` → Growth 18 → "growth flagged as disqualifying" →
+score capped at 43.3 while yfinance scored 66.5. After the fix StockFit
+reads +31.3% / +17.8% and totals 67.3 vs yfinance's 67.3.) Per-field
+graceful degradation: a fact missing from the TTM block (or
 an empty/failed TTM fetch — symbol first, then the PIT CIK for stitched
-entities) keeps its as-filed value and its unshifted comparison chain; a
+entities) keeps its as-filed value and its untouched comparison chain; a
 `StockfitRateLimitError` on the TTM call propagates so the ticker falls back
-to yfinance. No analyst estimates exist in StockFit, so
-`forward_pe`/`peg_ratio`/`eps_surprise` are always `None` (Value scores with
-one metric fewer, EPS Revisions neutral). `eps_acceleration` is derived but
-was **rejected** as the EPS-Revisions fallback (factor-IC −0.059) —
+to yfinance. No analyst estimates exist in StockFit, so its raw
+`forward_pe`/`peg_ratio`/`eps_surprise` are always `None`; the recommender's
+field-level yfinance enrichment fills **only** `eps_surprise` when available
+(EPS Revisions no longer has to stay neutral) and `market_cap` when StockFit
+cannot derive it from shares. Other StockFit fields are never overwritten by
+the enrichment. `forward_pe`/`peg_ratio` remain `None`. `eps_acceleration` is
+derived but was **rejected** as the EPS-Revisions fallback (factor-IC −0.059) —
 diagnostic only. Details: `stockfit/data_source_stockfit_validation.md`.
 
 Robustness fixes found during that validation (keep them):
@@ -309,7 +337,13 @@ Robustness fixes found during that validation (keep them):
   sharesIssued` (CVX/JNJ tag the second one — without it P/B and market cap
   went `None`);
 - dividend rows are scanned for the first non-`dividendPerShare=None` entry
-  (JNJ returns all-None shells) — otherwise degrades to `None`.
+  (JNJ returns all-None shells) — otherwise degrades to `None`;
+- ticker case is normalized at the StockFit layer (`_norm_ticker()`,
+  `meta` → `META`) in every public entry point — `lookup/batch` keys its
+  response by the uppercase symbol and cache keys / snapshot filenames are
+  case-sensitive, so a lowercase `-t meta` used to miss all of them and
+  silently fall back to yfinance (rankings are source-dependent!). The
+  `_lookup_profile` key match is case-insensitive as defense in depth.
 
 GICS sector names are mapped to yfinance-style (`Information Technology` →
 `Technology`) so `-s` filters and the advisor sector tilt behave identically.
@@ -331,8 +365,11 @@ without it**; without `STOCKFIT_API_KEY` it prints a warning and omits the secti
   ETFs and EU/Asia tickers never call StockFit (0 wasted API calls).
 - **Render** (`html_export._render_insights_section`): summary table (latest FY +
   trend arrows ↗/→/↘ colored by outcome — D/E falling is green, FCF/NI falling red)
-  plus one `<details>` block per ticker with the full fiscal-year grid. Server-rendered,
-  no JS; the main table is untouched.
+  plus one `<details>` block per ticker with the full fiscal-year grid. Metrics
+  are server-rendered; each summary row and detail block carries a
+  case-insensitive ticker key so the report's shared JS filters (search, asset
+  class, region, minimum score/returns) show and hide matching insights with
+  the recommendation rows. The section hides when no insight ticker matches.
 - **Fetch** (`main._fetch_report_insights`): `ThreadPoolExecutor(5)`, soft-fail per
   ticker, never raises. `fetch_fundamental_insights()` (in `data_source_stockfit.py`)
   never raises either — a failed endpoint degrades to partial data, all-fail → `None`.

@@ -9,7 +9,7 @@ DEFAULT_UNIVERSE: list[str] = [
     "AAPL", "ADBE", "AMD", "AVGO", "CRM", "CSCO", "GOOGL", "IBM",
     "INTC", "META", "MSFT", "MU", "NVDA", "ORCL", "QCOM", "TXN",
     # Semiconductors, networking & hardware
-    "LRCX", "KLAC", "MRVL", "ARM", "ANET", "DELL", "HPE",
+    "LRCX", "KLAC", "MRVL", "ARM", "ANET", "DELL", "HPE", "SNDK",
     # Software & security
     "NOW", "PLTR", "SNPS", "DDOG", "SNOW", "CRWD", "PANW", "FTNT",
     "WDAY", "ADSK",

@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **HTML recommendation filters now include Fundamental insights** — searching or filtering by asset class, region, minimum score, or return now hides/shows the matching insight summary rows and fiscal-year details at the same time as the main recommendations table. The insights section is hidden if no insight ticker matches.
+
+- **`--data-source stockfit` now enriches missing market cap and EPS surprises from yfinance** — StockFit has no analyst estimates and can omit shares, leaving `eps_surprise=None` and `market_cap=None`. The recommender now fetches yfinance only when either field is missing, fills only those fields (never overwrites StockFit fundamentals), and applies the requested market-cap filter afterward. This prevents large caps such as META from being excluded solely because StockFit omitted shares, and supplies the EPS Revisions factor when Yahoo has surprise data. This adds a yfinance fetch for most StockFit tickers; the existing yfinance cache is reused.
+
+- **`--data-source stockfit` entity stitching could graft a defunct filer** — the fallback kept the *longest* candidate series, so `SNDK` (added to the US universe) stitched to the old SanDisk (CIK 1000180, acquired 2016, last annual period FY2015) instead of the current Sandisk Corp (CIK 2023554, spun off 2025) and scored decade-old fundamentals: Growth read −61% with the TTM overlay (50.0 total, capped) or +2843% without it (80.4), against a sane yfinance 79.0. Candidates now have to pass `_series_is_recent()` (latest fiscal period within 550 days — the widest gap a live annual filer shows) and `load_pit_snapshot()` discards a *stitched* snapshot whose predecessor stopped filing long ago, so a poisoned snapshot self-heals instead of being served for a week. The XOM holdco path is untouched (its predecessor still files).
+
+- **`--data-source stockfit`: growth compared a TTM window against the latest filed year** — the TTM overlay shifted the `*_prev` comparison chain, so `earnings_growth`/`revenue_growth` measured TTM vs the last fiscal year. Whenever no quarter had been filed since the fiscal year closed the two windows are the *same period*, so growth read exactly `0.0`: MSFT (FY2026 filed 29-jul-2026) scored Growth 18 → "growth flagged as disqualifying" → 43.3 vs yfinance's 66.5, despite +31% YoY. Levels (P/E, P/B, ROE, margins, D/E) still read TTM, but the YoY comparisons — growth, the improvement flags and `eps_acceleration` — now read the **as-filed fiscal years** (the displaced figure is parked in `*_asfiled` instead of shifting the chain), the same non-overlapping basis the backtest builders use. MSFT now totals 67.3 vs yfinance's 67.3, with identical improvement flags. The backtest PIT paths are untouched (`*_asfiled` stays `None`).
+
+- **`--data-source stockfit` accepts lowercase tickers** — `-t meta` used to miss StockFit's `lookup/batch` (the API keys its response by the uppercase symbol) and silently fall back to yfinance, which changes rankings since the sources are source-dependent. Ticker case is now normalized at the StockFit layer (live fetch, PIT statements/snapshots, insights, research summary), and the fallback warning logs the underlying reason instead of a bare "fetch failed".
+
 ## v0.14.1 (2026-09-27)
 
 ### Fixes
