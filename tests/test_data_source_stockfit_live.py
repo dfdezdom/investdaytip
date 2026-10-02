@@ -601,7 +601,10 @@ def test_recommend_stockfit_falls_back_to_yfinance(mocker, monkeypatch, caplog):
             earnings_growth=0.1, revenue_growth=0.1,
         ),
     )
+    caplog.set_level("INFO")
     results = recommend(tickers=["AAPL", "MSFT"], top_n=5, data_source="stockfit")
     assert yf_fetch.call_count == 2  # both tickers fell back
     assert {r.data.ticker for r in results} == {"AAPL", "MSFT"}
-    assert "boom" in caplog.text  # the fallback warning carries the reason
+    # the reason is preserved at INFO (per-ticker WARNINGs redraw the
+    # progress bar's fragments; the aggregate notice is surfaced separately)
+    assert "boom" in caplog.text

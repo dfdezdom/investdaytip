@@ -30,7 +30,7 @@ from investdaytip.data_source_stockfit import (
 )
 from investdaytip.dataroma import fetch_superinvestor_universe, get_superinvestor_data
 from investdaytip.html_export import export_backtest_html, export_recommendations_html
-from investdaytip.recommender import recommend
+from investdaytip.recommender import recommend, take_fallback_notices
 from investdaytip.scoring import ScoredAsset, resolve_include_technical
 
 logger = logging.getLogger(__name__)
@@ -928,6 +928,11 @@ def main(argv: list[str] | None = None) -> int:
             logger.error("Error during analysis: %s", exc)
             console.print(f"[red]Error during analysis: {exc}[/red]")
             return 1
+
+    # Fallback notices are collected during the fetch (anything printed
+    # mid-run redraws the progress bar's fragments) — surface them once.
+    for notice in take_fallback_notices():
+        console.print(f"[yellow]{notice}[/yellow]")
 
     _render(results, console, include_superinvestor=args.superinvestor, include_technical=args.include_technical)
 

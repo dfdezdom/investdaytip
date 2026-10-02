@@ -1200,8 +1200,7 @@ def fetch_asset_stockfit(
         if abs(implied_shares / fund.shares - 1.0) > 0.25:
             raise StockfitError(
                 f"StockFit facts mis-scaled for {ticker} (NI/EPS implies "
-                f"{implied_shares / 1e9:.2f}B shares vs {fund.shares / 1e9:.2f}B "
-                "tagged) — falling back to yfinance"
+                f"{implied_shares / 1e9:.2f}B shares vs {fund.shares / 1e9:.2f}B tagged)"
             )
 
     # 3) Prices — 2y of daily adjusted closes (trend + latest price).  The
