@@ -35,13 +35,27 @@ from investdaytip.universe import DEFAULT_UNIVERSE
 
 logger = logging.getLogger(__name__)
 
+_fallback_notices: list[str] = []
+
+
 def _log_fallback(source: str, count: int) -> None:
-    """Log that rate-limited/failed tickers will be re-fetched via yfinance."""
-    import sys
-    sys.stderr.write(
-        f"⚠️  {source} — continuing with yfinance for {count} ticker{'s' if count != 1 else ''}\n"
+    """Record that failed tickers will be re-fetched via yfinance.
+
+    The notice is *collected*, not printed: anything written mid-fetch
+    (stderr or stdout) interleaves with the Rich progress bar and redraws
+    its fragments.  Callers surface the notices once the bar is done via
+    :func:`take_fallback_notices`.
+    """
+    _fallback_notices.append(
+        f"⚠️  {source} — continuing with yfinance for {count} ticker{'s' if count != 1 else ''}"
     )
-    sys.stderr.flush()
+
+
+def take_fallback_notices() -> list[str]:
+    """Return and clear the accumulated fallback notices."""
+    notices = list(_fallback_notices)
+    _fallback_notices.clear()
+    return notices
 
 
 AssetClass = Literal["all", "stocks", "etfs"]
@@ -262,7 +276,9 @@ def recommend(
                     # chance to fill a missing StockFit market cap.
                     yahoo = _yf_fetcher(ticker, 0.0)
                 except Exception as exc:
-                    logger.warning(
+                    # INFO, not WARNING: per-ticker logs interleave with the
+                    # Rich progress bar on stderr (they redraw its fragments).
+                    logger.info(
                         "Could not enrich StockFit data for %s from yfinance: %s",
                         ticker, exc,
                     )
@@ -277,7 +293,7 @@ def recommend(
 
                 if suspicious and yahoo.market_cap and data.market_cap:
                     if abs(data.market_cap / yahoo.market_cap - 1.0) > 0.25:
-                        logger.warning(
+                        logger.info(
                             "StockFit facts mis-scaled for %s (market cap %.2fT vs "
                             "yfinance %.2fT) — using yfinance data instead",
                             ticker, data.market_cap / 1e12, yahoo.market_cap / 1e12,
@@ -392,7 +408,10 @@ def recommend(
                             continue
                         except StockfitError as exc:
                             leftovers.append(ticker)
-                            logger.warning(
+                            # INFO: per-ticker fallback details interleave with
+                            # the Rich progress bar on stderr; the aggregate
+                            # count is surfaced once by _log_fallback.
+                            logger.info(
                                 "StockFit fetch failed for %s: %s — falling back", ticker, exc
                             )
                             continue
