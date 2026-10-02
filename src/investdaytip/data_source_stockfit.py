@@ -1173,8 +1173,8 @@ def fetch_asset_stockfit(
         curr_assets=pit_fact_asof(pit.balance, "currentAssets", now)[0],
         curr_liab=pit_fact_asof(pit.balance, "currentLiabilities", now)[0],
         shares=_first(
-            pit_fact_asof(pit.balance, "sharesOutstanding", now)[0],
             pit_fact_asof(pit.balance, "currentSharesOutstanding", now)[0],
+            pit_fact_asof(pit.balance, "sharesOutstanding", now)[0],
             pit_fact_asof(pit.balance, "sharesIssued", now)[0],
         ),
         fcf=pit_fact_asof(pit.cash_flow, "freeCashFlow", now)[0],
@@ -1217,17 +1217,33 @@ def fetch_asset_stockfit(
         cache_history_set(ticker, history.to_json())
     price = float(history["Close"].iloc[-1])
 
-    # 4) Dividends — latest fiscal-year DPS ≈ TTM (payout is derived from it,
-    # same convention as the yfinance path).  Some filers return empty shells
-    # (all-None rows, e.g. JNJ) — scan a few rows and degrade to None cleanly.
+    # 4) Dividends — TTM DPS = sum of the latest four *quarterly* payments.
+    # Annual rows are unreliable as a TTM figure (some filers report a single
+    # quarter's rate — UNH: 2.20 "annual" vs 2.2/quarter — verified 2026-10-02),
+    # so quarterly rows are primary and the annual scan is only a fallback.
     if cached_info is None:
-        div_rows = _get("earnings/dividend-history", {"symbol": ticker, "limit": "5"})
-        for row in div_rows if isinstance(div_rows, list) else []:
-            if isinstance(row, dict):
-                candidate = _safe_float(row.get("dividendPerShare"))
-                if candidate is not None:
-                    ttm_div = candidate
-                    break
+        ttm_div = None
+        div_rows = _get(
+            "earnings/dividend-history",
+            {"symbol": ticker, "period": "quarterly", "limit": "6"},
+        )
+        rows = (
+            [r for r in div_rows if isinstance(r, dict)]
+            if isinstance(div_rows, list) else []
+        )
+        qvals = [_safe_float(r.get("dividendPerShare")) for r in rows[:4]]
+        if len(qvals) == 4 and all(v is not None for v in qvals):
+            ttm_div = sum(v for v in qvals if v is not None)
+        else:
+            # Fallback: first real DPS in the annual rows (JNJ returns
+            # all-None shells) — a single annual rate, not a TTM sum.
+            annual_rows = _get("earnings/dividend-history", {"symbol": ticker, "limit": "5"})
+            for row in annual_rows if isinstance(annual_rows, list) else []:
+                if isinstance(row, dict):
+                    candidate = _safe_float(row.get("dividendPerShare"))
+                    if candidate is not None:
+                        ttm_div = candidate
+                        break
     if info_dirty:
         try:
             # An empty TTM block is stored as null so a transient failure is

@@ -86,7 +86,11 @@ def _fake_get(path, params=None, **_kw):
         data = [[int((start + i * 86400) * 1000), 100.0 + i * 0.2] for i in range(500)]
         return {"data": data}
     if path == "earnings/dividend-history":
-        return [{"period": "2025-09-27", "dividendPerShare": 2.0, "payoutRatio": 0.15}]
+        # Four quarterly payments of 0.5 → TTM DPS 2.0 (annual rows unreliable)
+        return [
+            {"period": p, "dividendPerShare": 0.5}
+            for p in ("2025-09-27", "2025-06-30", "2025-03-31", "2024-12-31")
+        ]
     if path == "financials/income-statement":
         return _ttm_row(_TTM_FACTS)
     raise AssertionError(f"unexpected path: {path}")
@@ -420,6 +424,22 @@ def test_ttm_facts_from_response_shapes():
     assert _ttm_facts_from([]) == {}
     assert _ttm_facts_from({"data": []}) == {}
     assert _ttm_facts_from({"error": "nope"}) == {}
+
+
+def test_fetch_asset_stockfit_dividend_ttm_from_quarterly(mocker):
+    """Quarterly payments are summed to a TTM DPS; annual rows are ignored
+    (some filers report a single quarter's rate as 'annual' — UNH)."""
+    def fake_get(path, params=None, **_kw):
+        if path == "earnings/dividend-history":
+            assert (params or {}).get("period") == "quarterly"
+            return [{"dividendPerShare": 2.2}] * 4  # UNH-like quarterly rate
+        return _fake_get(path, params)
+
+    mocker.patch("investdaytip.data_source_stockfit._lookup_profile", return_value=dict(_PROFILE))
+    mocker.patch("investdaytip.data_source_stockfit.fetch_pit_statements", return_value=_pit())
+    mocker.patch("investdaytip.data_source_stockfit._get", side_effect=fake_get)
+    data = fetch_asset_stockfit("UNH")
+    assert data.dividend_yield == pytest.approx(8.8 / data.current_price)
 
 
 def test_fetch_asset_stockfit_rejects_etf(mocker):

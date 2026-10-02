@@ -17,9 +17,19 @@
 //   returned `chat.message`                             -> ctx.session.hook("prompt", ...)
 //   returned `tool.execute.before` / `tool.execute.after` -> ctx.tool.hook(...)
 //
+// V2 delivery fix: upstream writes the OSC 777 sequence to `/dev/tty`, which
+// assumed plugins run in-process with the TUI ("sharing the same ConPTY-
+// connected stdout"). In V2 the plugin runs inside the *detached* background
+// service (`opencode serve --service`), which has no controlling terminal, so
+// `/dev/tty` fails and `process.stdout` is not the terminal either. warpNotify()
+// now falls back to writing the sequence to the pty of each attached OpenCode
+// TUI client, where Warp parses it like normal program output. See warpNotify()
+// below for the full delivery order.
+//
 // No package import is required: V2 only validates that the default export has an
 // `id` plus an `effect` or `setup` function.
 
+import { execFileSync } from "node:child_process"
 import { writeFileSync } from "node:fs"
 import path from "node:path"
 
@@ -40,6 +50,10 @@ function negotiateProtocolVersion(): number {
   return Math.min(warpVersion, PLUGIN_MAX_PROTOCOL_VERSION)
 }
 
+/** TTY discovery spawns `ps`; cache the result briefly (tool_complete is chatty). */
+const TTY_CACHE_MS = 10_000
+let ttyCache: { at: number; devices: string[] } | undefined
+
 function buildPayload(event: string, sessionId: string, cwd: string, extraFields: Json = {}): string {
   const base = {
     v: negotiateProtocolVersion(),
@@ -53,25 +67,105 @@ function buildPayload(event: string, sessionId: string, cwd: string, extraFields
 }
 
 /**
+ * Terminal devices (pty slaves) of the attached OpenCode TUI clients.
+ *
+ * In OpenCode V2 this plugin runs inside the detached background service
+ * (`opencode serve --service`), which has no controlling terminal: `/dev/tty`
+ * fails with "device not configured" and `process.stdout` is the daemon's own
+ * pipe, not a terminal. The OSC 777 sequence must instead be written to the
+ * pty that Warp is hosting (the TUI client's terminal), where it is parsed as
+ * regular program output.
+ *
+ * Sources, in order:
+ *   1. every attached `opencode` TUI process (covers multiple tabs);
+ *   2. the nearest ancestor process with a controlling terminal (the client
+ *      that spawned the service), even under a different binary name.
+ *
+ * Unix only — on Windows `ps` is unavailable and the lookup degrades to the
+ * process stdout fallback, matching the upstream plugin's ConPTY behavior.
+ */
+function clientTtyDevices(): string[] {
+  const now = Date.now()
+  if (ttyCache && now - ttyCache.at < TTY_CACHE_MS) return ttyCache.devices
+
+  const devices = new Set<string>()
+  const add = (tty: string): void => {
+    if (!tty || tty === "??") return
+    devices.add(tty.startsWith("/dev/") ? tty : `/dev/${tty}`)
+  }
+
+  try {
+    const out = execFileSync("ps", ["-ax", "-o", "tty=,command="], { encoding: "utf8" })
+    for (const line of out.split("\n")) {
+      const match = line.match(/^\s*(\S+)\s+(.*)$/)
+      if (!match) continue
+      const [, tty, command] = match
+      if (!/(^|\/)opencode(\s|$)/.test(command)) continue
+      if (/\bserve\b/.test(command)) continue // the service itself has no tty
+      add(tty)
+    }
+  } catch {
+    // ps unavailable — the ancestor walk below may still find a terminal.
+  }
+
+  try {
+    let pid = process.ppid
+    for (let depth = 0; depth < 8 && pid && pid > 1; depth++) {
+      const out = execFileSync("ps", ["-o", "tty=,ppid=", "-p", String(pid)], { encoding: "utf8" }).trim()
+      const match = out.match(/^(\S+)\s+(\d+)/)
+      if (!match) break
+      const [, tty, ppid] = match
+      if (tty && tty !== "??") {
+        add(tty)
+        break
+      }
+      pid = Number(ppid)
+    }
+  } catch {
+    // Ignore — stdout fallback still applies.
+  }
+
+  const result = [...devices]
+  ttyCache = { at: now, devices: result }
+  return result
+}
+
+/**
  * Send a Warp notification via OSC 777 escape sequence.
  * Only emits when Warp declares cli-agent protocol support, avoiding garbled
  * output in other terminals (and working over SSH).
  *
- * On Unix we write to /dev/tty so the sequence bypasses any stdout redirection
- * or terminal-multiplexer capture. On Windows /dev/tty does not exist, so we
- * fall back to process.stdout.
+ * Delivery order:
+ *   1. `/dev/tty` — the controlling terminal, when this process has one (the
+ *      upstream `@warp-dot-dev/opencode-warp` behavior; e.g. `opencode
+ *      --standalone`, where the server keeps the caller's tty).
+ *   2. the pty of each attached OpenCode TUI client — the normal V2 case,
+ *      where the plugin lives in the detached background service.
+ *   3. `process.stdout` — last resort (works on Windows/ConPTY in-process).
  */
 function warpNotify(title: string, body: string): void {
   if (!inWarp()) return
   const sequence = `\x1b]777;notify;${title};${body}\x07`
   try {
     writeFileSync("/dev/tty", sequence)
+    return
   } catch {
+    // No controlling terminal (detached service) — fall through.
+  }
+  let delivered = false
+  for (const device of clientTtyDevices()) {
     try {
-      process.stdout.write(sequence)
+      writeFileSync(device, sequence)
+      delivered = true
     } catch {
-      // Silently ignore if stdout is also unavailable.
+      // The tab may have closed since discovery — try the next device.
     }
+  }
+  if (delivered) return
+  try {
+    process.stdout.write(sequence)
+  } catch {
+    // Silently ignore if stdout is also unavailable.
   }
 }
 

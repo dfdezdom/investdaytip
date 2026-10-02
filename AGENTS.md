@@ -333,17 +333,33 @@ derived but was **rejected** as the EPS-Revisions fallback (factor-IC −0.059) 
 diagnostic only. Details: `stockfit/data_source_stockfit_validation.md`.
 
 Robustness fixes found during that validation (keep them):
-- shares fallback chain `sharesOutstanding → currentSharesOutstanding →
-  sharesIssued` (CVX/JNJ tag the second one — without it P/B and market cap
-  went `None`);
-- dividend rows are scanned for the first non-`dividendPerShare=None` entry
-  (JNJ returns all-None shells) — otherwise degrades to `None`;
+- shares preference `currentSharesOutstanding → sharesOutstanding →
+  sharesIssued` (CVX/JNJ tag the first one — without the fallback P/B and
+  market cap went `None`);
+- dividends are summed from the latest **four quarterly** payments (TTM) —
+  the annual rows sometimes report a single quarter's rate as "annual" (UNH:
+  2.20 vs a real ~8.8/yr); the annual scan is only a fallback for issuers
+  whose rows are empty shells (JNJ);
 - ticker case is normalized at the StockFit layer (`_norm_ticker()`,
   `meta` → `META`) in every public entry point — `lookup/batch` keys its
   response by the uppercase symbol and cache keys / snapshot filenames are
   case-sensitive, so a lowercase `-t meta` used to miss all of them and
   silently fall back to yfinance (rankings are source-dependent!). The
   `_lookup_profile` key match is case-insensitive as defense in depth.
+
+**Cross-source unification (2026-10-02):** `_fetch_stock()` (yfinance path)
+derives `earnings_growth`, `revenue_growth`, `return_on_equity`,
+`return_on_assets`, `profit_margin`, `debt_to_equity`, `current_ratio` and
+`eps_acceleration` from the annual statement frames with the same formulas as
+`_derive_stock_data`, and computes `free_cashflow` as
+`operatingCashflow − |capitalExpenditures|` from info — overriding the Yahoo
+fields, which used different definitions (quarterly-YoY growth, own ratio
+bases, near-quarterly FCF values like MSFT 16.5B vs the coherent 67B TTM).
+Info values survive when statements are missing. Measured on the top-20 US
+(both sources through `recommend()`): Spearman 0.441 → **0.946**, top-10
+overlap 6/10 → **9/10**, `earnings_growth` diffs 19/20 → **0/20**. Residual
+differences are *basis* (StockFit levels read TTM, the yfinance derivations
+read FY), not definitions — see `stockfit/top20_comparison.md`.
 
 GICS sector names are mapped to yfinance-style (`Information Technology` →
 `Technology`) so `-s` filters and the advisor sector tilt behave identically.
