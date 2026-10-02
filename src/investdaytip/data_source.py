@@ -646,6 +646,56 @@ def _fetch_stock(
         )
         data.margin_improving, data.roa_improving = improvement_flags(cur, prev)
 
+        # Unified derivations — same formulas as the backtest builders
+        # (``_derive_stock_data``), overriding the Yahoo-computed info fields
+        # so every path shares one definition (characterized 2026-09-29: the
+        # info ratios used different denominator bases — AAPL ROE 1.20 vs
+        # Yahoo's 1.49).  Comparisons stay FY-vs-FY; only the *derived value*
+        # changes.  When a fact is missing the info value survives.
+        ni = cur.get("NetIncome")
+        ta = cur.get("TotalAssets")
+        equity = cur.get("StockholdersEquity")
+        rev = cur.get("TotalRevenue")
+        td = cur.get("TotalDebt")
+        ca, cl = cur.get("CurrentAssets"), cur.get("CurrentLiabilities")
+
+        growth_ni = _pct_change(ni, prev.get("NetIncome"))
+        if growth_ni is not None:
+            data.earnings_growth = growth_ni
+        growth_rev = _pct_change(rev, prev.get("TotalRevenue"))
+        if growth_rev is not None:
+            data.revenue_growth = growth_rev
+        if ni is not None and equity is not None and equity > 0:
+            data.return_on_equity = ni / equity
+        if ni is not None and ta is not None and ta > 0:
+            data.return_on_assets = ni / ta
+        if ni is not None and rev is not None and rev > 0:
+            data.profit_margin = ni / rev
+        if td is not None and equity is not None and equity > 0:
+            data.debt_to_equity = (td / equity) * 100.0
+        if ca is not None and cl is not None and cl > 0:
+            data.current_ratio = ca / cl
+
+        # EPS acceleration (diagnostic; same 3-FY chain as the other paths)
+        two_back = annual_facts(
+            income_stmt, balance_sheet, None, datetime.now(), years_back=2
+        )
+        accel = _eps_acceleration(
+            _first(cur.get("DilutedEPS"), cur.get("BasicEPS")),
+            _first(prev.get("DilutedEPS"), prev.get("BasicEPS")),
+            _first(two_back.get("DilutedEPS"), two_back.get("BasicEPS")),
+        )
+        if accel is not None:
+            data.eps_acceleration = accel
+
+    # FCF: derive TTM OCF − capex ourselves.  The ``freeCashflow`` info field
+    # served near-quarterly values for several mega-caps (MSFT 16.5B vs the
+    # coherent 67B TTM), while OCF and capex are consistently TTM.
+    ocf = _safe_get(info, "operatingCashflow")
+    capex = _safe_get(info, "capitalExpenditures")
+    if ocf is not None and capex is not None:
+        data.free_cashflow = ocf - abs(capex)
+
     return data
 
 

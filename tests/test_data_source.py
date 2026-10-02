@@ -131,6 +131,60 @@ def test_fetch_asset_generic_error_returns_error_dataclass(mocker):
     sleep.assert_not_called()
 
 
+def test_fetch_stock_unified_statement_derivation():
+    """Statement-derived fundamentals override the Yahoo info fields so every
+    path shares one definition (2026-10-02 unification)."""
+    from investdaytip.data_source import _fetch_stock
+
+    income = pd.DataFrame(
+        {
+            pd.Timestamp("2022-12-31"): {"Net Income": 60.0, "Total Revenue": 300.0,
+                                          "Basic EPS": 5.0},
+            pd.Timestamp("2023-12-31"): {"Net Income": 80.0, "Total Revenue": 350.0,
+                                          "Basic EPS": 6.0},
+            pd.Timestamp("2024-12-31"): {"Net Income": 100.0, "Total Revenue": 400.0,
+                                          "Basic EPS": 7.0},
+        }
+    )
+    balance = pd.DataFrame(
+        {
+            pd.Timestamp("2023-12-31"): {"Total Assets": 950.0},
+            pd.Timestamp("2024-12-31"): {
+                "Total Assets": 1000.0, "Stockholders Equity": 200.0,
+                "Total Debt": 50.0, "Current Assets": 400.0,
+                "Current Liabilities": 200.0,
+            },
+        }
+    )
+    info = {
+        "earningsGrowth": 5.0, "revenueGrowth": 9.0, "returnOnEquity": 9.99,
+        "returnOnAssets": 9.99, "profitMargins": 0.99, "debtToEquity": 999.0,
+        "currentRatio": 9.99, "freeCashflow": 1.0,
+        "operatingCashflow": 100.0, "capitalExpenditures": -30.0,
+    }
+    data = _fetch_stock("TEST", info, pd.DataFrame(),
+                        income_stmt=income, balance_sheet=balance)
+    assert data.earnings_growth == pytest.approx((100 - 80) / 80)   # FY-vs-FY
+    assert data.revenue_growth == pytest.approx((400 - 350) / 350)
+    assert data.return_on_equity == pytest.approx(100 / 200)        # our formula
+    assert data.return_on_assets == pytest.approx(100 / 1000)
+    assert data.profit_margin == pytest.approx(100 / 400)
+    assert data.debt_to_equity == pytest.approx(50 / 200 * 100)
+    assert data.current_ratio == pytest.approx(400 / 200)
+    assert data.free_cashflow == pytest.approx(70.0)                # OCF - |capex|
+    assert data.eps_acceleration == pytest.approx((7 / 6 - 1) - (6 / 5 - 1))
+
+
+def test_fetch_stock_keeps_info_values_without_statements():
+    """No statements → the info fields survive unchanged (graceful fallback)."""
+    from investdaytip.data_source import _fetch_stock
+
+    info = {"earningsGrowth": 0.5, "returnOnEquity": 0.2, "freeCashflow": 7.0}
+    data = _fetch_stock("TEST", info, pd.DataFrame())
+    assert data.earnings_growth == 0.5
+    assert data.return_on_equity == 0.2
+    assert data.free_cashflow == 7.0
+    assert data.margin_improving is None
 def test_fetch_stock_flags_from_statements():
     """Statements present → YoY-improvement flags computed; absent → None."""
     from investdaytip.data_source import _fetch_stock
