@@ -587,6 +587,17 @@ def _derive_stock_data(
     # EPS-revisions fallback: as-filed EPS growth acceleration.
     accel = _eps_acceleration(eps_yoy, fund.eps_prev, fund.eps_prev2)
 
+    # Derived PEG — P/E ÷ earnings growth, only for positive growth
+    # (decliners have no meaningful PEG → None → neutral).  Unifies the
+    # sources and adds the best IC of the Value family (2026-10-02:
+    # peg_derived IC +0.055 / 86% hit vs P/E −0.029 and P/B −0.011).
+    peg = (
+        trailing_pe / earnings_growth
+        if (trailing_pe is not None and trailing_pe > 0
+            and earnings_growth is not None and earnings_growth > 0)
+        else None
+    )
+
     return StockData(
         ticker=ticker,
         name=info.get("shortName") or info.get("longName"),
@@ -596,7 +607,7 @@ def _derive_stock_data(
         trailing_pe=trailing_pe,
         forward_pe=None,
         price_to_book=price_to_book,
-        peg_ratio=None,
+        peg_ratio=peg,
         return_on_equity=roe,
         return_on_assets=roa,
         profit_margin=profit_margin,
@@ -718,6 +729,13 @@ def _fetch_stock(
         )
         if accel is not None:
             data.eps_acceleration = accel
+
+    # Derived PEG (same rule as `_derive_stock_data`): P/E ÷ growth when both
+    # are positive — overrides Yahoo's `pegRatio` so both sources share one
+    # definition (yfinance's peg is analyst-based and often absurd).
+    if (data.trailing_pe is not None and data.trailing_pe > 0
+            and data.earnings_growth is not None and data.earnings_growth > 0):
+        data.peg_ratio = data.trailing_pe / data.earnings_growth
 
     # FCF: derive TTM OCF − capex ourselves.  The ``freeCashflow`` info field
     # served near-quarterly values for several mega-caps (MSFT 16.5B vs the
