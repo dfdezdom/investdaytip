@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.15.0 (2026-10-02)
+
+### Features
+
+- **Derived PEG in the Value factor** — `PEG = trailing P/E ÷ earnings growth` (positive growth only; decliners stay neutral), computed identically in every path (backtest, yfinance and StockFit sources). It was the best IC of the Value family (factor-IC +0.055 mean / 86% hit vs P/E −0.029 and P/B −0.011) and it replaces Yahoo's analyst-based `pegRatio`, which was often absurd (BMY: 17.37 against +178% growth; both sources now read 7.5). Validated before/after on the full US universe: **5y alpha 5.75%→6.51%, Sharpe 0.68→0.73; 3y alpha 12.61%→14.54%, Sharpe 1.56→1.84, 12M win rate 75%→100%** — never worse on any metric. **Scores and rankings differ from 0.14.2.**
+- **Unified fundamentals across data sources** — the yfinance path now derives growth and ratios from the same statements-based formulas as the backtest builders (instead of Yahoo's differently-defined info fields), with levels on a **TTM basis** (flows summed over the latest four quarters, balances from the latest quarter — matching StockFit's `period=ttm` overlay) and TTM free cash flow from the quarterly cash-flow statement. Comparisons keep their validated fiscal-year basis. Characterized on the top-20 US: cross-source Spearman rank correlation **0.441 → 0.971**, top-10 overlap 6/10 → 9/10, `earnings_growth` diffs 19/20 → 0/20, `current_ratio` 7/20 → 0/20, FCF 16/20 → 4/20.
+
+### Fixes
+
+- **Mis-scaled facts fall back to yfinance** — ADR share classes / issued-vs-outstanding / currency mixes produced garbage absolutes (TSM: 5× market cap and P/E 225; PG: 1.7×). Two guards: an internal `NI ≈ EPS × shares` check in the StockFit fetcher, and a plausibility screen (P/E > 150 or P/B > 60) that cross-checks market cap — both feed the automatic yfinance fallback. Clean tickers pay zero extra calls.
+- **StockFit dividends are TTM** — summed from the latest four quarterly payments (some filers report a single quarter's rate as "annual": UNH showed 0.59% yield instead of 2.4%).
+- **Thread-safe stderr suppression** — `_suppress_stderr()` swapped the global `sys.stderr` from concurrent fetch threads; the first to exit restored another thread's closed devnull ("I/O operation on closed file"). Nested correctly now, with a regression test.
+
 ## v0.14.2 (2026-09-29)
 
 ### Fixes
