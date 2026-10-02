@@ -221,6 +221,14 @@ def main() -> None:
                 "revenue_growth": stock.revenue_growth,
                 "eps_surprise": stock.eps_surprise,
                 "eps_acceleration": stock.eps_acceleration,
+                # Candidate PEG policy: derived PEG = P/E ÷ earnings growth
+                # (only meaningful for positive growth)
+                "peg_derived_NEG": (
+                    -(stock.trailing_pe / stock.earnings_growth)
+                    if (stock.trailing_pe and stock.earnings_growth
+                        and stock.trailing_pe > 0 and stock.earnings_growth > 0)
+                    else None
+                ),
                 # raw trend / candidates
                 "return_12m": stock.return_12m,
                 "return_12m_ex_1m": r12x1,

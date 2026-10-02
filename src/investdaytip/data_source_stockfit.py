@@ -1190,6 +1190,20 @@ def fetch_asset_stockfit(
     if ttm_facts:
         _apply_ttm_overlay(fund, ttm_facts)
 
+    # Internal consistency: net income ≈ EPS × shares.  A big mismatch means
+    # the facts are mis-scaled — ADR share classes, issued-vs-outstanding,
+    # mixed currencies (TSM tagged a 5× market cap, PG 1.7×) — and scoring
+    # them would produce garbage.  Fail loudly: the orchestrator's automatic
+    # yfinance fallback then takes over for this ticker.
+    if fund.ni and fund.ni > 0 and fund.eps and fund.eps > 0 and fund.shares and fund.shares > 0:
+        implied_shares = fund.ni / fund.eps
+        if abs(implied_shares / fund.shares - 1.0) > 0.25:
+            raise StockfitError(
+                f"StockFit facts mis-scaled for {ticker} (NI/EPS implies "
+                f"{implied_shares / 1e9:.2f}B shares vs {fund.shares / 1e9:.2f}B "
+                "tagged) — falling back to yfinance"
+            )
+
     # 3) Prices — 2y of daily adjusted closes (trend + latest price).  The
     # 15-minute history cache is shared with the yfinance path on purpose:
     # both serve the same split/dividend-adjusted closes (verified to 8

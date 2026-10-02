@@ -216,6 +216,31 @@ def test_fetch_stock_flags_from_statements():
     assert plain.roa_improving is None
 
 
+def test_suppress_stderr_is_thread_safe():
+    """Concurrent _suppress_stderr() must never leave sys.stderr pointing at a
+    closed devnull (regression: parallel fetch threads corrupted the stream —
+    'I/O operation on closed file' at interpreter shutdown)."""
+    import sys
+    import threading
+
+    from investdaytip.data_source import _suppress_stderr
+
+    real_stderr = sys.stderr
+
+    def worker():
+        for _ in range(25):
+            with _suppress_stderr():
+                pass
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sys.stderr is real_stderr
+    sys.stderr.write("")  # still usable
+
+
 def test_eps_acceleration_second_derivative():
     from investdaytip.data_source import _eps_acceleration
 

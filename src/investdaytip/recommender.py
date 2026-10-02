@@ -244,7 +244,16 @@ def recommend(
 
                 missing_market_cap = data.market_cap is None
                 missing_eps_surprise = data.eps_surprise is None
-                if not (missing_market_cap or missing_eps_surprise):
+                # Plausibility screen: absurd P/E or P/B usually means the
+                # facts are on a different scale than the price (ADR
+                # share classes priced per-ADR, currency mix — TSM served
+                # P/E 225 and a 5x market cap).  Only these get the extra
+                # yfinance cross-check; clean tickers pay zero calls.
+                suspicious = (
+                    (data.trailing_pe is not None and data.trailing_pe > 150)
+                    or (data.price_to_book is not None and data.price_to_book > 60)
+                )
+                if not (missing_market_cap or missing_eps_surprise or suspicious):
                     return data
 
                 try:
@@ -265,6 +274,15 @@ def recommend(
                         ticker, "; ".join(yahoo.errors) if yahoo.errors else "not a stock",
                     )
                     return data
+
+                if suspicious and yahoo.market_cap and data.market_cap:
+                    if abs(data.market_cap / yahoo.market_cap - 1.0) > 0.25:
+                        logger.warning(
+                            "StockFit facts mis-scaled for %s (market cap %.2fT vs "
+                            "yfinance %.2fT) — using yfinance data instead",
+                            ticker, data.market_cap / 1e12, yahoo.market_cap / 1e12,
+                        )
+                        return yahoo
 
                 if missing_market_cap and yahoo.market_cap is not None:
                     data.market_cap = yahoo.market_cap

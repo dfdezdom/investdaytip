@@ -340,6 +340,15 @@ Robustness fixes found during that validation (keep them):
   the annual rows sometimes report a single quarter's rate as "annual" (UNH:
   2.20 vs a real ~8.8/yr); the annual scan is only a fallback for issuers
   whose rows are empty shells (JNJ);
+- **mis-scaled-facts guards** (ADR share classes / issued-vs-outstanding /
+  currency mixes — TSM served a 5× market cap with P/E 225, PG 1.7×): a)
+  `fetch_asset_stockfit` raises when `NI/EPS` implies shares >25% off the
+  tagged count (catches PG), and b) the recommender's enrichment applies a
+  plausibility screen (P/E > 150 or P/B > 60) and, for those only, a
+  yfinance market-cap cross-check — >25% off replaces the whole ticker with
+  the yfinance data. Both paths feed the automatic yfinance fallback.
+  Clean tickers pay zero extra calls (AAPL's real P/B ~45 and NVDA's ~50 do
+  not trip the screen);
 - ticker case is normalized at the StockFit layer (`_norm_ticker()`,
   `meta` → `META`) in every public entry point — `lookup/batch` keys its
   response by the uppercase symbol and cache keys / snapshot filenames are
