@@ -210,6 +210,48 @@ def test_annual_facts_empty_frames():
 # ── improvement_flags ────────────────────────────────────────────────────────
 
 
+def test_ttm_facts_sums_flows_and_takes_latest_balances():
+    from investdaytip.financial_health import ttm_facts
+
+    def frame(rows):
+        cols = sorted({pd.Timestamp(c) for vals in rows.values() for c, _ in vals})
+        data = {label: {pd.Timestamp(c): v for c, v in vals} for label, vals in rows.items()}
+        return pd.DataFrame(data, index=cols).T
+
+    q_income = frame({
+        "Net Income": [("2024-03-31", 20.0), ("2024-06-30", 25.0),
+                       ("2024-09-30", 30.0), ("2024-12-31", 35.0), ("2025-03-31", 40.0)],
+        "Total Revenue": [("2024-03-31", 80.0), ("2024-06-30", 90.0),
+                          ("2024-09-30", 100.0), ("2024-12-31", 110.0), ("2025-03-31", 120.0)],
+    })
+    q_balance = frame({
+        "Total Assets": [("2024-12-31", 900.0), ("2025-03-31", 950.0)],
+        "Stockholders Equity": [("2024-12-31", 190.0), ("2025-03-31", 200.0)],
+    })
+    q_cash = frame({
+        "Free Cash Flow": [("2024-03-31", 5.0), ("2024-06-30", 6.0),
+                           ("2024-09-30", 7.0), ("2024-12-31", 8.0), ("2025-03-31", 9.0)],
+    })
+
+    facts = ttm_facts(q_income, q_balance, q_cash)
+    assert facts["NetIncome"] == pytest.approx(25.0 + 30.0 + 35.0 + 40.0)  # last 4 quarters
+    assert facts["TotalRevenue"] == pytest.approx(90.0 + 100.0 + 110.0 + 120.0)
+    assert facts["FreeCashFlow"] == pytest.approx(6.0 + 7.0 + 8.0 + 9.0)
+    assert facts["TotalAssets"] == pytest.approx(950.0)        # latest quarter
+    assert facts["StockholdersEquity"] == pytest.approx(200.0)
+
+
+def test_ttm_facts_needs_four_quarters():
+    from investdaytip.financial_health import ttm_facts
+
+    short = pd.DataFrame(
+        {"Net Income": [1.0, 2.0]},
+        index=pd.DatetimeIndex([pd.Timestamp("2024-03-31"), pd.Timestamp("2024-06-30")]),
+    ).T
+    assert ttm_facts(short, None, None) == {}
+    assert ttm_facts(None, None, None) == {}
+
+
 def test_improvement_flags_basic():
     cur = {"GrossProfit": 200.0, "TotalRevenue": 400.0,
            "NetIncome": 100.0, "TotalAssets": 1000.0}

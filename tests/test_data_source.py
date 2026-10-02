@@ -239,6 +239,59 @@ def test_derived_peg_requires_positive_pe_and_growth():
     assert d2.peg_ratio == pytest.approx(d2.trailing_pe / d2.earnings_growth)
 
 
+def test_fetch_stock_ttm_levels_from_quarterly_frames(mocker):
+    """Levels read TTM (4-quarter sums / latest balances) when quarterly
+    frames exist; comparisons stay FY-vs-FY; TTM FCF wins over info."""
+    from investdaytip.data_source import _fetch_stock
+
+    income = pd.DataFrame(
+        {
+            pd.Timestamp("2023-12-31"): {"Net Income": 60.0, "Total Revenue": 300.0,
+                                          "Basic EPS": 5.0},
+            pd.Timestamp("2024-12-31"): {"Net Income": 80.0, "Total Revenue": 350.0,
+                                          "Basic EPS": 6.0},
+        }
+    )
+    balance = pd.DataFrame(
+        {pd.Timestamp("2024-12-31"): {"Total Assets": 1000.0, "Stockholders Equity": 200.0}}
+    )
+    q_income = pd.DataFrame(
+        {
+            pd.Timestamp("2024-03-31"): {"Net Income": 10.0, "Total Revenue": 90.0},
+            pd.Timestamp("2024-06-30"): {"Net Income": 12.0, "Total Revenue": 95.0},
+            pd.Timestamp("2024-09-30"): {"Net Income": 14.0, "Total Revenue": 100.0},
+            pd.Timestamp("2024-12-31"): {"Net Income": 16.0, "Total Revenue": 105.0},
+        }
+    )
+    q_balance = pd.DataFrame(
+        {pd.Timestamp("2024-12-31"): {"Total Assets": 1100.0, "Stockholders Equity": 220.0}}
+    )
+    q_cash = pd.DataFrame(
+        {
+            pd.Timestamp("2024-03-31"): {"Free Cash Flow": 5.0},
+            pd.Timestamp("2024-06-30"): {"Free Cash Flow": 6.0},
+            pd.Timestamp("2024-09-30"): {"Free Cash Flow": 7.0},
+            pd.Timestamp("2024-12-31"): {"Free Cash Flow": 8.0},
+        }
+    )
+    mocker.patch(
+        "investdaytip.data_source.fetch_quarterly_frames",
+        return_value=(q_income, q_balance, q_cash),
+    )
+    info = {"trailingPE": 10.0, "operatingCashflow": 100.0, "capitalExpenditures": -30.0}
+    data = _fetch_stock("TEST", info, pd.DataFrame(),
+                        income_stmt=income, balance_sheet=balance)
+
+    # levels: TTM sums / latest quarter balances
+    assert data.return_on_equity == pytest.approx(52.0 / 220.0)   # TTM NI / TTM equity
+    assert data.profit_margin == pytest.approx(52.0 / 390.0)
+    assert data.debt_to_equity is None or data.debt_to_equity >= 0
+    # comparisons: still FY-vs-FY (80 vs 60)
+    assert data.earnings_growth == pytest.approx((80 - 60) / 60)
+    # FCF: quarterly sum beats the info OCF−capex fallback
+    assert data.free_cashflow == pytest.approx(26.0)
+
+
 def test_suppress_stderr_is_thread_safe():
     """Concurrent _suppress_stderr() must never leave sys.stderr pointing at a
     closed devnull (regression: parallel fetch threads corrupted the stream —

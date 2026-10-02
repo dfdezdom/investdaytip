@@ -122,6 +122,76 @@ def annual_facts(
 # ── Piotroski F-Score ────────────────────────────────────────────────────────
 
 
+def ttm_facts(
+    q_income: Optional[pd.DataFrame],
+    q_balance: Optional[pd.DataFrame],
+    q_cash: Optional[pd.DataFrame],
+) -> dict[str, float]:
+    """Trailing-twelve-month facts from quarterly statement frames.
+
+    Same semantics as StockFit's ``period=ttm`` block: **flows** (income
+    statement, cash flow) are summed over the latest four reported quarters,
+    **balances and share counts** come from the latest quarter.  Returns ``{}``
+    when fewer than four quarters of income data exist (a partial sum would
+    not be a TTM) — callers keep their annual-derived values instead.
+
+    Fact keys match :func:`annual_facts` so both bases are interchangeable.
+    """
+    def _quarter_sum(df: Optional[pd.DataFrame], row_label: str) -> Optional[float]:
+        if df is None or df.empty or row_label not in df.index:
+            return None
+        cols = sorted(c for c in df.columns if not pd.isna(c))
+        if len(cols) < 4:
+            return None
+        total = 0.0
+        for col in cols[-4:]:
+            val = df.loc[row_label, col]
+            if isinstance(val, pd.Series):
+                val = val.iloc[0]
+            if pd.isna(val):
+                return None  # incomplete window → not a valid TTM
+            total += float(val)
+        return total
+
+    def _latest_quarter(df: Optional[pd.DataFrame], row_label: str) -> Optional[float]:
+        if df is None or df.empty or row_label not in df.index:
+            return None
+        cols = sorted(c for c in df.columns if not pd.isna(c))
+        if not cols:
+            return None
+        val = df.loc[row_label, cols[-1]]
+        if isinstance(val, pd.Series):
+            val = val.iloc[0]
+        return None if pd.isna(val) else float(val)
+
+    ni = _quarter_sum(q_income, "Net Income")
+    if ni is None:
+        return {}
+    facts: dict[str, float] = {"NetIncome": ni}
+    for key, row in (("TotalRevenue", "Total Revenue"), ("GrossProfit", "Gross Profit"),
+                     ("BasicEPS", "Basic EPS"), ("DilutedEPS", "Diluted EPS"),
+                     ("EBIT", "EBIT")):
+        v = _quarter_sum(q_income, row)
+        if v is not None:
+            facts[key] = v
+    for key, row in (("OperatingCashFlow", "Operating Cash Flow"),
+                     ("FreeCashFlow", "Free Cash Flow")):
+        v = _quarter_sum(q_cash, row)
+        if v is not None:
+            facts[key] = v
+    for key, row in (("TotalAssets", "Total Assets"),
+                     ("StockholdersEquity", "Stockholders Equity"),
+                     ("CurrentAssets", "Current Assets"),
+                     ("CurrentLiabilities", "Current Liabilities"),
+                     ("TotalDebt", "Total Debt"),
+                     ("TotalLiabilities", "Total Liabilities Net Minority Interest"),
+                     ("OrdinarySharesNumber", "Ordinary Shares Number")):
+        v = _latest_quarter(q_balance, row)
+        if v is not None:
+            facts[key] = v
+    return facts
+
+
 def improvement_flags(
     cur: Mapping[str, Optional[float]], prev: Mapping[str, Optional[float]]
 ) -> tuple[Optional[bool], Optional[bool]]:

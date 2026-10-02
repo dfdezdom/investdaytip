@@ -23,7 +23,7 @@ import pandas as pd
 import yfinance as yf
 from yfinance.exceptions import YFRateLimitError
 
-from investdaytip.financial_health import annual_facts, improvement_flags
+from investdaytip.financial_health import annual_facts, improvement_flags, ttm_facts
 
 # Silence yfinance's verbose logging (delisted symbols, HTTP errors)
 for _name in ("yfinance", "yfinance.ticker", "yfinance.utils", "yfinance.data", "peewee"):
@@ -681,6 +681,7 @@ def _fetch_stock(
 
     # YoY improvement flags from annual statements (None = unknown when the
     # statements are unavailable — same semantics as the backtest builders).
+    ttm_fcf: Optional[float] = None
     if income_stmt is not None and balance_sheet is not None:
         cur = annual_facts(income_stmt, balance_sheet, None, datetime.now())
         prev = annual_facts(
@@ -688,35 +689,47 @@ def _fetch_stock(
         )
         data.margin_improving, data.roa_improving = improvement_flags(cur, prev)
 
-        # Unified derivations — same formulas as the backtest builders
-        # (``_derive_stock_data``), overriding the Yahoo-computed info fields
-        # so every path shares one definition (characterized 2026-09-29: the
-        # info ratios used different denominator bases — AAPL ROE 1.20 vs
-        # Yahoo's 1.49).  Comparisons stay FY-vs-FY; only the *derived value*
-        # changes.  When a fact is missing the info value survives.
-        ni = cur.get("NetIncome")
-        ta = cur.get("TotalAssets")
-        equity = cur.get("StockholdersEquity")
-        rev = cur.get("TotalRevenue")
-        td = cur.get("TotalDebt")
-        ca, cl = cur.get("CurrentAssets"), cur.get("CurrentLiabilities")
-
-        growth_ni = _pct_change(ni, prev.get("NetIncome"))
+        # Comparisons stay FY-vs-FY (validated semantics: backtests and the
+        # factor-IC runs are FY-based).  Levels prefer the **TTM** basis so
+        # both live sources share it — StockFit's overlay serves TTM and
+        # yfinance's own ratios are trailing (2026-10-02: before this, AAPL
+        # ROE read 1.20 on StockFit vs 1.52 here purely on basis).  The TTM
+        # source is the quarterly frames (flows summed over 4 quarters,
+        # balances from the latest quarter) with per-field fallback to the
+        # annual figure, and to the info value when both are missing.
+        growth_ni = _pct_change(cur.get("NetIncome"), prev.get("NetIncome"))
         if growth_ni is not None:
             data.earnings_growth = growth_ni
-        growth_rev = _pct_change(rev, prev.get("TotalRevenue"))
+        growth_rev = _pct_change(cur.get("TotalRevenue"), prev.get("TotalRevenue"))
         if growth_rev is not None:
             data.revenue_growth = growth_rev
-        if ni is not None and equity is not None and equity > 0:
-            data.return_on_equity = ni / equity
-        if ni is not None and ta is not None and ta > 0:
-            data.return_on_assets = ni / ta
-        if ni is not None and rev is not None and rev > 0:
-            data.profit_margin = ni / rev
-        if td is not None and equity is not None and equity > 0:
-            data.debt_to_equity = (td / equity) * 100.0
-        if ca is not None and cl is not None and cl > 0:
-            data.current_ratio = ca / cl
+
+        q_income, q_balance, q_cash = fetch_quarterly_frames(ticker)
+        ttm = ttm_facts(q_income, q_balance, q_cash)
+
+        def lv(key: str) -> Optional[float]:
+            value = ttm.get(key)
+            return value if value is not None else cur.get(key)
+
+        ni_l, ta_l = lv("NetIncome"), lv("TotalAssets")
+        equity_l, rev_l = lv("StockholdersEquity"), lv("TotalRevenue")
+        td_l = lv("TotalDebt")
+        ca_l, cl_l = lv("CurrentAssets"), lv("CurrentLiabilities")
+
+        if ni_l is not None and equity_l is not None and equity_l > 0:
+            data.return_on_equity = ni_l / equity_l
+        if ni_l is not None and ta_l is not None and ta_l > 0:
+            data.return_on_assets = ni_l / ta_l
+        if ni_l is not None and rev_l is not None and rev_l > 0:
+            data.profit_margin = ni_l / rev_l
+        if td_l is not None and equity_l is not None and equity_l > 0:
+            data.debt_to_equity = (td_l / equity_l) * 100.0
+        if ca_l is not None and cl_l is not None and cl_l > 0:
+            data.current_ratio = ca_l / cl_l
+
+        ttm_fcf = ttm.get("FreeCashFlow")
+        if ttm_fcf is not None:
+            data.free_cashflow = ttm_fcf
 
         # EPS acceleration (diagnostic; same 3-FY chain as the other paths)
         two_back = annual_facts(
@@ -737,12 +750,13 @@ def _fetch_stock(
             and data.earnings_growth is not None and data.earnings_growth > 0):
         data.peg_ratio = data.trailing_pe / data.earnings_growth
 
-    # FCF: derive TTM OCF − capex ourselves.  The ``freeCashflow`` info field
+    # FCF fallback: derive TTM OCF − capex from info when the quarterly
+    # cash-flow frame did not provide one.  The ``freeCashflow`` info field
     # served near-quarterly values for several mega-caps (MSFT 16.5B vs the
     # coherent 67B TTM), while OCF and capex are consistently TTM.
     ocf = _safe_get(info, "operatingCashflow")
     capex = _safe_get(info, "capitalExpenditures")
-    if ocf is not None and capex is not None:
+    if ttm_fcf is None and ocf is not None and capex is not None:
         data.free_cashflow = ocf - abs(capex)
 
     return data
@@ -822,6 +836,22 @@ def fetch_statement_frames(ticker: str) -> tuple[Optional[pd.DataFrame], Optiona
 def fetch_cash_flow_frame(ticker: str) -> Optional[pd.DataFrame]:
     """Annual cash-flow statement (7-day cache) — needed for Piotroski's OCF check."""
     return _cached_statement_frame(ticker, "cash_flow")
+
+
+def fetch_quarterly_frames(
+    ticker: str,
+) -> tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[pd.DataFrame]]:
+    """Quarterly income / balance / cash-flow frames (7-day cache).
+
+    Used to derive TTM levels (flows = sum of the last four quarters,
+    balances = latest quarter) so the yfinance path matches StockFit's
+    ``period=ttm`` semantics.
+    """
+    return (
+        _cached_statement_frame(ticker, "quarterly_income_stmt"),
+        _cached_statement_frame(ticker, "quarterly_balance_sheet"),
+        _cached_statement_frame(ticker, "quarterly_cash_flow"),
+    )
 
 
 def fetch_asset(ticker: str, min_market_cap: float = 0.0, with_improvements: bool = True) -> AssetData:
