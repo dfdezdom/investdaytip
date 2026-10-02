@@ -157,6 +157,7 @@ def test_fetch_stock_unified_statement_derivation():
         }
     )
     info = {
+        "trailingPE": 20.0,
         "earningsGrowth": 5.0, "revenueGrowth": 9.0, "returnOnEquity": 9.99,
         "returnOnAssets": 9.99, "profitMargins": 0.99, "debtToEquity": 999.0,
         "currentRatio": 9.99, "freeCashflow": 1.0,
@@ -173,6 +174,7 @@ def test_fetch_stock_unified_statement_derivation():
     assert data.current_ratio == pytest.approx(400 / 200)
     assert data.free_cashflow == pytest.approx(70.0)                # OCF - |capex|
     assert data.eps_acceleration == pytest.approx((7 / 6 - 1) - (6 / 5 - 1))
+    assert data.peg_ratio == pytest.approx(20.0 / ((100 - 80) / 80))  # derived PEG
 
 
 def test_fetch_stock_keeps_info_values_without_statements():
@@ -214,6 +216,27 @@ def test_fetch_stock_flags_from_statements():
     plain = _fetch_stock("TEST", {}, pd.DataFrame())
     assert plain.margin_improving is None
     assert plain.roa_improving is None
+
+
+def test_derived_peg_requires_positive_pe_and_growth():
+    """Derived PEG = P/E ÷ growth, and only with positive growth (decliners
+    have no meaningful PEG — they stay None → neutral in Value)."""
+    from investdaytip.data_source import _derive_stock_data, _Fundamentals
+
+    declining = _Fundamentals(ni=80.0, eps=6.0, ni_prev=100.0, rev=300.0, rev_prev=350.0)
+    d = _derive_stock_data(
+        "T", {"shortName": "T"}, 100.0, (None, None, None, None, None, None),
+        None, None, declining, None, None,
+    )
+    assert d.earnings_growth == pytest.approx(-0.2)
+    assert d.peg_ratio is None
+
+    growing = _Fundamentals(ni=100.0, eps=7.0, ni_prev=80.0, rev=400.0, rev_prev=350.0)
+    d2 = _derive_stock_data(
+        "T", {"shortName": "T"}, 100.0, (None, None, None, None, None, None),
+        None, None, growing, None, None,
+    )
+    assert d2.peg_ratio == pytest.approx(d2.trailing_pe / d2.earnings_growth)
 
 
 def test_suppress_stderr_is_thread_safe():
