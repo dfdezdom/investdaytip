@@ -128,10 +128,11 @@ def test_fetch_asset_stockfit_happy_path(mocker):
     assert data.payout_ratio == pytest.approx(2.0 / 8.0)
     assert data.return_12m is not None     # trend from the price series
     # No analyst estimates in StockFit → forward PE and eps_surprise stay
-    # None; PEG is now DERIVED (P/E ÷ growth) instead of neutral-missing.
+    # None; PEG is now DERIVED (P/E ÷ growth-as-percent) instead of
+    # neutral-missing.
     assert data.forward_pe is None
     assert data.peg_ratio == pytest.approx(
-        data.trailing_pe / data.earnings_growth
+        data.trailing_pe / (data.earnings_growth * 100.0)
     )
     assert data.eps_surprise is None
 

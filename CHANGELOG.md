@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.15.2 (2026-10-02)
+
+### Fixes
+
+- **Derived PEG now uses standard PEG units** — the derivation divided P/E by the growth *decimal* instead of the percentage (`trailing_pe / earnings_growth` vs the `P/E ÷ growth%` that the scorer's `best=0.8 / worst=3.0` thresholds assume), inflating every derived PEG 100× (LLY read 40.8 instead of 0.41). The sub-metric therefore scored **0 for every grower while decliners stayed neutral** (inverted), Value collapsed below the disqualification threshold, and quality names were capped at exactly 50.0 (advisor run: `LLY 50.0 → 79.1`, `AVGO 50.0 → 69.9`, `DOCN 50.0 → 72.8`). Factor IC could not see it — Spearman is scale-invariant; only the absolute sub-scores broke. **Correction to the 0.15.0 release notes:** the published derived-PEG backtest win (5y alpha 5.75%→6.51%, 3y 12.61%→14.54%) was inflated by this bug — the gain came from the caps reweighting the top-5 portfolio, not from the PEG signal. With correct units the before/after vs 0.14.2 is **parity** (5y alpha 5.75%→5.63% / Sharpe 0.68→0.68; 3y alpha 12.61%→12.36% / Sharpe 1.56→1.54; identical win rates and drawdowns, 17/8 snapshots — within noise). PEG stays for cross-source unification (one definition across backtest/yfinance/StockFit), its unchanged IC evidence (+0.055 mean / 86% hit), and correct product behavior. **Scores and rankings differ from 0.15.1** (back toward 0.14.2-era ranges for expensive quality names).
+
 ## v0.15.1 (2026-10-02)
 
 ### Fixes

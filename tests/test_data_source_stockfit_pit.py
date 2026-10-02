@@ -447,8 +447,10 @@ def test_build_pit_stock_data_picks_up_new_filing_after_date():
     assert sd.trailing_pe == pytest.approx(100.0 / 7.0)
     assert sd.earnings_growth == pytest.approx((100e9 - 90e9) / 90e9)
     assert sd.eps_acceleration == pytest.approx((7 / 6 - 1) - (6 / 5 - 1))
-    # Derived PEG = P/E ÷ earnings growth (positive growth only)
-    assert sd.peg_ratio == pytest.approx((100.0 / 7.0) / ((100e9 - 90e9) / 90e9))
+    # Derived PEG = P/E ÷ earnings growth as percent (positive growth only)
+    assert sd.peg_ratio == pytest.approx(
+        (100.0 / 7.0) / (((100e9 - 90e9) / 90e9) * 100.0)
+    )
 
 
 def test_build_pit_stock_data_empty_pit_yields_neutral_values():

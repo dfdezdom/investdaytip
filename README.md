@@ -599,7 +599,7 @@ Each metric is normalized to **0-100** via piecewise-linear functions over empir
 
 | Factor | Weight | Metrics |
 |---|---|---|
-| **Value** | 25% | trailing P/E, P/B, PEG (derived = P/E ÷ growth, positive growth only), FCF yield |
+| **Value** | 25% | trailing P/E, P/B, PEG (derived = P/E ÷ growth %, positive growth only), FCF yield |
 | **Growth** | 20% | earnings growth, revenue growth |
 | **Profitability** | 25% | ROE, ROA, profit margin + a YoY-improvement sub-score (Δgross margin + ΔROA vs last fiscal year; neutral when statements are unavailable) |
 | **Momentum** | 15% | price vs SMA200, 12-month return, SMA200 slope (plus RSI-14 + MACD histogram by default; disable with `--no-include-technical`) |
