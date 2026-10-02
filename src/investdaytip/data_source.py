@@ -587,12 +587,17 @@ def _derive_stock_data(
     # EPS-revisions fallback: as-filed EPS growth acceleration.
     accel = _eps_acceleration(eps_yoy, fund.eps_prev, fund.eps_prev2)
 
-    # Derived PEG — P/E ÷ earnings growth, only for positive growth
-    # (decliners have no meaningful PEG → None → neutral).  Unifies the
-    # sources and adds the best IC of the Value family (2026-10-02:
-    # peg_derived IC +0.055 / 86% hit vs P/E −0.029 and P/B −0.011).
+    # Derived PEG — P/E ÷ earnings growth as a **percentage** (the classic
+    # PEG convention, and the scale the scorer's thresholds assume:
+    # best 0.8 / worst 3.0), only for positive growth (decliners have no
+    # meaningful PEG → None → neutral).  Unifies the sources and adds the
+    # best IC of the Value family (2026-10-02: peg_derived IC +0.055 / 86%
+    # hit vs P/E −0.029 and P/B −0.011 — IC is Spearman, so percent-vs-
+    # decimal scale leaves it identical; the absolute sub-score does not,
+    # hence the *100: a decimal-growth division inflated every PEG 100×,
+    # zeroing the sub-metric and tripping the disqualification cap).
     peg = (
-        trailing_pe / earnings_growth
+        trailing_pe / (earnings_growth * 100.0)
         if (trailing_pe is not None and trailing_pe > 0
             and earnings_growth is not None and earnings_growth > 0)
         else None
@@ -743,12 +748,13 @@ def _fetch_stock(
         if accel is not None:
             data.eps_acceleration = accel
 
-    # Derived PEG (same rule as `_derive_stock_data`): P/E ÷ growth when both
-    # are positive — overrides Yahoo's `pegRatio` so both sources share one
-    # definition (yfinance's peg is analyst-based and often absurd).
+    # Derived PEG (same rule as `_derive_stock_data`): P/E ÷ growth as a
+    # percentage when both are positive — overrides Yahoo's `pegRatio` so
+    # both sources share one definition (yfinance's peg is analyst-based
+    # and often absurd).
     if (data.trailing_pe is not None and data.trailing_pe > 0
             and data.earnings_growth is not None and data.earnings_growth > 0):
-        data.peg_ratio = data.trailing_pe / data.earnings_growth
+        data.peg_ratio = data.trailing_pe / (data.earnings_growth * 100.0)
 
     # FCF fallback: derive TTM OCF − capex from info when the quarterly
     # cash-flow frame did not provide one.  The ``freeCashflow`` info field
