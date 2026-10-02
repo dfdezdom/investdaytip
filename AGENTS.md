@@ -359,16 +359,24 @@ Robustness fixes found during that validation (keep them):
 **Cross-source unification (2026-10-02):** `_fetch_stock()` (yfinance path)
 derives `earnings_growth`, `revenue_growth`, `return_on_equity`,
 `return_on_assets`, `profit_margin`, `debt_to_equity`, `current_ratio` and
-`eps_acceleration` from the annual statement frames with the same formulas as
+`eps_acceleration` from the statement frames with the same formulas as
 `_derive_stock_data`, and computes `free_cashflow` as
 `operatingCashflow − |capitalExpenditures|` from info — overriding the Yahoo
 fields, which used different definitions (quarterly-YoY growth, own ratio
 bases, near-quarterly FCF values like MSFT 16.5B vs the coherent 67B TTM).
 Info values survive when statements are missing. Measured on the top-20 US
 (both sources through `recommend()`): Spearman 0.441 → **0.946**, top-10
-overlap 6/10 → **9/10**, `earnings_growth` diffs 19/20 → **0/20**. Residual
-differences are *basis* (StockFit levels read TTM, the yfinance derivations
-read FY), not definitions — see `stockfit/top20_comparison.md`.
+overlap 6/10 → **9/10**, `earnings_growth` diffs 19/20 → **0/20**.
+
+**TTM level basis (2026-10-02, same day):** `_fetch_stock()` now derives the
+*levels* from **quarterly** frames via `financial_health.ttm_facts()` (flows
+= sum of the last four quarters, balances = latest quarter — identical to
+StockFit's `period=ttm` overlay); comparisons keep their FY-vs-FY basis.
+FCF prefers the quarterly cash-flow sum. Measured on the same top-20:
+ROE diffs 13/20 → **3/20**, `current_ratio` 7/20 → **0/20**, FCF 16/20 →
+**4/20**, Spearman 0.946 → **0.971**. Residuals are *definitions*, not bases:
+`debt_to_equity` (StockFit `totalDebt` vs yfinance `Total Debt`, 11/20) and
+AMZN capex treatment. Details: `stockfit/top20_comparison.md`.
 
 GICS sector names are mapped to yfinance-style (`Information Technology` →
 `Technology`) so `-s` filters and the advisor sector tilt behave identically.
