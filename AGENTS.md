@@ -502,6 +502,8 @@ below it: they are omitted with an explicit reason, never fabricated.
 
 ## Conventions & Gotchas
 
+- **Nothing may print/log at WARNING+ during `recommend()`'s Rich progress bar** — stderr writes interleave with Live's in-place redraw and fragment the bar (seen: 11+ fallback warnings shattering it). Per-ticker chatter goes to `logger.info`; aggregated notices are collected via `recommender.take_fallback_notices()` and printed by `main` once the bar is done.
+
 - `from __future__ import annotations` in every annotated module (not in `__init__.py` or universe files)
 - `Optional[float]` for dataclass fields; `Iterable[str] | None` for function params with `from __future__ import annotations`
 - `field(default_factory=list/dict)` for mutable defaults on dataclasses
