@@ -426,6 +426,29 @@ def test_ttm_facts_from_response_shapes():
     assert _ttm_facts_from({"error": "nope"}) == {}
 
 
+def test_fetch_asset_stockfit_mis_scaled_facts_fall_back(mocker):
+    """NI ≈ EPS × shares mismatch (ADR classes / issued-vs-outstanding /
+    currency mix) raises so the orchestrator's yfinance fallback kicks in."""
+    pit = PitStatements(
+        ticker="TSM",
+        income=_parse_periods([
+            _row("2025-12-31", "2026-02-01", 2025,
+                 {"revenue": 400e9, "netIncome": 100e9, "epsDiluted": 7.0}),
+        ]),
+        balance=_parse_periods([
+            _row("2025-12-31", "2026-02-01", 2025,
+                 {"assets": 400e9, "stockholdersEquity": 220e9,
+                  "currentSharesOutstanding": 25e9}),  # NI/EPS implies 14.3B
+        ]),
+    )
+    mocker.patch("investdaytip.data_source_stockfit._lookup_profile", return_value=dict(_PROFILE))
+    mocker.patch("investdaytip.data_source_stockfit.fetch_pit_statements", return_value=pit)
+    mocker.patch("investdaytip.data_source_stockfit._fetch_ttm_facts", return_value={})
+    mocker.patch("investdaytip.data_source_stockfit._get", side_effect=_fake_get)
+    with pytest.raises(StockfitError, match="mis-scaled"):
+        fetch_asset_stockfit("TSM")
+
+
 def test_fetch_asset_stockfit_dividend_ttm_from_quarterly(mocker):
     """Quarterly payments are summed to a TTM DPS; annual rows are ignored
     (some filers report a single quarter's rate as 'annual' — UNH)."""

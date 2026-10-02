@@ -11,12 +11,13 @@ from __future__ import annotations
 import logging
 import math
 import os
+import threading
 import time
 from contextlib import contextmanager, redirect_stderr
 from dataclasses import dataclass, field
 from datetime import datetime
 from io import StringIO
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import pandas as pd
 import yfinance as yf
@@ -29,11 +30,41 @@ for _name in ("yfinance", "yfinance.ticker", "yfinance.utils", "yfinance.data", 
     logging.getLogger(_name).setLevel(logging.CRITICAL)
 
 
+_STDERR_LOCK = threading.Lock()
+_stderr_depth = 0
+_stderr_redirect: Optional[Any] = None
+_stderr_devnull: Optional[Any] = None
+
+
 @contextmanager
 def _suppress_stderr():
-    """Suppress prints yfinance writes directly to stderr (e.g. delisted warnings)."""
-    with open(os.devnull, "w") as devnull, redirect_stderr(devnull):
+    """Suppress prints yfinance writes directly to stderr (e.g. delisted warnings).
+
+    ``redirect_stderr`` swaps the *global* ``sys.stderr``, so concurrent
+    fetch threads must nest the suppression: the first thread redirects and
+    the last one to exit restores — otherwise a thread whose ``devnull`` is
+    already closed restores it as ``sys.stderr`` and every later print dies
+    with "I/O operation on closed file".
+    """
+    global _stderr_depth, _stderr_redirect, _stderr_devnull
+    with _STDERR_LOCK:
+        if _stderr_depth == 0:
+            _stderr_devnull = open(os.devnull, "w")
+            _stderr_redirect = redirect_stderr(_stderr_devnull)
+            _stderr_redirect.__enter__()
+        _stderr_depth += 1
+    try:
         yield
+    finally:
+        with _STDERR_LOCK:
+            _stderr_depth -= 1
+            if _stderr_depth == 0 and _stderr_redirect is not None:
+                try:
+                    _stderr_redirect.__exit__(None, None, None)
+                finally:
+                    _stderr_redirect = None
+                    _stderr_devnull.close()
+                    _stderr_devnull = None
 
 
 @dataclass
