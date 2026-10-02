@@ -62,3 +62,6 @@ seeking_alpha_health
 
 # Playwright artifacts
 test-results/
+
+# generated deep-dive reports
+deep-dive-*.html
