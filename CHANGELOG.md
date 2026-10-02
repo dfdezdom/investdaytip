@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.15.1 (2026-10-02)
+
+### Fixes
+
+- **Clean progress output** — per-ticker fallback and mis-scaled-facts messages no longer interleave with the Rich progress bar (they wrote to stderr while the bar redraws in place, fragmenting it into repeated strips). They now log at INFO with the reason preserved, and the aggregate `⚠️ … continuing with yfinance for N tickers` notice is printed once after the bar finishes. Also removes the duplicated "falling back" wording in the mis-scale message.
+
 ## v0.15.0 (2026-10-02)
 
 ### Features
