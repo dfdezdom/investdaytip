@@ -16,7 +16,7 @@
 
 ### 🌐 See it live — [investdaytip.com](https://www.investdaytip.com)
 
-This engine powers **[investdaytip.com](https://www.investdaytip.com)**: quantitative
+This engine powers quantitative
 ratings for the top 100 US stocks, refreshed daily — per-ticker deep-dive (Piotroski,
 Altman, risk signals) and a run archive you can replay day by day.
 
