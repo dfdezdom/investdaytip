@@ -173,7 +173,7 @@ investdaytip --help
 | `--cache-clear` | Purge the SQLite cache before running | disabled |
 | `--workers N` | Parallel fetch threads | `10` |
 | `--version` | Show the installed version and exit | n/a |
-| `-h, --help` | Show the CLI help message and exit | n/a |
+| `-h, --help` | Print the usage help and exit | n/a |
 
 ---
 
