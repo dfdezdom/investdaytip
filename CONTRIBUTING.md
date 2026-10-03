@@ -63,4 +63,6 @@ Be respectful and constructive. We follow the [Contributor Covenant](https://www
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+By contributing, you agree that your contributions will be licensed under the
+project's license — currently [MIT](LICENSE), but the project may adopt a
+different license in future versions. You keep the copyright of your work.
