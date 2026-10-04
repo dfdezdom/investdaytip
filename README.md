@@ -16,9 +16,10 @@
 
 ### 🌐 See it live — [investdaytip.com](https://www.investdaytip.com)
 
-This engine powers quantitative
-ratings for the top 100 US stocks, refreshed daily — per-ticker deep-dive (Piotroski,
-Altman, risk signals) and a run archive you can replay day by day.
+The site runs on this project's **scoring engine** — the pure-Python core behind
+the CLI tool — and publishes quantitative ratings for the top 100 US stocks,
+refreshed daily: per-ticker deep-dive (Piotroski, Altman, risk signals) and a run
+archive you can replay day by day.
 
 The site is a separate project (proprietary code, third-party market data under its
 own terms) built on this engine; the engine itself stays MIT.
