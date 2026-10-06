@@ -5,6 +5,7 @@ No network: ``_get`` is mocked (same pattern as the FMP / insights tests).
 from __future__ import annotations
 
 import json
+from datetime import date
 
 from investdaytip.data_source_stockfit import (
     _FOOTNOTE_ENDPOINTS,
@@ -180,10 +181,11 @@ def test_concentration_unrecognized_shape_yields_silence():
 
 
 def test_debt_maturity_wall():
-    footnotes = {"debt-structure": [{"fiscalYear": 2024, "instruments": [
-        {"name": "Notes 26", "dueYear": 2026, "faceAmount": 500e6},
-        {"name": "Notes 30", "dueYear": 2030, "faceAmount": 400e6},
-        {"name": "Notes 35", "dueYear": 2035, "faceAmount": 100e6},
+    y = date.today().year  # relative years — the rule uses the current year
+    footnotes = {"debt-structure": [{"fiscalYear": y, "instruments": [
+        {"name": "Near", "dueYear": y + 1, "faceAmount": 500e6},
+        {"name": "Mid", "dueYear": y + 10, "faceAmount": 400e6},
+        {"name": "Far", "dueYear": y + 15, "faceAmount": 100e6},
     ]}]}
     sigs = footnote_risk_signals(footnotes)
     assert [(s.severity, s.label) for s in sigs] == [("medium", "Debt maturity wall")]
@@ -191,9 +193,10 @@ def test_debt_maturity_wall():
 
 
 def test_debt_maturity_wall_below_threshold_silent():
-    footnotes = {"debt-structure": [{"fiscalYear": 2024, "instruments": [
-        {"dueYear": 2026, "faceAmount": 100e6},
-        {"dueYear": 2035, "faceAmount": 900e6},
+    y = date.today().year
+    footnotes = {"debt-structure": [{"fiscalYear": y, "instruments": [
+        {"dueYear": y + 1, "faceAmount": 100e6},
+        {"dueYear": y + 15, "faceAmount": 900e6},
     ]}]}
     assert footnote_risk_signals(footnotes) == []
 

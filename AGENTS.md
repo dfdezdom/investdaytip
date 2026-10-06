@@ -40,7 +40,7 @@ the convention is `Optional[...]` for dataclass fields, not `X | None`.
 | Deep-dive report | `deep_dive.py` | Per-ticker report: score + StockFit research-summary + keyless Piotroski/Altman diagnostics |
 | Risk signals | `risk_signals.py` | "Devil's advocate" layers (Fase 3): keyless local bullets + StockFit `footnotes/*` bullets — context, never scored |
 | Universes | `*_universe.py` (7 modules) | curated ticker lists wired in `recommender._build_universe()` (deduplicated case-insensitively) |
-| Tests | `tests/` | 23 test files, no live network calls (autouse network guard in `conftest.py`) |
+| Tests | `tests/` | 25 test files, no live network calls (autouse network guard in `conftest.py`) |
 | OpenCode agent | `.opencode/agents/advisor.md` | advisor subagent: permissions, interactive flow, execution methods, and interpretation guide |
 
 Data flow: `CLI → recommender → data_source (yfinance|yahooquery|fmp) → scoring → html_export / Rich table`
