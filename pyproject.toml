@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "investdaytip"
 version = "0.15.2"
-description = "A tool that suggests 5 stock investment recommendations at the moment you run it."
+description = "Multi-factor stock & ETF scoring and research tool, with backtesting. Decision support — not investment advice."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
