@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.16.1 (2026-10-07)
+
+### Fixes
+
+- **StockFit rate limiting now follows the detected plan** — the cross-thread limiter was hard-coded to ≈460 req/min (tuned for Professional's 500 req/min), but Starter/Stock/ETF plans allow only **300 req/min**: a full `--data-source stockfit` run tripped HTTP 429 after the first ~300 requests and, because `_get` did not retry, silently demoted **106 of 197 tickers** to yfinance (rankings are source-dependent). The engine now paces at 90% of the detected plan's budget (Free 50 / Starter-Stock-ETF 300 / Professional 500 req/min — pricing verified 2026-10-07): `detect_plan()` re-paces the limiter on every call and `_ensure_plan_rate()` covers the PIT-statement, fundamental-insights and direct-fetch entry points; until detection runs the paid 300 tier applies instead of the old 460. A transient 429 now self-heals instead of failing the ticker over — each observed 429 penalizes the limiter (×2, capped at 40 req/min so pacing always converges below any plan's budget) and the request retries on `Retry-After` or at the next minute boundary; a sustained block (>6 429s within 60s, e.g. an exhausted daily budget) still raises immediately so the yfinance fallback takes over without stalling workers. Verified live on the Starter plan: fallbacks **106/197 → 10/197 with zero 429s** (the remaining 10 are the pre-existing mis-scaled-facts guard). New `tests/test_stockfit_rate_limit.py` (17 tests) pins the pacing table, retry/penalization and the circuit breaker.
+
 ## v0.16.0 (2026-10-06)
 
 ### Features

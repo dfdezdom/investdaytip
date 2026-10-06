@@ -382,11 +382,18 @@ def test_rate_limit_raises_stockfit_rate_limit_error(mocker):
     def raise_429(*args, **kwargs):
         raise HTTPError("https://x", 429, "Too Many Requests", None, None)
 
-    mocker.patch("investdaytip.data_source_stockfit.urlopen", side_effect=raise_429)
+    # Backoff sleeps up to a minute waiting for the next window — keep the
+    # test instant; the retry itself is asserted below.
+    mocker.patch("investdaytip.data_source_stockfit._backoff_429", return_value=0.0)
+    call = mocker.patch(
+        "investdaytip.data_source_stockfit.urlopen", side_effect=raise_429
+    )
     from investdaytip.data_source_stockfit import _get
 
     with pytest.raises(StockfitRateLimitError):
         _get("financials/income-statement", {"symbol": "AAPL"})
+    # 429s are retried (shared attempt budget) before giving up
+    assert call.call_count > 1
 
 
 # ── _build_pit_stock_data ────────────────────────────────────────────────────

@@ -82,9 +82,34 @@ STITCH_MAX_PERIOD_AGE_DAYS = 550  # ≈18 months — see _series_is_recent()
 STOCKFIT_RETRY_DELAYS = [2, 5]
 USER_AGENT = "InvestDayTip"
 
-# StockFit Professional tier allows 500 req/min; stay safely below it even
-# with parallel workers (≈460 req/min across all threads).
-_RATE_LIMIT_INTERVAL = 0.13
+# StockFit enforces a per-minute request budget.  Official pricing
+# (verified 2026-10-07): Free 50, Starter 300, Stock 300, ETF 300,
+# Professional 500 req/min.  Pace at 90% of the *detected* plan's budget —
+# ``detect_plan()`` re-paces the limiter before any bulk fetch, and until it
+# runs the common paid tier (300) is assumed.  A fixed 0.13s interval
+# (≈460 req/min, tuned for Professional) made a Starter run 429 after the
+# first ~300 requests and silently demoted 106 of 197 tickers to yfinance.
+_RATE_SAFETY = 0.9
+_DEFAULT_REQ_PER_MIN = 300
+_PLAN_REQ_PER_MIN: dict[str, int] = {
+    "none": _DEFAULT_REQ_PER_MIN,      # no key → no requests anyway
+    "free": 50,
+    "starter": _DEFAULT_REQ_PER_MIN,
+    "stock": _DEFAULT_REQ_PER_MIN,
+    "pro": 500,                        # Professional = full footnotes suite
+    "unknown": _DEFAULT_REQ_PER_MIN,   # detection failed → conservative pacing
+}
+#: ``_RateLimiter.penalize()`` floor — 40 req/min, below even Free's 50, so
+#: repeated 429s always converge the pacing under any plan's budget.
+_MAX_RATE_INTERVAL = 1.5
+
+
+def _interval_for_plan(plan: str) -> float:
+    """Seconds between request starts for *plan*'s per-minute budget."""
+    return 60.0 / (_PLAN_REQ_PER_MIN.get(plan, _DEFAULT_REQ_PER_MIN) * _RATE_SAFETY)
+
+
+_RATE_LIMIT_INTERVAL = _interval_for_plan("starter")  # ≈0.22s ≈ 270 req/min
 
 
 class StockfitError(Exception):
@@ -136,7 +161,18 @@ def detect_plan(force: bool = False) -> str:
     ``"none"`` without a key, ``"unknown"`` when detection cannot run (network
     errors — never blocks a feature), otherwise the highest tier whose probe
     endpoint answers.  Cached in-process and in the SQLite cache (1 day).
+
+    Every call also re-paces the cross-thread rate limiter to the plan's
+    official per-minute budget (``_PLAN_REQ_PER_MIN``) so a bulk fetch can
+    never exceed it — pacing for the wrong tier is what turns a Starter run
+    into a cascade of 429 fallbacks.
     """
+    plan = _detect_plan_impl(force)
+    _rate_limiter.set_interval(_interval_for_plan(plan))
+    return plan
+
+
+def _detect_plan_impl(force: bool = False) -> str:
     global _plan_cache
     if not os.environ.get("STOCKFIT_API_KEY"):
         return "none"
@@ -162,6 +198,21 @@ def detect_plan(force: bool = False) -> str:
     if plan != "unknown":
         cache_stockfit_plan_set(plan)
     return plan
+
+
+def _ensure_plan_rate() -> None:
+    """Pace the rate limiter to the detected plan before a bulk StockFit fetch.
+
+    Safety net for entry points that fire many requests on their own (PIT
+    statements, fundamental insights, direct ``fetch_asset_stockfit`` use)
+    instead of going through ``recommend()``'s plan gate.  A cheap no-op once
+    the plan has been detected, and never raises — when detection fails the
+    default pacing stays and the 429 handling in :func:`_get` self-corrects.
+    """
+    try:
+        detect_plan()
+    except Exception:
+        logger.debug("StockFit plan detection failed; keeping default pacing", exc_info=True)
 
 
 def plan_allows(plan: str, capability: str) -> bool:
@@ -198,6 +249,20 @@ class _RateLimiter:
         self._lock = threading.Lock()
         self._last = 0.0
 
+    def set_interval(self, min_interval: float) -> None:
+        """Re-pace the limiter (used with the detected plan's budget)."""
+        with self._lock:
+            self._min_interval = min_interval
+
+    def penalize(self) -> None:
+        """Slow the limiter down after an observed 429: double the interval,
+        capped at ``_MAX_RATE_INTERVAL`` so pacing always converges under
+        every plan's budget (40 req/min < Free's 50) even when the plan
+        could not be detected.  Never speeds back up within a run — a 429
+        means we were too fast, and being slower is always safe."""
+        with self._lock:
+            self._min_interval = min(self._min_interval * 2.0, _MAX_RATE_INTERVAL)
+
     def wait(self) -> None:
         with self._lock:
             now = time.monotonic()
@@ -209,6 +274,57 @@ class _RateLimiter:
 
 
 _rate_limiter = _RateLimiter(_RATE_LIMIT_INTERVAL)
+
+#: process-wide 429s tolerated within 60 s before failing fast (see _note_429)
+_429_STREAK_LIMIT = 6
+_429_streak = 0
+_429_last = 0.0
+_429_lock = threading.Lock()
+
+
+def _note_429() -> int:
+    """Record an observed 429 and return the current streak (60 s window).
+
+    The streak decays when no 429 has been seen for a minute, so it measures
+    a *sustained* block (exhausted daily budget, wrong pacing) rather than a
+    one-off window-edge collision.
+    """
+    global _429_streak, _429_last
+    now = time.monotonic()
+    with _429_lock:
+        if now - _429_last > 60.0:
+            _429_streak = 0
+        _429_last = now
+        _429_streak += 1
+        return _429_streak
+
+
+def _reset_429_streak() -> None:
+    """Forget the streak once the API answers normally again."""
+    global _429_streak, _429_last
+    with _429_lock:
+        _429_streak = 0
+        _429_last = 0.0
+
+
+def _backoff_429(exc: HTTPError) -> float:
+    """Seconds to wait after a 429 before retrying.
+
+    Honours ``Retry-After`` when the server sends it; otherwise sleeps until
+    the next one-minute window boundary (+0.5s) — StockFit's budgets reset
+    every minute, so retrying inside the exhausted window would only 429
+    again (fixed- and sliding-window limits both recover by then).
+    """
+    hdrs = getattr(exc, "headers", None) or getattr(exc, "hdrs", None)
+    getter = getattr(hdrs, "get", None)
+    if getter is not None:
+        raw = getter("Retry-After")
+        if raw is not None:
+            try:
+                return min(max(float(raw), 0.0), 60.0)
+            except (TypeError, ValueError):
+                pass
+    return 60.0 - (time.time() % 60.0) + 0.5
 
 
 def check_api_key() -> None:
@@ -224,8 +340,16 @@ def check_api_key() -> None:
 def _get(path: str, params: dict[str, str] | None = None) -> Any:
     """Perform a StockFit API GET and return the parsed JSON.
 
-    Raises :exc:`StockfitRateLimitError` on HTTP 429 (no retry — the caller
-    decides whether to wait) and :exc:`StockfitError` for other failures.
+    HTTP 429 is retried (up to the shared attempt budget): the limiter is
+    penalized — every observed 429 doubles its interval, capped at
+    ``_MAX_RATE_INTERVAL`` — and the wait honours ``Retry-After`` or lands on
+    the next minute boundary, so a transient window collision self-heals
+    instead of failing the ticker over to yfinance.  A sustained block
+    (more than ``_429_STREAK_LIMIT`` 429s within a minute) raises
+    :exc:`StockfitRateLimitError` immediately — retrying would only stall
+    every worker against an exhausted daily budget, and the caller's
+    fallback is then the right move.  Other failures raise
+    :exc:`StockfitError`.
     """
     api_key = os.environ.get("STOCKFIT_API_KEY")
     if not api_key:
@@ -243,10 +367,22 @@ def _get(path: str, params: dict[str, str] | None = None) -> Any:
             with urlopen(req, timeout=STOCKFIT_REQUEST_TIMEOUT) as resp:
                 data = json.loads(resp.read().decode())
         except HTTPError as exc:
+            if exc.code == 429:
+                streak = _note_429()
+                _rate_limiter.penalize()
+                if streak > _429_STREAK_LIMIT:
+                    raise StockfitRateLimitError(
+                        f"StockFit rate limit (HTTP 429 x{streak} in the last "
+                        f"60s — sustained block): {exc}"
+                    ) from exc
+                if attempt < len(STOCKFIT_RETRY_DELAYS):
+                    time.sleep(_backoff_429(exc))
+                    continue
+                raise StockfitRateLimitError(
+                    f"StockFit rate limit (HTTP 429): {exc}"
+                ) from exc
             if exc.code == 404:
                 return []  # unknown ticker — empty series, not an error
-            if exc.code == 429:
-                raise StockfitRateLimitError(f"StockFit rate limit (HTTP 429): {exc}") from exc
             if exc.code == 403:
                 # Plan gate ("Feature not available on current plan") — no retry.
                 raise StockfitPlanError(
@@ -267,6 +403,7 @@ def _get(path: str, params: dict[str, str] | None = None) -> Any:
                 continue
             raise StockfitError(f"StockFit returned invalid JSON for {path}: {exc}") from exc
 
+        _reset_429_streak()  # the API answered — not throttled any more
         if isinstance(data, dict) and "error" in data:
             # 400s (bad param, unknown CIK) are soft errors → empty result
             logger.debug("StockFit API error for %s: %s", path, data.get("error"))
@@ -701,6 +838,7 @@ def fetch_pit_statements(ticker: str) -> PitStatements:
     ticker = _norm_ticker(ticker)
     live: Optional[PitStatements] = None
     if os.environ.get("STOCKFIT_API_KEY"):
+        _ensure_plan_rate()  # backtest runs can reach here without detect_plan()
         try:
             live = _fetch_pit_statements_live(ticker)
         except StockfitError as exc:
@@ -887,6 +1025,7 @@ def fetch_fundamental_insights(ticker: str) -> Optional[FundamentalInsights]:
             return parsed
 
     results: list[Any] = []
+    _ensure_plan_rate()  # a free key allows 50 req/min — pace before the burst
     for path in _INSIGHT_CHARTS:
         try:
             results.append(
@@ -1192,6 +1331,7 @@ def fetch_asset_stockfit(
     ``None``.
     """
     ticker = _norm_ticker(ticker)
+    _ensure_plan_rate()  # no-op after recommend()'s detect_plan(); direct API use
     now = datetime.now()
     data = StockData(ticker=ticker)
 

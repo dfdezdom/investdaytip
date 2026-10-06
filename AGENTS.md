@@ -173,7 +173,7 @@ that was public on that date instead of a fixed reporting lag.
 | API param | `run_backtest(..., pit_source="stockfit")` |
 | Endpoints | 3/ticker: `financials/income-statement`, `financials/balance-sheet`, `financials/cash-flow-statement` (`period=annual&limit=12`) |
 | Scope | US-listed **stocks only**; per-ticker soft failure → that ticker falls back to the classic fixed-lag path; if **all** tickers fail the run aborts with an error (never silently degrades) |
-| Rate limit | in-process cross-thread limiter ≈460 req/min (Professional tier = 500/min) |
+| Rate limit | in-process cross-thread limiter **paced to the detected plan's budget** (official pricing 2026-10-07: Free 50, Starter/Stock/ETF 300, Professional 500 req/min; × 0.9 safety). `detect_plan()` re-paces on every call, `_ensure_plan_rate()` covers the fetch entry points, and until detection the paid default (300) applies — a hard-coded 0.13s (≈460/min) made a Starter run 429 after ~300 requests and demoted 106/197 tickers to yfinance |
 | Errors | `StockfitError` / `StockfitRateLimitError` (subclass of the former); HTTP 404 and API `{"error": ...}` → empty series (soft) |
 
 ### Key behaviors
@@ -295,6 +295,7 @@ to **Starter+** via the `live_source` capability (~7 calls per ticker — Free's
 | Calls/ticker | `lookup/batch` (profile + type guard) → statements via `fetch_pit_statements()` (also refreshes the PIT snapshot) → `financials/income-statement?period=ttm` (TTM overlay) → `price/history` (2y daily closes) → `earnings/dividend-history`; then yfinance enrichment when `market_cap` or `eps_surprise` is missing |
 | Caching | profile + dividends + TTM facts in `{ticker}:stockfit_info` (1d); statements from the local PIT snapshot when < 7 days old; prices in the shared `{ticker}:history` (15 min — both sources serve the same adjusted closes); yfinance fundamentals/statements use their existing cache |
 | Fallback | `StockfitError` per ticker → automatic full yfinance fallback (same leftovers pattern as FMP); on StockFit success, yfinance fills only missing `market_cap` and `eps_surprise` (StockFit values and all other fields remain primary); user errors (ETF, below cap) are skipped |
+| Rate limit | same plan-aware pacing as the PIT client (Starter ≈270 req/min effective). A transient 429 self-heals inside `_get` — limiter penalized (×2, capped at 40 req/min) + retry at `Retry-After`/minute-boundary — instead of demoting the ticker; a sustained block (>6 429s within 60s, e.g. exhausted daily budget) raises immediately and the yfinance fallback takes over |
 | Trend parity | `return_12m`, `price_vs_sma200` and the improvement flags match yfinance to 8 decimals (same adjusted price series) |
 
 **Semantics (2026-09-27, switched to TTM after the MU P/E report):** current
@@ -381,7 +382,8 @@ AMZN capex treatment. Details: `stockfit/top20_comparison.md`.
 GICS sector names are mapped to yfinance-style (`Information Technology` →
 `Technology`) so `-s` filters and the advisor sector tilt behave identically.
 Tests: `tests/test_data_source_stockfit_live.py` (fetcher, guards, gates,
-US-only filtering, yfinance fallback).
+US-only filtering, yfinance fallback) and `tests/test_stockfit_rate_limit.py`
+(plan-aware pacing, 429 retry/penalization/circuit breaker).
 
 ## StockFit Fundamental Insights (`--fundamental-insights`)
 

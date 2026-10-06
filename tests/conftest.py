@@ -33,6 +33,23 @@ def stockfit_env(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def stockfit_rate_state(monkeypatch):
+    """Reset StockFit pacing state between tests.
+
+    ``detect_plan()`` re-paces the shared rate limiter to the plan's budget,
+    ``_get``'s 429 handling penalizes it and tracks a streak — none of that
+    may leak from one test into the next.
+    """
+    import investdaytip.data_source_stockfit as dss
+
+    monkeypatch.setattr(dss, "_plan_cache", None)
+    monkeypatch.setattr(dss, "_429_streak", 0)
+    monkeypatch.setattr(dss, "_429_last", 0.0)
+    monkeypatch.setattr(dss._rate_limiter, "_min_interval", dss._RATE_LIMIT_INTERVAL)
+    monkeypatch.setattr(dss._rate_limiter, "_last", 0.0)
+
+
+@pytest.fixture(autouse=True)
 def no_network(monkeypatch, request):
     """Fail fast if a test instantiates ``yf.Ticker`` without mocking it.
 
