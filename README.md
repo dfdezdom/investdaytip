@@ -4,7 +4,7 @@
   <img src="logo.svg" alt="InvestDayTip Logo" width="300">
 </p>
 
-> A multi-factor analysis tool that suggests long-term **stock & ETF** buy recommendations from US, European, Asian, and Superinvestor-consensus markets, computed live from public market data.
+> A multi-factor scoring and analysis tool for long-term **stock & ETF** research in US, European, Asian, and Superinvestor-consensus markets, computed live from public market data — a decision-support tool, not investment advice.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -37,8 +37,8 @@ own terms) built on this engine; the engine itself stays MIT.
 - 📊 **Rich CLI output** — price, 1M/1Y change, score breakdown and rationale
 - 🧾 **Self-contained HTML export** — interactive report with filters and sortable columns
 - 🧪 **Pure scoring functions** — testable without network
-- 🧠 **Interactive advisor** — market pulse, portfolio review, and tailored buy recommendations via the `advisor` subcommand
-- 🤖 **AI-powered advisor** — chat with an intelligent investment advisor that analyzes markets, reviews portfolios, and recommends buys — powered by [OpenCode](https://opencode.ai) agents
+- 🧠 **Interactive advisor** — market pulse, portfolio review, and model-scored pick lists via the `advisor` subcommand (decision support, not personal recommendations)
+- 🤖 **AI-powered assistant** — chat in natural language to analyze markets, review portfolios, and explore the model's top picks — powered by [OpenCode](https://opencode.ai) agents
 - 📊 **Backtest validation** — historical backtesting with automated before/after comparison script
 - 🧾 **StockFit integration (optional)** — point-in-time SEC filing dates for backtests (`--pit-source stockfit`, works offline from a local snapshot), a fundamentals insights section in the HTML report (`--fundamental-insights`), per-ticker `deep-dive` reports and a keyless devil's advocate layer (risk signals). Works on every StockFit plan — and without a key at all (`stockfit-status` shows what yours unlocks)
 ---
@@ -81,7 +81,7 @@ pip install -e ".[dev]"
 investdaytip
 ```
 
-That's it. You'll see the top 5 buys scored across 300+ stocks & ETFs.
+That's it. You'll see the top 5 highest-scoring candidates across 300+ stocks & ETFs.
 
 <p align="center">
   <img src="docs/screenshot-CLI.png" alt="InvestDayTip CLI output" width="90%">
@@ -97,8 +97,8 @@ That's it. You'll see the top 5 buys scored across 300+ stocks & ETFs.
 
 | Command | What it does | Section |
 |---|---|---|
-| `investdaytip [flags]` | Top recommendations from the curated universes | below |
-| `investdaytip advisor` | Interactive market pulse, portfolio review, buys | [Advisor](#advisor-subcommand) |
+| `investdaytip [flags]` | Top-scoring candidates from the curated universes | below |
+| `investdaytip advisor` | Interactive market pulse, portfolio review, model picks | [Advisor](#advisor-subcommand) |
 | `investdaytip deep-dive` | Per-ticker deep report (score + research + diagnostics) | [Deep-dive](#deep-dive-subcommand) |
 | `investdaytip backtest` | Historical validation of the scoring model | [Backtest](#backtest-subcommand) |
 | `investdaytip stockfit-status` | Your StockFit plan + which features unlock | [Tiers](#stockfit-integration--tiers) |
@@ -136,7 +136,7 @@ investdaytip --scoring-model classic # Use the classic Graham/Buffett model inst
 investdaytip --min-market-cap 1B     # Raise min market cap to $1B
 investdaytip --min-market-cap 0      # Disable market-cap filter
 
-investdaytip --data-source yahooquery  # Use yahooquery (Yahoo internal API, batch-friendly)
+investdaytip --data-source yahooquery  # Use yahooquery (batch-friendly yfinance backend)
                                        # Falls back to yfinance automatically per ticker
 investdaytip --data-source fmp         # Use Financial Modeling Prep (requires FMP_API_KEY env var)
                                        # Get a free key at https://financialmodelingprep.com/
@@ -190,7 +190,7 @@ investdaytip --help
 
 ## 🤖 OpenCode AI Agent
 
-InvestDayTip includes an **AI-powered investment advisor** that lets you chat with an intelligent market analyst directly from your terminal — no memorizing CLI flags.
+InvestDayTip includes an **AI-powered analysis assistant** that lets you explore markets and the model's output from your terminal — no memorizing CLI flags. Its answers are decision support built on the scoring model, not personal investment advice.
 
 ### Prerequisites
 
@@ -204,8 +204,8 @@ curl -fsSL https://opencode.ai/install | bash
 ### What it can do
 
 1. **Market pulse** — Full macro analysis (VIX + yield curve + bond volatility + DXY) in ~30 seconds
-2. **Portfolio review** — Score your holdings, identify weaknesses, and get actionable signals
-3. **Buy recommendations** — Best picks filtered by region, asset class, and risk profile
+2. **Portfolio review** — Score your holdings, spot weaknesses, and see the model's risk signals
+3. **Model picks** — Highest-scoring candidates filtered by region, asset class, and risk profile
 4. **Devil's advocate** — Bear case + risk signals for specific tickers (see below)
 5. **Full analysis** — All of the above combined into a single comprehensive report
 
@@ -287,7 +287,7 @@ See [`.opencode/agents/advisor.md`](.opencode/agents/advisor.md) for:
 
 ### Advisor subcommand
 
-Interactive market analysis with **multi-indicator macro pulse** (VIX, 10Y-2Y yield curve, MOVE bond volatility, DXY dollar strength), portfolio review, and buy recommendations:
+Interactive market analysis with **multi-indicator macro pulse** (VIX, 10Y-2Y yield curve, MOVE bond volatility, DXY dollar strength), portfolio review, and model-generated pick lists:
 
 ```bash
 investdaytip advisor                          # Interactive mode (asks for risk, region, etc.)
@@ -317,7 +317,7 @@ The advisor fetches six live indicators to compute the composite **macro health 
 | **DXY** | `DX-Y.NYB` | US Dollar Index — strength against EUR, JPY, GBP, CAD, SEK, CHF | <95 weak, 95–100 neutral, 100–105 strong, >105 very strong | −10 / +5 |
 | **Fear & Greed** | [CNN API](https://production.dataviz.cnn.io/index/fearandgreed/graphdata) | Composite market sentiment from 7 sub-indicators (momentum, breadth, put/call, volatility, junk bonds, safe havens) | 0–100; <25 extreme fear, >75 extreme greed | ±10 (contrarian) |
 
-The score starts at a neutral **50** and each indicator adjusts it up or down based on current readings. The final score determines the macro signal:
+The score starts at a neutral **50** and each indicator adjusts it up or down based on current readings. The final score determines the macro regime signal — a model output for decision support, not an instruction to trade:
 
 - 🟢 **≥70** — Macro healthy → **buy**
 - 🟡 **≥45** — Mixed signals → **hold**
@@ -344,7 +344,9 @@ investdaytip deep-dive -t "AAPL MSFT" --export-html # Self-contained HTML page
 | Devil's advocate — risk signals | local heuristics (Altman zone, Piotroski failures, leverage, payout, losses) | no |
 
 Piotroski/Altman are **informative diagnostics — never scored** (they were
-validated and rejected as scoring factors).
+validated and rejected as scoring factors). The Altman Z-Score uses a common
+variant of the 1968 model (market-value term = equity attributable to the
+parent ÷ total liabilities).
 
 | Flag | Description | Default |
 |---|---|---|
@@ -422,7 +424,8 @@ against a benchmark.
 filing's actual SEC acceptance date (`dateFiled`) — every snapshot only sees
 data that was public that day, so slow filers can't leak results back in time.
 US stocks only. Validated on the full US universe: Sharpe 0.74→0.85, max
-drawdown 24%→11%, 12M win rate 50%→56%.
+drawdown 24%→11%, 12M win rate 50%→56% (hypothetical backtests over
+historical data — past performance is not indicative of future results).
 
 It works **without an API key** when a local snapshot exists
 (`~/.investdaytip/pit/`) — build one while your StockFit key is valid:
@@ -486,6 +489,10 @@ Backtest validation across four scenarios under the **quant** model shows the fl
 | **US (no cap filter)** (134 tickers, `-n 10`) | Alpha 5.47%, Sharpe 0.54 | Alpha **11.53%**, Sharpe **0.85** | ✅ **Improved** — alpha doubles, drawdown halves (34.3% → 16.2%), 12M win rate climbs (53% → 73%) |
 | **US mega-caps ($200B+)** (134 tickers, `-n 2`) | Alpha **44.33%**, Sharpe **1.31** | Alpha 42.35%, Sharpe 1.18 | ⚠️ **Mixed** — slightly lower alpha (−2pp) and Sharpe, but drawdown improves sharply (18.8% → 10.4%) |
 | **EU ($2B+)** (66 tickers, `-n 10`) | Alpha **7.11%**, Sharpe **1.71** | Alpha 3.93%, Sharpe 0.93 | ⚠️ **Neutral/Mixed** — lower alpha and Sharpe with tech, but 12M win rate climbs (42% → 60%) |
+
+The backtest figures above are hypothetical simulations over historical data,
+under the assumptions modeled; past performance is not indicative of future
+results.
 
 **Guidelines:**
 - ✅ **Default behavior** — `quant` enables technical indicators automatically; `classic` keeps them opt-in
@@ -602,7 +609,7 @@ Each recommendation includes:
 
 ## Scoring Model
 
-InvestDayTip supports two stock-scoring models, selectable via `--scoring-model {classic,quant}`. The default is **`quant`**, a five-factor model inspired by Seeking Alpha Quant Ratings. The original **`classic`** model (Graham/Buffett + momentum) remains available for backwards compatibility.
+InvestDayTip supports two stock-scoring models, selectable via `--scoring-model {classic,quant}`. The default is **`quant`**, a five-factor model inspired by Seeking Alpha Quant Ratings (a trademark of its owner; this project is not affiliated with, endorsed by, or connected to Seeking Alpha). The original **`classic`** model (Graham/Buffett + momentum) remains available for backwards compatibility.
 
 Each metric is normalized to **0-100** via piecewise-linear functions over empirically reasonable ranges. Missing data contributes a neutral **50** so a ticker isn't penalized for lacking a metric.
 
@@ -723,11 +730,15 @@ Once enabled, try `investdaytip -<TAB>` or `investdaytip --region <TAB>`.
 
 All market data is fetched live from **Yahoo Finance** via the [`yfinance`](https://github.com/ranaroussi/yfinance) library. Fundamentals come from `Ticker.info`, prices and trend metrics from `Ticker.history(period="2y")`.
 
+These libraries and endpoints are third-party services and remain subject to
+those providers' terms of use; generated reports therefore contain third-party
+data and are not covered by this repository's MIT license.
+
 **Dividend yield normalization:** `yfinance` reports `dividendYield` inconsistently — most US tickers return a decimal (e.g. `0.054` = 5.4%) while some European tickers return an already-multiplied percentage (e.g. `4.05` = 4.05%). InvestDayTip normalizes any value greater than `1.0` by dividing by 100.
 
 **Reliable stock dividend yield:** For stocks, the **Yield** column is computed directly from `Ticker.dividends` over the trailing twelve months divided by the current price, because yfinance's `dividendYield` field can be wildly wrong for some tickers (e.g. AAPL and V). When raw dividend history is unavailable, InvestDayTip falls back to the normalized `dividendYield` from `Ticker.info`.
 
-**Superinvestor data** is scraped from **DataRoma** (https://www.dataroma.com) — 13F filings from ~82 legendary investors. The data is fetched once and cached for 7 days. Use `--superinvestor` to enable this data and display the "Superinvestors" column in both the HTML report and the CLI table (disabled by default to avoid the ~80 HTTP requests).
+**Superinvestor data** comes from **DataRoma** (https://www.dataroma.com), which aggregates publicly filed **SEC Form 13F** holdings for ~82 well-known investors. The data is fetched once and cached for 7 days. Use `--superinvestor` to enable this data and display the "Superinvestors" column in both the HTML report and the CLI table (disabled by default to avoid the extra requests).
 
 **Ticker normalization:** When a company has multiple share classes (e.g., Alphabet's GOOGL and GOOG), DataRoma holdings are normalized to a single ticker (GOOGL) to avoid duplicate counting. This ensures the "Superinvestors" column reflects unique manager positions, not duplicated entries.
 
@@ -762,7 +773,7 @@ src/investdaytip/
 ├── main.py                # CLI entry point + rich table rendering
 ├── advisor.py             # Interactive advisor: market pulse (VIX + macro), portfolio review, buy recs
 ├── backtest.py            # Historical stock scoring validation (stocks only)
-├── dataroma.py            # DataRoma superinvestor holdings scraper
+├── dataroma.py            # DataRoma superinvestor holdings client (13F aggregation)
 ├── html_export.py         # Self-contained HTML report exporter
 ├── recommender.py         # Concurrent orchestration
 ├── cache.py               # SQLite caching layer (per-thread connections, WAL mode)
@@ -808,7 +819,7 @@ tests/
 ├── test_pit_snapshot.py   # PIT snapshot layer tests
 ├── test_deep_dive.py      # Deep-dive report tests
 ├── test_stockfit_plan.py  # StockFit tier detection & capability gating tests
-└── test_dataroma.py       # DataRoma scraper tests
+└── test_dataroma.py       # DataRoma client tests
 tickers-files-examples/
 ├── semiconductors_relevant_tickers.txt
 ├── artificial_intelligence_relevant_tickers.txt
@@ -860,10 +871,17 @@ Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Disclaimer
 
-**This is not financial advice.** InvestDayTip is an educational tool that applies a deterministic scoring model to publicly available data. Always do your own research and consult a licensed advisor before making investment decisions.
+**This is not financial advice.** InvestDayTip is a research and decision-support tool that applies a deterministic scoring model to publicly available data. Scores, buy/hold/sell labels and any AI-generated commentary are **model outputs**, not personal recommendations to buy or sell any security. Backtests are hypothetical simulations over historical data — past performance is not indicative of future results. Always do your own research and consult a licensed advisor before making investment decisions.
+
+Third-party names (Yahoo Finance, DataRoma, Financial Modeling Prep, StockFit, Seeking Alpha, OpenCode, …) are used for identification only and imply no affiliation or endorsement.
 
 ---
 
 ## License
 
 [MIT](LICENSE)
+
+The **software** is MIT-licensed. **Generated output is not**: reports and
+datasets produced by the tool contain third-party market data (Yahoo Finance
+via yfinance/yahooquery, DataRoma 13F aggregations, and FMP or StockFit when
+configured) and remain subject to those providers' terms of use.
