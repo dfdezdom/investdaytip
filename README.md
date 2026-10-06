@@ -344,9 +344,10 @@ investdaytip deep-dive -t "AAPL MSFT" --export-html # Self-contained HTML page
 | Devil's advocate — risk signals | local heuristics (Altman zone, Piotroski failures, leverage, payout, losses) + StockFit `footnotes/*` bullets (concentration, debt maturities, pensions…) | no — footnotes layer needs a Pro plan (omitted with a note otherwise) |
 
 Piotroski/Altman are **informative diagnostics — never scored** (they were
-validated and rejected as scoring factors). The Altman Z-Score uses a common
-variant of the 1968 model (market-value term = equity attributable to the
-parent ÷ total liabilities).
+validated and rejected as scoring factors). The Altman Z-Score follows
+StockFit's variant of the 1968 model: X4 = book value of equity attributable
+to the parent ÷ total liabilities (not the 1968 market-value term), so the
+keyless diagnostic matches StockFit's precomputed value exactly.
 
 | Flag | Description | Default |
 |---|---|---|
