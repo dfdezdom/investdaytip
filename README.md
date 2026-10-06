@@ -237,7 +237,7 @@ for the analyzed tickers, in two layers:
 
 | Layer | Source | Needs |
 |---|---|---|
-| 1 — risk signals | `investdaytip deep-dive` (risk bullets, Piotroski checks, Altman zone) | nothing — works keyless |
+| 1 — risk signals | `investdaytip deep-dive` (risk bullets, Piotroski checks, Altman zone) + StockFit footnotes bullets (Pro plan) | nothing — works keyless |
 | 2 — SEC footnotes | StockFit MCP tools: customer/supplier **concentration trends**, debt **maturity walls**, stock-comp **dilution**, **insider summaries** (0 buys vs N sells), governance flags | StockFit MCP connected |
 
 ```text
@@ -341,7 +341,7 @@ investdaytip deep-dive -t "AAPL MSFT" --export-html # Self-contained HTML page
 | Score + factor breakdown | live data + the scoring model | no |
 | Earnings snapshot (margins, ROE/ROIC, FCF, growth, next dates) | StockFit `company/research-summary` | yes (omitted gracefully otherwise) |
 | Piotroski F-Score (9 checks) + Altman Z + zone | local computation from the ticker's own statements | no |
-| Devil's advocate — risk signals | local heuristics (Altman zone, Piotroski failures, leverage, payout, losses) | no |
+| Devil's advocate — risk signals | local heuristics (Altman zone, Piotroski failures, leverage, payout, losses) + StockFit `footnotes/*` bullets (concentration, debt maturities, pensions…) | no — footnotes layer needs a Pro plan (omitted with a note otherwise) |
 
 Piotroski/Altman are **informative diagnostics — never scored** (they were
 validated and rejected as scoring factors). The Altman Z-Score uses a common

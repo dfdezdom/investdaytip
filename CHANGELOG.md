@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- **Footnotes bear case in `deep-dive` (devil's advocate layer 2)** — when `STOCKFIT_API_KEY` is set, the deep-dive fetches the StockFit `footnotes/*` endpoints its plan unlocks and turns them into extra risk bullets, merged with the keyless local layer and tagged with their source: key-customer / supplier concentration (with trend), debt maturity wall (≥25% of face amount due within 2 years), credit-line utilization (≥50/75% drawn), unrecognized stock-compensation cost vs market cap, underfunded pensions, supplier-finance (reverse-factoring) obligations, Level 3 valuation share, and geographic / product / segment revenue concentration. Tier-aware degradation: the Pro set (concentration, debt-structure, credit-facilities, stock-compensation, retirement-plans, supplier-finance, fair-value-hierarchy) requires the Pro plan; the Starter-accessible `revenue-segmentation` / `business-segmentation` pair always runs; below Starter (or without a key) the layer is omitted with an explicit note — never fabricated. Annual, 3 periods per endpoint, cached 1d (`{ticker}:stockfit_footnotes`, written only on a complete fetch). Parsing is deliberately defensive: a bullet requires a documented numeric field, an unknown response shape yields silence. Note: the Pro endpoint shapes come from the API documentation (the development session is on the Starter tier) and are pinned by synthetic-payload tests — verify live and tighten when a Pro key is available.
+
+### Fixes
+
+- **Altman Z-Score now matches StockFit's precomputed value** — the local diagnostic used the 1968 paper's market-value-of-equity term for X4 while StockFit's `financials/scores` (and its `altmanZScore` snapshot field) use the **book value of equity attributable to the parent** as a documented proxy. Same coefficients and zones, but AAPL read ~10 (`safe`) locally vs StockFit's 2.42 (`grey`), and the devil's-advocate risk bullets disagreed with the StockFit-backed numbers. `altman_z_score()` now takes the equity term from the statements (`StockholdersEquity`, excluding minority interests) and needs no market cap — verified to reproduce StockFit exactly on AAPL (2.42), MSFT (2.64), TSLA (2.40), INTC (1.52), T (0.87) and AMT (0.24 — the discriminator: parent equity 0.24 vs total equity 0.32). Side benefit: the Z-Score no longer drifts with the daily market cap between filings.
+
 ## v0.15.2 (2026-10-02)
 
 ### Fixes

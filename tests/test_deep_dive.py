@@ -94,7 +94,7 @@ def _frames() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
             },
             pd.Timestamp("2024-12-31"): {
                 "Net Income": 100.0, "Total Revenue": 400.0,
-                "Gross Profit": 200.0, "EBIT": 150.0,
+                "Gross Profit": 200.0, "EBIT": 200.0,
             },
         }
     )
@@ -104,13 +104,15 @@ def _frames() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
                 "Total Assets": 1000.0, "Current Assets": 500.0,
                 "Current Liabilities": 250.0, "Total Debt": 200.0,
                 "Total Liabilities Net Minority Interest": 400.0,
-                "Ordinary Shares Number": 11.0, "Retained Earnings": 300.0,
+                "Ordinary Shares Number": 11.0, "Retained Earnings": 350.0,
+                "Stockholders Equity": 600.0,
             },
             pd.Timestamp("2024-12-31"): {
-                "Total Assets": 1000.0, "Current Assets": 520.0,
+                "Total Assets": 1000.0, "Current Assets": 560.0,
                 "Current Liabilities": 250.0, "Total Debt": 180.0,
                 "Total Liabilities Net Minority Interest": 380.0,
-                "Ordinary Shares Number": 10.0, "Retained Earnings": 350.0,
+                "Ordinary Shares Number": 10.0, "Retained Earnings": 450.0,
+                "Stockholders Equity": 620.0,
             },
         }
     )
@@ -158,6 +160,7 @@ def test_build_deep_dive_with_key_includes_research(mocker, monkeypatch):
     )
     _patch_statements(mocker)
     mocker.patch("investdaytip.deep_dive.detect_plan", return_value="pro")
+    mocker.patch("investdaytip.deep_dive.fetch_footnotes", return_value={})
     mocker.patch(
         "investdaytip.deep_dive.fetch_research_summary",
         return_value=ResearchSummary(ticker="AAPL", snapshot=_RESEARCH_PAYLOAD["snapshot"]),
@@ -177,10 +180,96 @@ def test_build_deep_dive_plan_gated_skips_research(mocker, monkeypatch):
     _patch_statements(mocker)
     mocker.patch("investdaytip.deep_dive.detect_plan", return_value="free")
     research_mock = mocker.patch("investdaytip.deep_dive.fetch_research_summary")
+    footnotes_mock = mocker.patch("investdaytip.deep_dive.fetch_footnotes")
 
     dd = build_deep_dive("AAPL")
     assert dd.research is None
     research_mock.assert_not_called()
+    footnotes_mock.assert_not_called()  # nothing unlocked → no request at all
+    assert dd.footnote_note == (
+        "footnotes bear case omitted — requires Starter plan (current plan: free)"
+    )
+
+
+# ── footnotes layer (devil's advocate layer 2) ───────────────────────────────
+
+
+_FOOTNOTE_PAYLOAD = {
+    "revenue-segmentation": [{
+        "fiscalYear": 2025,
+        "geography": {
+            "countries": [
+                {"code": "US", "name": "United States",
+                 "continent": "North America", "value": 65e9},
+                {"code": "CN", "name": "China", "continent": "Asia", "value": 35e9},
+            ],
+            "usStates": [], "regions": [], "residuals": [],
+        },
+        "product": [{"member": "iPhone", "name": "iPhone", "value": 100e9}],
+    }],
+}
+
+
+def test_build_deep_dive_merges_footnote_signals(mocker, monkeypatch):
+    monkeypatch.setenv("STOCKFIT_API_KEY", "k")
+    monkeypatch.setenv("STOCKFIT_PIT_SNAPSHOT_DIR", "/nonexistent")
+    mocker.patch(
+        "investdaytip.deep_dive.fetch_asset",
+        # loss-making → one local bullet, so the merge covers both layers
+        return_value=StockData(ticker="AAPL", market_cap=1e12, profit_margin=-0.05),
+    )
+    _patch_statements(mocker)
+    mocker.patch("investdaytip.deep_dive.detect_plan", return_value="pro")
+    mocker.patch(
+        "investdaytip.deep_dive.fetch_research_summary", return_value=None
+    )
+    mocker.patch(
+        "investdaytip.deep_dive.fetch_footnotes", return_value=_FOOTNOTE_PAYLOAD
+    )
+    dd = build_deep_dive("AAPL")
+    sources = {s.source for s in dd.risks}
+    assert "stockfit" in sources and "local" in sources
+    assert dd.footnote_note is None  # Pro unlocks the whole layer
+    assert [s.severity for s in dd.risks] == sorted(
+        [s.severity for s in dd.risks],
+        key=lambda v: {"high": 0, "medium": 1, "info": 2}.get(v, 9),
+    )
+
+
+def test_build_deep_dive_starter_notes_pro_omission(mocker, monkeypatch):
+    monkeypatch.setenv("STOCKFIT_API_KEY", "k")
+    monkeypatch.setenv("STOCKFIT_PIT_SNAPSHOT_DIR", "/nonexistent")
+    mocker.patch(
+        "investdaytip.deep_dive.fetch_asset",
+        return_value=StockData(ticker="AAPL", market_cap=1e12),
+    )
+    _patch_statements(mocker)
+    mocker.patch("investdaytip.deep_dive.detect_plan", return_value="starter")
+    mocker.patch("investdaytip.deep_dive.fetch_research_summary", return_value=None)
+    mocker.patch(
+        "investdaytip.deep_dive.fetch_footnotes", return_value=_FOOTNOTE_PAYLOAD
+    )
+    dd = build_deep_dive("AAPL")
+    assert dd.footnote_note == (
+        "Pro footnotes omitted — requires Pro plan (current plan: starter)"
+    )
+    # the Starter-accessible segmentation layer still produced its bullets
+    assert any(s.source == "stockfit" for s in dd.risks)
+
+
+def test_build_deep_dive_without_key_notes_footnotes(mocker, monkeypatch):
+    monkeypatch.delenv("STOCKFIT_API_KEY", raising=False)
+    monkeypatch.setenv("STOCKFIT_PIT_SNAPSHOT_DIR", "/nonexistent")
+    mocker.patch(
+        "investdaytip.deep_dive.fetch_asset",
+        return_value=StockData(ticker="AAPL", market_cap=1e12),
+    )
+    _patch_statements(mocker)
+    footnotes_mock = mocker.patch("investdaytip.deep_dive.fetch_footnotes")
+    dd = build_deep_dive("AAPL")
+    footnotes_mock.assert_not_called()
+    assert dd.footnote_note == "footnotes bear case omitted — no STOCKFIT_API_KEY"
+    assert all(s.source == "local" for s in dd.risks)
 
 
 # ── rendering ────────────────────────────────────────────────────────────────
@@ -197,7 +286,7 @@ def _sample_dive() -> DeepDive:
         data=StockData(ticker="AAPL", name="Apple Inc."),
         research=ResearchSummary(ticker="AAPL", snapshot=dict(_RESEARCH_PAYLOAD["snapshot"])),
         piotroski=piotroski_f_score(cur, prev),
-        altman=altman_z_score(cur, 1e12),
+        altman=altman_z_score(cur),
     )
 
 
@@ -221,6 +310,36 @@ def test_render_html_plan_gated_reason(mocker, monkeypatch):
     dd.research = None
     html = render_html([dd])
     assert "requires Starter plan (current plan: free)" in html
+
+
+def test_render_rich_footnote_tag_and_note():
+    import io
+
+    from investdaytip.risk_signals import RiskSignal
+
+    dd = _sample_dive()
+    dd.risks.append(RiskSignal(
+        "info", "Product revenue concentration", "55% of revenue from iPhone", "stockfit",
+    ))
+    dd.footnote_note = "Pro footnotes omitted — requires Pro plan (current plan: starter)"
+    buf = io.StringIO()
+    render_rich([dd], console=Console(file=buf, force_terminal=False, width=200))
+    out = buf.getvalue()
+    assert "(StockFit footnotes)" in out
+    assert "Pro footnotes omitted" in out
+
+
+def test_render_html_footnote_tag_and_note():
+    from investdaytip.risk_signals import RiskSignal
+
+    dd = _sample_dive()
+    dd.risks.append(RiskSignal(
+        "info", "Product revenue concentration", "55% of revenue from iPhone", "stockfit",
+    ))
+    dd.footnote_note = "footnotes bear case omitted — no STOCKFIT_API_KEY"
+    html = render_html([dd])
+    assert "(StockFit footnotes)" in html
+    assert "no STOCKFIT_API_KEY" in html
 
 
 def test_render_html_smoke():

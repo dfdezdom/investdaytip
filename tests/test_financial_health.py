@@ -117,6 +117,7 @@ def _altman_facts(**kw) -> dict[str, float]:
         "EBIT": 150.0,
         "TotalLiabilities": 400.0,
         "TotalRevenue": 1200.0,
+        "StockholdersEquity": 800.0,
     }
     base.update(kw)
     return base
@@ -125,7 +126,8 @@ def _altman_facts(**kw) -> dict[str, float]:
 def test_altman_z_hand_computed():
     # Z = 1.2*0.25 + 1.4*0.30 + 3.3*0.15 + 0.6*2.0 + 1.0*1.2
     #   = 0.30 + 0.42 + 0.495 + 1.20 + 1.20 = 3.615
-    result = altman_z_score(_altman_facts(), market_cap=800.0)
+    # X4 = book equity / total liabilities (StockFit-aligned, not market cap)
+    result = altman_z_score(_altman_facts())
     assert result is not None
     assert result.z_score == pytest.approx(3.615)
     assert result.zone == "safe"
@@ -133,9 +135,9 @@ def test_altman_z_hand_computed():
 
 def test_altman_zones():
     # scale EBIT to move Z across the boundaries
-    safe = altman_z_score(_altman_facts(), market_cap=800.0)
-    grey = altman_z_score(_altman_facts(EBIT=-100.0), market_cap=200.0)
-    distress = altman_z_score(_altman_facts(EBIT=-300.0), market_cap=50.0)
+    safe = altman_z_score(_altman_facts())
+    grey = altman_z_score(_altman_facts(EBIT=-100.0, StockholdersEquity=200.0))
+    distress = altman_z_score(_altman_facts(EBIT=-300.0, StockholdersEquity=50.0))
     assert safe is not None and safe.zone == "safe"
     assert grey is not None and grey.zone == "grey"
     assert 1.81 <= grey.z_score < 2.99
@@ -145,10 +147,47 @@ def test_altman_zones():
 def test_altman_missing_or_invalid_returns_none():
     bad = _altman_facts()
     del bad["RetainedEarnings"]
-    assert altman_z_score(bad, market_cap=800.0) is None
-    assert altman_z_score(_altman_facts(), market_cap=None) is None
-    assert altman_z_score(_altman_facts(TotalLiabilities=0.0), market_cap=1.0) is None
-    assert altman_z_score(_altman_facts(TotalAssets=-1.0), market_cap=1.0) is None
+    assert altman_z_score(bad) is None
+    no_equity = _altman_facts()
+    del no_equity["StockholdersEquity"]
+    assert altman_z_score(no_equity) is None
+    assert altman_z_score(_altman_facts(TotalLiabilities=0.0)) is None
+    assert altman_z_score(_altman_facts(TotalAssets=-1.0)) is None
+
+
+def test_altman_matches_stockfit_aapl_fy2025():
+    """Regression: real AAPL FY2025 facts reproduce StockFit's ``altmanZScore`` (2.42)."""
+    result = altman_z_score({
+        "TotalAssets": 359241000000.0,
+        "CurrentAssets": 147957000000.0,
+        "CurrentLiabilities": 165631000000.0,
+        "RetainedEarnings": -14264000000.0,
+        "TotalLiabilities": 285508000000.0,
+        "StockholdersEquity": 73733000000.0,
+        "EBIT": 133050000000.0,
+        "TotalRevenue": 416161000000.0,
+    })
+    assert result is not None
+    assert round(result.z_score, 2) == 2.42
+    assert result.zone == "grey"
+
+
+def test_altman_x4_uses_parent_equity_not_total():
+    """AMT FY2025: parent equity gives StockFit's 0.24; total equity would be 0.32."""
+    facts = {
+        "TotalAssets": 63190400000.0,
+        "CurrentAssets": 2741800000.0,
+        "CurrentLiabilities": 6913800000.0,
+        "RetainedEarnings": -5086000000.0,
+        "TotalLiabilities": 52835100000.0,
+        "StockholdersEquity": 3652500000.0,   # attributable to the parent
+        "EBIT": 4269600000.0,
+        "TotalRevenue": 10644600000.0,
+    }
+    result = altman_z_score(facts)
+    assert result is not None
+    assert round(result.z_score, 2) == 0.24
+    assert result.zone == "distress"
 
 
 # ── annual_facts ─────────────────────────────────────────────────────────────

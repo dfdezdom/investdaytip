@@ -6,7 +6,10 @@ Combines three sources into one report per ticker:
 2. StockFit's aggregated ``company/research-summary`` (Starter tier) —
    omitted gracefully when no ``STOCKFIT_API_KEY`` is set or the fetch fails;
 3. **keyless local diagnostics**: Piotroski F-Score (9 checks) and Altman
-   Z-Score + zone, computed from the ticker's own annual statements.
+   Z-Score + zone, computed from the ticker's own annual statements;
+4. StockFit ``footnotes/*`` bear-case bullets (tier-aware — Pro for the full
+   set, Starter for the segmentation pair) merged into the devil's advocate
+   block alongside the keyless local layer.
 
 Piotroski/Altman are **informative only — never scored** (validated and
 rejected as scoring factors, see AGENTS.md).  The DCF link-out is
@@ -35,6 +38,7 @@ from investdaytip.data_source import (
 from investdaytip.data_source_stockfit import (
     ResearchSummary,
     detect_plan,
+    fetch_footnotes,
     fetch_research_summary,
     plan_allows,
 )
@@ -45,7 +49,12 @@ from investdaytip.financial_health import (
     annual_facts,
     piotroski_f_score,
 )
-from investdaytip.risk_signals import RiskSignal, risk_signals
+from investdaytip.risk_signals import (
+    SEVERITY_ORDER,
+    RiskSignal,
+    footnote_risk_signals,
+    risk_signals,
+)
 from investdaytip.scoring import ScoredAsset, resolve_include_technical, score_stock
 
 # RESERVED, not rendered: StockFit's DCF model lives in their web platform,
@@ -69,6 +78,8 @@ class DeepDive:
     research: Optional[ResearchSummary] = None
     piotroski: Optional[PiotroskiResult] = None
     altman: Optional[AltmanResult] = None
+    footnotes: dict[str, Any] = field(default_factory=dict)
+    footnote_note: Optional[str] = None
     risks: list[RiskSignal] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -105,7 +116,7 @@ def build_deep_dive(
             cur = annual_facts(income, balance, cash, datetime.now())
             prev = annual_facts(income, balance, cash, datetime.now(), years_back=1)
             dd.piotroski = piotroski_f_score(cur, prev)
-            dd.altman = altman_z_score(cur, dd.data.market_cap)
+            dd.altman = altman_z_score(cur)
     except Exception as exc:  # pragma: no cover - defensive
         dd.errors.append(f"health diagnostics failed: {exc}")
 
@@ -116,9 +127,33 @@ def build_deep_dive(
         except Exception as exc:  # pragma: no cover - defensive
             dd.errors.append(f"research summary failed: {exc}")
 
-    # Local devil's advocate: risk signals from the data we already have.
+    # StockFit footnotes — bear-case layer 2 (Pro; Starter serves only the
+    # segmentation pair).  Never raises; {} = nothing fetched.
+    if os.environ.get("STOCKFIT_API_KEY"):
+        plan = detect_plan()
+        if plan_allows(plan, "footnotes_segments"):
+            try:
+                dd.footnotes = fetch_footnotes(ticker)
+            except Exception as exc:  # pragma: no cover - defensive
+                dd.errors.append(f"footnotes failed: {exc}")
+        if not plan_allows(plan, "footnotes"):
+            if plan_allows(plan, "footnotes_segments"):
+                dd.footnote_note = (
+                    f"Pro footnotes omitted — requires Pro plan (current plan: {plan})"
+                )
+            else:
+                dd.footnote_note = (
+                    "footnotes bear case omitted — requires Starter plan "
+                    f"(current plan: {plan})"
+                )
+    else:
+        dd.footnote_note = "footnotes bear case omitted — no STOCKFIT_API_KEY"
+
+    # Devil's advocate: keyless local layer + StockFit footnotes layer.
     if isinstance(dd.data, StockData):
         dd.risks = risk_signals(dd.data, dd.piotroski, dd.altman)
+        dd.risks.extend(footnote_risk_signals(dd.footnotes, dd.data.market_cap))
+        dd.risks.sort(key=lambda s: SEVERITY_ORDER.get(s.severity, 9))
 
     return dd
 
@@ -229,9 +264,12 @@ def render_rich(items: list[DeepDive], console: Optional[Console] = None) -> Non
             colors = {"high": "red", "medium": "yellow", "info": "dim"}
             for sig in dd.risks:
                 color = colors.get(sig.severity, "dim")
-                console.print(f"  [{color}]• {sig.label}[/{color}] — {sig.detail}")
+                tag = "  [dim](StockFit footnotes)[/dim]" if sig.source == "stockfit" else ""
+                console.print(f"  [{color}]• {sig.label}[/{color}] — {sig.detail}{tag}")
         else:
             console.print("  [green]✓ no significant risk signals[/green]")
+        if dd.footnote_note:
+            console.print(f"  [dim]{dd.footnote_note}[/dim]")
 
         for err in dd.errors:
             console.print(f"  [red]⚠ {err}[/red]")
@@ -334,12 +372,17 @@ def render_html(items: list[DeepDive], generated_at: Optional[datetime] = None) 
         if dd.risks:
             risk_items = "".join(
                 f'<li class="risk-{_h(s.severity)}"><strong>{_h(s.label)}</strong>'
-                f' — {_h(s.detail)}</li>'
+                f' — {_h(s.detail)}'
+                + (' <span class="muted">(StockFit footnotes)</span>'
+                   if s.source == "stockfit" else "")
+                + "</li>"
                 for s in dd.risks
             )
             risk_html = f'<ul class="risks">{risk_items}</ul>'
         else:
             risk_html = '<p class="ok">✓ no significant risk signals</p>'
+        if dd.footnote_note:
+            risk_html += f'<p class="muted">{_h(dd.footnote_note)}</p>'
         rows.append(
             f'<div class="block"><h3>Devil\u2019s advocate — risk signals '
             f'<span class="muted">(local data — never scored)</span></h3>{risk_html}</div>'

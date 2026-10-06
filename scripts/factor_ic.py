@@ -188,13 +188,7 @@ def main() -> None:
                 td.get("cash_flow"), quarter_date, years_back=1,
             )
             pio = piotroski_f_score(cur_facts, prev_facts)
-            shares = cur_facts.get("OrdinarySharesNumber")
-            mcap_asof = (
-                stock.current_price * shares
-                if (stock.current_price and shares)
-                else stock.market_cap
-            )
-            alt = altman_z_score(cur_facts, mcap_asof)
+            alt = altman_z_score(cur_facts)
             pio_row: dict[str, Optional[float]] = {
                 f"pio_{k}": None for k in _PIOTROSKI_CHECKS
             }

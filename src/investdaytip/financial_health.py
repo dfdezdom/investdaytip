@@ -298,12 +298,19 @@ def piotroski_f_score(
 # ── Altman Z-Score ───────────────────────────────────────────────────────────
 
 
-def altman_z_score(
-    cur: Mapping[str, Optional[float]], market_cap: Optional[float]
-) -> Optional[AltmanResult]:
+def altman_z_score(cur: Mapping[str, Optional[float]]) -> Optional[AltmanResult]:
     """Altman Z-Score (1968, manufacturing model) and its zone.
 
-    ``Z = 1.2·WC/TA + 1.4·RE/TA + 3.3·EBIT/TA + 0.6·MV/TL + 1.0·Sales/TA``
+    ``Z = 1.2·WC/TA + 1.4·RE/TA + 3.3·EBIT/TA + 0.6·EQ/TL + 1.0·Sales/TA``
+
+    The equity component uses the **book value of equity attributable to the
+    parent** (``StockholdersEquity`` — excluding minority interests) over
+    total liabilities, matching StockFit's precomputed ``financials/scores``
+    output (verified to the cent: AAPL/MSFT/TSLA/INTC/T and AMT, where parent
+    vs. total equity differ).  Altman's 1968 paper uses the market value of
+    equity here, but StockFit documents book equity as its proxy — we follow
+    that so the keyless diagnostics and the StockFit-backed numbers are the
+    same figure.
 
     Zones: ``>= 2.99`` safe, ``>= 1.81`` grey, else distress.  Returns
     ``None`` when any input is missing or ``TotalAssets`` / ``TotalLiabilities``
@@ -314,11 +321,11 @@ def altman_z_score(
         cur.get("TotalAssets"), cur.get("CurrentAssets"),
         cur.get("CurrentLiabilities"), cur.get("RetainedEarnings"),
         cur.get("EBIT"), cur.get("TotalLiabilities"),
-        cur.get("TotalRevenue"), market_cap,
+        cur.get("TotalRevenue"), cur.get("StockholdersEquity"),
     )
     if vals is None:
         return None
-    (ta, ca, cl, re, ebit, tl, rev, mv) = vals
+    (ta, ca, cl, re, ebit, tl, rev, eq) = vals
     if ta <= 0 or tl <= 0:
         return None
 
@@ -326,7 +333,7 @@ def altman_z_score(
         1.2 * (ca - cl) / ta
         + 1.4 * re / ta
         + 3.3 * ebit / ta
-        + 0.6 * mv / tl
+        + 0.6 * eq / tl
         + 1.0 * rev / ta
     )
     zone = "safe" if z >= 2.99 else ("grey" if z >= 1.81 else "distress")

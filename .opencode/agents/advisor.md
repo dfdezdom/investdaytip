@@ -239,9 +239,14 @@ signals, Piotroski checks and Altman zone:
 [ -f .venv/bin/activate ] && source .venv/bin/activate; python -m investdaytip.main deep-dive -t "AAPL MSFT"
 ```
 
-**Layer 2 — StockFit footnotes (when the `tools.stockfit.*` MCP tools are
-available on this session):** call these per ticker and synthesize the bear
-case from real SEC footnote data:
+**Layer 2 — StockFit footnotes (Pro plan / authenticated MCP):** the
+`deep-dive` report renders the footnotes bear case **itself** when the plan
+unlocks it (`footnotes_concentration`, `debt_structure`, `credit_facilities`,
+`stock_compensation`, `retirement_plans`, `supplier_finance`,
+`fair_value_hierarchy` → bullets tagged "(StockFit footnotes)"); below Pro it
+degrades to `Pro footnotes omitted — requires Pro plan (current plan: …)`.
+Use the `tools.stockfit.*` MCP tools to go beyond it (raw figures for the
+narrative, plus the people-side endpoints the report does not render):
 
 | Tool | What it reveals for the bear case |
 |------|-----------------------------------|

@@ -52,6 +52,8 @@ import pandas as pd
 from investdaytip.cache import (
     cache_history_get,
     cache_history_set,
+    cache_stockfit_footnotes_get,
+    cache_stockfit_footnotes_set,
     cache_stockfit_info_get,
     cache_stockfit_info_set,
     cache_stockfit_insights_get,
@@ -114,6 +116,7 @@ CAPABILITIES: dict[str, Optional[str]] = {
     "deep_dive_summary": "starter",  # company/research-summary
     "economic_model": "stock",       # company/economic-model
     "footnotes": "pro",              # footnotes/* — rich devil's advocate
+    "footnotes_segments": "starter",  # footnotes/{revenue,business}-segmentation
     "live_source": "starter",        # --data-source stockfit (quota: ~6 calls/ticker)
 }
 
@@ -976,6 +979,73 @@ def fetch_research_summary(ticker: str) -> Optional[ResearchSummary]:
     except (TypeError, ValueError):
         logger.debug("Could not cache StockFit research summary for %s", ticker)
     return summary
+
+
+# ── Footnotes (devil's advocate layer 2) ─────────────────────────────────────
+
+#: footnotes endpoints -> capability gate.  The Pro set feeds the bear-case
+#: bullets (concentration, debt, stock comp, pensions, supplier finance, fair
+#: value); the segmentation pair is Starter-accessible and its response shape
+#: was verified live (2026-10-06).  The Pro shapes come from the API docs and
+#: are parsed defensively — see ``risk_signals.footnote_risk_signals``.
+_FOOTNOTE_ENDPOINTS: tuple[tuple[str, str], ...] = (
+    ("footnotes/concentration", "footnotes"),
+    ("footnotes/debt-structure", "footnotes"),
+    ("footnotes/credit-facilities", "footnotes"),
+    ("footnotes/stock-compensation", "footnotes"),
+    ("footnotes/retirement-plans", "footnotes"),
+    ("footnotes/supplier-finance", "footnotes"),
+    ("footnotes/fair-value-hierarchy", "footnotes"),
+    ("footnotes/revenue-segmentation", "footnotes_segments"),
+    ("footnotes/business-segmentation", "footnotes_segments"),
+)
+
+#: annual snapshots, last 3 periods — enough for a trend, cheap on quota.
+_FOOTNOTE_PARAMS: dict[str, str] = {"period": "annual", "limit": "3"}
+
+
+def fetch_footnotes(ticker: str) -> dict[str, Any]:
+    """Raw StockFit footnote payloads for the devil's advocate layer.
+
+    Fetches every ``footnotes/*`` endpoint the caller's plan unlocks (Pro for
+    the bear-case set, Starter for the segmentation pair).  **Never raises**:
+    per-endpoint failures are skipped, and a partial result is returned
+    *uncached* so the next run refetches the missing pieces.  An empty dict
+    means nothing could be fetched (no key, no unlocked endpoint, or all
+    failed) — the caller degrades to the keyless local layer.
+    """
+    ticker = _norm_ticker(ticker)
+    cached = cache_stockfit_footnotes_get(ticker)
+    if cached is not None:
+        try:
+            payload = json.loads(cached)
+            if isinstance(payload, dict):
+                return payload
+        except (TypeError, ValueError):
+            logger.debug("Corrupt footnotes cache for %s", ticker)
+
+    plan = detect_plan()
+    results: dict[str, Any] = {}
+    failures = 0
+    for path, capability in _FOOTNOTE_ENDPOINTS:
+        if not plan_allows(plan, capability):
+            continue
+        key = path.split("/", 1)[1]
+        try:
+            results[key] = _get(path, {"symbol": ticker, **_FOOTNOTE_PARAMS})
+        except StockfitPlanError:
+            # Plan detection raced a plan change — skip, never block.
+            logger.debug("StockFit %s gated for %s (plan %s)", path, ticker, plan)
+            failures += 1
+        except StockfitError as exc:
+            logger.debug("StockFit %s failed for %s: %s", path, ticker, exc)
+            failures += 1
+    if results and failures == 0:
+        try:
+            cache_stockfit_footnotes_set(ticker, json.dumps(results))
+        except (TypeError, ValueError):
+            logger.debug("Could not cache StockFit footnotes for %s", ticker)
+    return results
 
 
 # ── Live data source (`--data-source stockfit`) ──────────────────────────────

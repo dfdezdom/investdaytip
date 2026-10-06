@@ -303,6 +303,20 @@ def cache_stockfit_research_set(ticker: str, research_json: str) -> None:
     get_db().set(_cache_key(ticker, "stockfit_research"), research_json, TTL_FUNDAMENTALS)
 
 
+def cache_stockfit_footnotes_get(ticker: str) -> str | None:
+    """Return cached StockFit footnotes JSON string or None."""
+    if not enabled:
+        return None
+    return get_db().get(_cache_key(ticker, "stockfit_footnotes"))
+
+
+def cache_stockfit_footnotes_set(ticker: str, footnotes_json: str) -> None:
+    """Store StockFit footnotes JSON string with fundamentals TTL."""
+    if not enabled:
+        return
+    get_db().set(_cache_key(ticker, "stockfit_footnotes"), footnotes_json, TTL_FUNDAMENTALS)
+
+
 def cache_stockfit_plan_get() -> str | None:
     """Return the cached StockFit plan string or None."""
     if not enabled:

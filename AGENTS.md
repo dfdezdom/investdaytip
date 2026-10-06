@@ -38,9 +38,9 @@ the convention is `Optional[...]` for dataclass fields, not `X | None`.
 | Backtest | `backtest.py` | historical scoring validation (stocks only) |
 | Sentiment | `sentiment.py` | CNN Fear & Greed Index, no yfinance (uses `urllib`) |
 | Deep-dive report | `deep_dive.py` | Per-ticker report: score + StockFit research-summary + keyless Piotroski/Altman diagnostics |
-| Risk signals | `risk_signals.py` | Keyless "devil's advocate" layer (Fase 3 local): Altman zone, Piotroski failures, leverage, payout, losses — context, never scored |
+| Risk signals | `risk_signals.py` | "Devil's advocate" layers (Fase 3): keyless local bullets + StockFit `footnotes/*` bullets — context, never scored |
 | Universes | `*_universe.py` (7 modules) | curated ticker lists wired in `recommender._build_universe()` (deduplicated case-insensitively) |
-| Tests | `tests/` | 22 test files, no live network calls (autouse network guard in `conftest.py`) |
+| Tests | `tests/` | 23 test files, no live network calls (autouse network guard in `conftest.py`) |
 | OpenCode agent | `.opencode/agents/advisor.md` | advisor subagent: permissions, interactive flow, execution methods, and interpretation guide |
 
 Data flow: `CLI → recommender → data_source (yfinance|yahooquery|fmp) → scoring → html_export / Rich table`
@@ -441,16 +441,47 @@ investdaytip deep-dive -t "AAPL MSFT" --export-html report.html
 | InvestDayTip score + factor breakdown | live `fetch_asset` + `score_stock` | no |
 | Earnings snapshot (EPS, margins, ROE/ROIC, FCF, growth, next dates) | StockFit `company/research-summary` (Starter tier) | yes — omitted with a note otherwise |
 | Piotroski F-Score (9 checks ✓/✗) + Altman Z + zone | **local** (`financial_health`) from the ticker's own annual statements | no |
+| Devil's advocate — risk signals (local + footnotes layer) | `risk_signals`: keyless heuristics + StockFit `footnotes/*` bullets (Pro; segmentation pair on Starter) | no — footnotes omitted with a note below Pro |
 
 - Piotroski/Altman are **diagnostics, never scored** (validated and rejected
   as scoring factors); both renders label them as such.
-- **Devil's advocate block** (`risk_signals.risk_signals()`) — keyless local
-  risk bullets: Altman zone (distress→high, grey→medium), losses, negative
-  FCF, D/E > 200%, payout > 100% / > 85%, failed Piotroski checks (accruals
-  → medium, dilution & rising leverage → info, both margin+ROA deteriorating
-  → medium). This is the **local layer of product Fase 3**; the footnotes
-  based bear case (StockFit `footnotes/*`, Pro tier or MCP) layers on top.
-  Context only — never scored.
+- **Altman Z convention (verified vs StockFit 2026-10-06)**: X4 uses the
+  **book value of equity attributable to the parent** (`StockholdersEquity`,
+  excluding minority interests) over total liabilities — StockFit's documented
+  proxy in `financials/scores` — **not** the 1968 paper's market-value term.
+  This keeps the keyless local diagnostic numerically identical to StockFit's
+  precomputed `altmanZScore` (reproduced exactly on AAPL 2.42, MSFT 2.64,
+  TSLA 2.40, INTC 1.52, T 0.87 and AMT 0.24 — AMT discriminates parent vs
+  total equity). `altman_z_score(cur)` takes no market cap.
+- **Devil's advocate block** (`risk_signals.risk_signals()` + `footnote_risk_signals()`)
+  — two layers merged into one severity-sorted list, each bullet tagged with
+  its source. **Layer 1 (keyless local)**: Altman zone (distress→high,
+  grey→medium), losses, negative FCF, D/E > 200%, payout > 100% / > 85%,
+  failed Piotroski checks (accruals → medium, dilution & rising leverage →
+  info, both margin+ROA deteriorating → medium). **Layer 2 (StockFit
+  `footnotes/*`, 2026-10-06)**: `deep_dive.build_deep_dive()` fetches the
+  footnotes the plan unlocks via `fetch_footnotes()` (Pro: concentration,
+  debt-structure, credit-facilities, stock-compensation, retirement-plans,
+  supplier-finance, fair-value-hierarchy; Starter: revenue/business
+  segmentation) and `footnote_risk_signals()` derives bullets — key-customer
+  / supplier concentration, debt maturity wall (≥25% of face due ≤2y),
+  credit-line utilization (≥50/75%), unrecognized SBC vs market cap,
+  underfunded pensions, supplier-finance obligations, Level 3 share,
+  geographic/product/segment revenue concentration. Below Pro the report
+  shows `Pro footnotes omitted — requires Pro plan (current plan: …)`; below
+  Starter / without a key the whole layer degrades to a note. Context only —
+  never scored.
+- **Footnote parsing is defensive by design** — the Pro `footnotes/*` response
+  shapes come from the API **documentation only** (the session's plan is
+  Starter, so they could not be verified live; the segmentation pair was
+  verified 2026-10-06: `geography.countries[].{name,value}` /
+  `product[].{name,value}` and `segments[].{role,metrics.revenue}`). Every
+  reader looks up documented field names (`share`, `dueYear`, `faceAmount`,
+  `utilization`, `unrecognized*Cost`, `fundedStatus`, `*outstanding*`/
+  `*obligation*`, `level3Share`) and emits **silence** on an unknown shape —
+  never a fabricated bullet. **When a Pro key is available, verify the shapes
+  live and tighten the parsers** (`tests/test_footnotes.py` pins the
+  documented shapes).
 - **Unit convention (verified live 2026-09-27)**: StockFit snapshot
   margins/returns (`grossMargin`, `operatingMargin`, `netMargin`, `roe`,
   `roic`, `fcfToNetIncome`) are **percent-form** (40.31 = 40.31%) while
@@ -481,7 +512,8 @@ below it: they are omitted with an explicit reason, never fabricated.
 - `data_source_stockfit.CAPABILITIES` maps each capability to its minimum
   plan (`None` = works keyless): `pit_statements` keyless (local snapshot),
   `fundamental_insights` free, `deep_dive_summary` starter,
-  `economic_model` stock, `footnotes` pro, `live_source` starter
+  `economic_model` stock, `footnotes` pro, `footnotes_segments` starter,
+  `live_source` starter
   (`--data-source stockfit`).
 - `detect_plan()` — StockFit exposes no plan endpoint, but gated endpoints
   answer **HTTP 403** ("Feature not available on current plan"), so the plan
@@ -522,7 +554,7 @@ below it: they are omitted with an explicit reason, never fabricated.
 
 ### Caching
 - `CacheDB` in `cache.py`: SQLite with `threading.local()` per-thread connections, WAL mode, write lock via `threading.Lock`
-- Twelve cache entry types:
+- Thirteen cache entry types:
   - `{ticker}:info` (fundamentals, TTL 1d — flat yfinance-style dict)
   - `{ticker}:fmp_info` (FMP `{"profile", "ratios_ttm"}` schema, TTL 1d) — separate key so FMP's incompatible schema never poisons the shared yfinance-style `info` entry (and vice versa)
   - `{ticker}:history` (prices, TTL 15min)
@@ -532,6 +564,7 @@ below it: they are omitted with an explicit reason, never fabricated.
   - `superinvestor:holdings` (DataRoma aggregated data, TTL 7 days)
   - `{ticker}:stockfit_insights` (StockFit insight charts, TTL 1d — written only on a complete 3-endpoint fetch)
   - `{ticker}:stockfit_research` (StockFit research summary for `deep-dive`, TTL 1d — written on success)
+  - `{ticker}:stockfit_footnotes` (StockFit `footnotes/*` payloads for the deep-dive bear case, TTL 1d — written only on a complete fetch of every endpoint the plan unlocks)
   - `{ticker}:stockfit_info` (StockFit profile + latest DPS + TTM facts for `--data-source stockfit`, TTL 1d)
   - `_global:stockfit_plan` (detected StockFit plan for tier-aware gating, TTL 1d — never stores `unknown`)
 - `fetch_asset()` defers cache-write until both info and history are fetched (atomic snapshot); partial results cached on history failure
@@ -679,7 +712,7 @@ The `advisor` subagent is configured in `.opencode/agents/advisor.md`. It define
 - **Permissions:** bash/read allowed, write with confirmation
 - **Required flow:** always ask the user before running any analysis
 - **Execution methods:** `macro_regime()` (VIX + yield curve + bond vol + DXY + Fear & Greed) for full macro pulse (returns `action`: buy/hold/sell), `market_regime()` + `bubble_risk()` for quick VIX-only pulse, `run_comprehensive()` for multi-region, or interactive CLI `investdaytip advisor`
-- **Devil's advocate (Fase 3 path B):** every portfolio review / buy recommendation includes a bear case — Layer 1 via `investdaytip deep-dive` (keyless risk signals, Piotroski/Altman), Layer 2 via the StockFit MCP tools (`tools.stockfit.*`: footnotes_concentration, debt_structure, stock_compensation, insider_transactions_summary, executives_governance, …) when the server is authenticated. Never fabricate; balanced view; risk is context, never a score.
+- **Devil's advocate (Fase 3 path B):** every portfolio review / buy recommendation includes a bear case — Layer 1 via `investdaytip deep-dive` (keyless risk signals, Piotroski/Altman), Layer 2 via the StockFit footnotes (`footnotes_concentration`, `footnotes_debt_structure`, `footnotes_stock_compensation`, …): the deep-dive renders them itself when the plan unlocks them, and the MCP tools (`tools.stockfit.*`, plus `insider_transactions_summary`, `executives_governance`, …) enrich the case when the server is authenticated. Never fabricate; balanced view; risk is context, never a score.
 - **Output format:** clean markdown (never raw Rich tables)
 - **Interpretation rules:** VIX thresholds (≤15 bullish, ≤25 neutral, ≤35 bearish, >35 crash), bubble risk (VIX percentile <15% → complacency), macro regime (composite 0-100: ≥70 healthy→BUY, ≥45 neutral→HOLD, ≥25 warning→HOLD, <25 danger→SELL), scores, portfolio signals
 
