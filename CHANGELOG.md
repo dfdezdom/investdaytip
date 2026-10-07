@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.17.3 (2026-10-08)
+
+### Fixes
+
+- **Concentration bullets are shares of the revenue, and a map that never reaches it says nothing** — `_revenue_segmentation_signals()` divided by the *geographic* total, which is the company's revenue only when the map is complete. StockFit's geography footnote is often a slice of the world: NFLX, CSCO and EQIX tag nothing but the United States in `countries` — 41%, 54% and 39% of their revenue — and EMR only the US and China (52%), so the site's 2026-10-07 run shipped "**100% of revenue from United States**" for four filers that are not 100% US *and* product shares of **244% (NFLX), 243% (EQIX), 183% (BMY), 140% (CSCO) and 133% (EMR)** — percentages of a truncated total. Both bullets now divide by the filer's own `TotalRevenue` (the `annual_facts()` figure the diagnostics already use, passed down from `build_deep_dive()`), under two guards learned from that run: the geography bullet needs the map to **reconcile** with that revenue (band 0.90–1.10× — measured across the top 100, complete maps sit at 0.9999–1.0003, partial ones at 0.39–0.54, and a filer whose `Non-US` region overlaps its other regions at 1.43×, JNJ, which would otherwise report a share deflated by its own double count), and a product line is dropped when it outsizes the revenue (BMY's `Sales Revenue Gross` footnote line is 1.83× its revenue; the next line down, `Net Product Sales`, is the real 97%). Statements unavailable → no geography bullet and the product share falls back to the geographic total, never above 100%; a missing geography block no longer silences a product bullet that the revenue can carry. Regression tests: `tests/test_footnotes.py` (5 new), `tests/test_deep_dive.py`.
+
 ## v0.17.2 (2026-10-07)
 
 ### Fixes
