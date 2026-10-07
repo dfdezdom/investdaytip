@@ -385,6 +385,46 @@ def _technical_indicators(
     return rsi, hist_pct
 
 
+def _history_lags_quote(info: dict, history: pd.DataFrame) -> bool:
+    """True when *history*'s last bar belongs to an earlier session than the quote.
+
+    ``info`` (the quote, cached for a day) and *history* (cached for 15
+    minutes) come from different Yahoo endpoints with independent caches, so a
+    chart response can arrive a session behind the quote: the row would then
+    publish today's price against a 1M / daily-change / RSI window that ends
+    yesterday — observed 2026-10-06, where 18 of the top-100 tickers shipped
+    an Oct-6 price next to metrics computed over a series ending Oct 5.
+
+    Session *dates* are compared, never prices: while the market is open the
+    chart's partial daily bar carries the same date as the quote, so a live
+    price never looks like a lag.
+    """
+    if history is None or history.empty or "Close" not in history:
+        return False
+    close = history["Close"].dropna()
+    if close.empty:
+        return False
+    raw = info.get("regularMarketTime")
+    if raw is None:
+        return False
+    try:
+        quote_ts = pd.Timestamp(float(raw), unit="s", tz="UTC")
+    except (TypeError, ValueError, OverflowError, OSError):
+        return False
+    last = close.index[-1]
+    if not isinstance(last, pd.Timestamp):
+        return False
+    # A tz-aware index is the exchange's own timezone; the cache round-trip
+    # (`to_json` → `read_json`) yields naive UTC timestamps, which is what
+    # pandas wrote from the epoch-millisecond index.
+    tz = last.tz if getattr(last, "tz", None) is not None else "UTC"
+    try:
+        quote_date = quote_ts.tz_convert(tz).date()
+    except (KeyError, TypeError, ValueError):
+        return False
+    return quote_date > last.date()
+
+
 def _apply_history_common(
     data: StockData | EtfData,
     history: pd.DataFrame,
@@ -414,8 +454,16 @@ def _apply_history_common(
         rsi, macd = _technical_indicators(close)
         data.rsi_14 = rsi
         data.macd_histogram = macd
-    if data.current_price is None and history is not None and not history.empty and "Close" in history:
-        data.current_price = float(history["Close"].iloc[-1])
+        # Price and metrics must describe the same session: the quote in
+        # ``info`` is a separate endpoint with its own cache, and when it is a
+        # session ahead of *history* the row pairs today's price with a 1M /
+        # daily-change / RSI window ending yesterday (2026-10-06: 18 of the
+        # top-100 shipped an Oct-6 price next to Oct-5 metrics).  The last
+        # close of *history* is the base every metric above was computed on,
+        # so it wins whenever there is history; ``info`` only fills the gap
+        # when there is none (market-cap threshold, failed fetch).
+        if not close.empty:
+            data.current_price = float(close.iloc[-1])
 
 
 # ── Shared StockData derivation (backtest + StockFit live source) ─────────
@@ -865,8 +913,13 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0, with_improvements: boo
 
     Uses a SQLite cache (``~/.investdaytip/cache.db``) to avoid redundant
     yfinance calls.  The ``info`` dict is cached for 1 day; price history
-    is cached for 5 minutes.  Use ``--no-cache`` to bypass or
+    is cached for 15 minutes.  Use ``--no-cache`` to bypass or
     ``--cache-clear`` to purge all entries.
+
+    The two come from different Yahoo endpoints, so a chart response can
+    arrive a session behind the quote: when that happens history is refetched
+    once past the cache (``_history_lags_quote``), because a row must never
+    pair the quote's price with metrics computed over an older series.
 
     Retries up to 3 times with exponential backoff on rate-limit errors.
     When ``min_market_cap > 0``, skips the expensive ``t.history()`` call
@@ -970,6 +1023,31 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0, with_improvements: boo
                 cache_info_set(ticker, info)
                 cache_history_set(ticker, pd.DataFrame().to_json())
             return data
+
+    # ── Step 2b: recover from a chart that lags the quote ────────────────
+    # A chart response can arrive a session behind the quote (independent
+    # caches): refetch once, past our own cache, so the price we publish and
+    # every metric derived from *history* describe the same session.
+    if _history_lags_quote(info, history):
+        logging.warning(
+            "%s: price history ends before the quote's session — refetching", ticker
+        )
+        try:
+            with _suppress_stderr():
+                if t is None:
+                    t = yf.Ticker(ticker)
+                fresh = t.history(period="2y", interval="1d", auto_adjust=True)
+            if fresh is not None and not fresh.empty:
+                history = fresh
+                cache_history_set(ticker, history.to_json())
+        except Exception:
+            logging.warning("%s: stale price history — refetch failed", ticker)
+        if _history_lags_quote(info, history):
+            # Still behind: keep it (price and metrics stay consistent with
+            # each other thanks to _apply_history_common) and leave a trace.
+            logging.warning(
+                "%s: price history still ends before the quote's session", ticker
+            )
 
     # Cache info now that history also succeeded — atomic snapshot for
     # consistent results across consecutive runs.

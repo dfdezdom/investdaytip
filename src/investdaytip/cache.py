@@ -1,7 +1,7 @@
 """SQLite cache for yfinance data with per-type TTL.
 
 Cache keys are ``{ticker}:info`` (fundamentals + metadata, 1 day TTL) and
-``{ticker}:history`` (price history, 5 min TTL).
+``{ticker}:history`` (price history, 15 min TTL).
 """
 
 from __future__ import annotations

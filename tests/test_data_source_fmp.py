@@ -121,7 +121,11 @@ def test_fetch_asset_basic(mocker):
     assert result.sector == "Technology"
     assert result.currency == "USD"
     assert result.exchange == "NYSE"
-    assert result.current_price == 150.0
+    # The row's price is the last close of the chart the trend metrics are
+    # computed on, not the profile quote: mixing the two publishes today's
+    # price against a 1M / daily-change / RSI window ending yesterday
+    # (profile says 150.0, the mocked chart ends at 100 * 1.0005**399).
+    assert result.current_price == pytest.approx(100.0 * 1.0005**399)
     assert result.market_cap == 10_000_000_000
     # Valuation
     assert result.trailing_pe == 25.0

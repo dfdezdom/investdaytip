@@ -11,8 +11,10 @@ from yfinance.exceptions import YFRateLimitError
 from investdaytip.data_source import (
     EtfData,
     StockData,
+    _apply_history_common,
     _compute_eps_surprise,
     _first,
+    _history_lags_quote,
     _safe_get,
     _sanitize_yield,
     _technical_indicators,
@@ -614,3 +616,134 @@ def test_fetch_asset_deduplicates_earnings_dates_index(mocker, stock_info):
     written_json = cache_set.call_args[0][1]
     cached = pd.read_json(StringIO(written_json))
     assert not cached.index.duplicated().any()
+
+
+# ── Price / history session consistency ──────────────────────────────────────
+#
+# The quote (``info``, cached a day) and the price history (cached 15 min)
+# come from different Yahoo endpoints, so a chart response can arrive a
+# session behind.  A row must never pair today's price with a 1M /
+# daily-change / RSI window ending yesterday — the 2026-10-06 run shipped 18
+# of the top-100 tickers that way (FIVE: price 209.92 next to -10.01% 1M, the
+# Oct-5 numbers).
+
+
+def _session_history(last_date: str, bars: int = 40) -> pd.DataFrame:
+    """Daily closes of *bars* sessions ending on *last_date* (tz-aware)."""
+    idx = pd.date_range(end=last_date, periods=bars, freq="D", tz="America/New_York")
+    return pd.DataFrame({"Close": [100.0 + i for i in range(bars)]}, index=idx)
+
+
+def _quote_epoch(iso: str) -> float:
+    """Epoch seconds for *iso* (a UTC wall time), as ``regularMarketTime``."""
+    return float(pd.Timestamp(iso, tz="UTC").timestamp())
+
+
+class TestHistoryLagsQuote:
+    def test_detects_chart_one_session_behind_the_quote(self):
+        history = _session_history("2026-10-05")
+        info = {"regularMarketTime": _quote_epoch("2026-10-06 20:00")}
+
+        assert _history_lags_quote(info, history) is True
+
+    def test_same_session_does_not_lag(self):
+        # Intraday the quote and the chart's partial bar share a date.
+        history = _session_history("2026-10-05")
+        info = {"regularMarketTime": _quote_epoch("2026-10-05 20:00")}
+
+        assert _history_lags_quote(info, history) is False
+
+    def test_naive_index_from_the_cache_is_read_as_utc(self):
+        # to_json → read_json keeps the dates but drops the timezone.
+        naive = _session_history("2026-10-05").tz_convert("UTC").tz_localize(None)
+        info = {"regularMarketTime": _quote_epoch("2026-10-06 20:00")}
+
+        assert _history_lags_quote(info, naive) is True
+
+    def test_missing_or_unusable_quote_time_skips_the_check(self):
+        history = _session_history("2026-10-05")
+
+        assert _history_lags_quote({}, history) is False
+        assert _history_lags_quote({"regularMarketTime": "soon"}, history) is False
+
+    def test_empty_history_never_lags(self):
+        info = {"regularMarketTime": _quote_epoch("2026-10-06 20:00")}
+
+        assert _history_lags_quote(info, pd.DataFrame()) is False
+        assert _history_lags_quote(info, pd.DataFrame({"Close": []})) is False
+
+
+def test_price_comes_from_the_history_the_metrics_are_built_on():
+    # The quote is a session ahead of the chart: the row stays on one session,
+    # price equal to the bar every trend metric was computed against.
+    history = _session_history("2026-10-05")
+    data = StockData(ticker="FIVE", current_price=215.93)
+
+    _apply_history_common(data, history)
+
+    close = history["Close"]
+    assert data.current_price == float(close.iloc[-1])
+    assert data.return_1m == pytest.approx(float(close.iloc[-1] / close.iloc[-22] - 1))
+    assert data.daily_change == pytest.approx(float(close.iloc[-1] / close.iloc[-2] - 1))
+    assert data.rsi_14 is not None
+
+
+def test_quote_price_survives_when_there_is_no_history():
+    # Market-cap threshold / failed fetch: there is no series to align to.
+    data = StockData(ticker="NOHIST", current_price=150.0)
+
+    _apply_history_common(data, pd.DataFrame())
+
+    assert data.current_price == 150.0
+    assert data.return_1m is None
+
+
+def test_fetch_asset_refetches_a_history_that_lags_the_quote(mocker, stock_info):
+    stock_info["regularMarketTime"] = _quote_epoch("2026-10-06 20:00")
+    stale, fresh = _session_history("2026-10-05"), _session_history("2026-10-06")
+    mock = MagicMock()
+    mock.info = stock_info
+    mock.history.side_effect = [stale, fresh]
+    mock.dividends = pd.Series(dtype=float)
+    mock.earnings_dates = pd.DataFrame()
+    mocker.patch("investdaytip.data_source.yf.Ticker", return_value=mock)
+
+    result = fetch_asset("STALE")
+
+    assert mock.history.call_count == 2  # one recovery fetch
+    assert not result.errors
+    assert result.current_price == float(fresh["Close"].iloc[-1])
+    assert result.return_1m == pytest.approx(
+        float(fresh["Close"].iloc[-1] / fresh["Close"].iloc[-22] - 1)
+    )
+
+
+def test_fetch_asset_does_not_refetch_when_quote_and_history_agree(mocker, stock_info):
+    stock_info["regularMarketTime"] = _quote_epoch("2026-10-06 20:00")
+    mock = _mock_ticker(stock_info, history=_session_history("2026-10-06"))
+    mocker.patch("investdaytip.data_source.yf.Ticker", return_value=mock)
+
+    fetch_asset("SYNCED")
+
+    mock.history.assert_called_once()
+
+
+def test_fetch_asset_stays_self_consistent_when_the_refetch_is_still_stale(mocker, stock_info):
+    # Yahoo can serve the same stale chart twice: the row then reports the
+    # session it actually has — price and metrics together, never mixed.
+    stock_info["regularMarketTime"] = _quote_epoch("2026-10-06 20:00")
+    stale = _session_history("2026-10-05")
+    mock = MagicMock()
+    mock.info = stock_info
+    mock.history.side_effect = [stale, stale]
+    mock.dividends = pd.Series(dtype=float)
+    mock.earnings_dates = pd.DataFrame()
+    mocker.patch("investdaytip.data_source.yf.Ticker", return_value=mock)
+
+    result = fetch_asset("STILLSTALE")
+
+    assert mock.history.call_count == 2
+    assert result.current_price == float(stale["Close"].iloc[-1])
+    assert result.return_1m == pytest.approx(
+        float(stale["Close"].iloc[-1] / stale["Close"].iloc[-22] - 1)
+    )
