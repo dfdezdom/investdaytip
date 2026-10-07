@@ -197,8 +197,8 @@ def _parse_min_market_cap(raw: str) -> float:
 
 def _render(results: list[ScoredAsset], console: Console, include_superinvestor: bool = False, include_technical: bool = False) -> None:
     if not results:
-        logger.error("No recommendations could be generated.")
-        console.print("[red]No recommendations could be generated.[/red]")
+        logger.error("No candidates could be scored.")
+        console.print("[red]No candidates could be scored.[/red]")
         return
 
     table = Table(

@@ -1,4 +1,4 @@
-"""InvestDayTip — stock recommendation tool."""
+"""InvestDayTip — stock scoring and research tool."""
 
 from typing import TYPE_CHECKING
 

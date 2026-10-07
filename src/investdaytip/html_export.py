@@ -1,4 +1,4 @@
-"""Self-contained HTML export for recommendation results."""
+"""Self-contained HTML export for scoring results."""
 
 from __future__ import annotations
 
@@ -226,7 +226,7 @@ def _render_initial_rows(rows: list[dict[str, Any]], include_superinvestor: bool
   if not rows:
     return (
       f'<tr><td colspan="{column_count}" class="muted">'
-      'No recommendations were generated for this run.</td></tr>'
+      'No rows were generated for this run.</td></tr>'
     )
 
   out: list[str] = []
@@ -708,7 +708,7 @@ def export_recommendations_html(
 
     <div class=\"count\" id=\"count\"></div>
 
-    <table aria-label=\"Recommendations\">
+    <table aria-label=\"Ratings\">
       <thead>
         <tr>
           <th class="sortable num active" data-sort-key="rank" data-sort-type="number" tabindex="0" aria-sort="ascending">#<span class="sort-indicator">↑</span></th>

@@ -1031,7 +1031,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
         console.print("\n[yellow]Interrupted. Exiting.[/yellow]")
         return 0
 
-    with console.status("[bold green]Generating buy recommendations..."):
+    with console.status("[bold green]Scoring top candidates..."):
 
         portfolio_tickers: set[str] = set()
         if portfolio_path.exists():
@@ -1122,8 +1122,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
             logger.error("Error exporting advisor HTML: %s", exc)
             console.print(f"\n[red]Error exporting HTML:[/red] {exc}")
     else:
-        logger.info("No new recommendations found outside current portfolio.")
-        console.print("[yellow]No new recommendations found outside current portfolio.[/yellow]")
+        logger.info("No new candidates found outside the current portfolio.")
+        console.print("[yellow]No new candidates found outside the current portfolio.[/yellow]")
 
     if macro_action != "buy":
         console.print(f"\n[yellow]💡 {macro['description']}[/yellow]")
