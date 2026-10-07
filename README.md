@@ -166,14 +166,14 @@ investdaytip --help
 
 | Flag | Description | Default |
 |---|---|---|
-| `-n, --top N` | Number of recommendations (defaults to ticker count when `-t` is used) | `5` |
+| `-n, --top N` | Number of picks to show (defaults to ticker count when `-t` is used) | `5` |
 | `-t, --tickers ...` | Custom ticker list (overrides universe; quoted space-separated ok) | curated universe |
 | `--tickers-file PATH` | Text file with custom tickers (merged with `--tickers` if both are used) | disabled |
 | `-a, --asset-class {all,stocks,etfs}` | Asset class filter | `all` |
 | `-r, --region {all,us,eu,asia,superinvestor}` `nargs="+"` | Region filter(s) — e.g. `-r us eu` | `all` |
 | `-c, --currency {all,USD,EUR,GBP,…}` `nargs="+"` | Currency filter(s); narrows universe to matching regions when no `-r` is given | `all` |
 | `-s, --sector TEXT` | Sector/category prefix filter, case-insensitive (e.g. `Financial` matches Financial Services) | disabled |
-| `--export-html [PATH]` | Export recommendations to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
+| `--export-html [PATH]` | Export the scoring results to self-contained HTML (`investDayTip-aaaammdd-hhmm.html` if omitted) | disabled |
 | `--superinvestor` | Include superinvestor ownership data from DataRoma (adds ~80 HTTP requests, shows column in HTML and CLI) | disabled |
 | `--fundamental-insights` | Add a StockFit fundamentals section to the HTML report (margin trends, FCF/NI quality, balance-sheet health; US stocks only). Uses `STOCKFIT_API_KEY` when set and is omitted gracefully without it | disabled |
 | `--include-technical` | Include RSI + MACD technical indicators in the scoring. **Default is `True` for `quant` and `False` for `classic`.** Use `--no-include-technical` to force-disable. | model-dependent |
@@ -233,7 +233,7 @@ Signal: 🟡 HOLD — selective buying
 
 ### 🩺 Devil's advocate — bear cases from SEC footnotes
 
-Every portfolio review and buy recommendation now ends with a **bear case**
+Every portfolio review and model pick now ends with a **bear case**
 for the analyzed tickers, in two layers:
 
 | Layer | Source | Needs |
@@ -586,7 +586,7 @@ picks = get_recommendations(top_n=5, region="us", data_source="fmp")
 
 ## Output
 
-Each recommendation includes:
+Each row includes:
 
 | Column | Meaning |
 |---|---|
