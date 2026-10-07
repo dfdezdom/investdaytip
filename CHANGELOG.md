@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **Geographic revenue concentration now covers the whole disclosed mix** — `_geo_total()` read `countries` *or* `regions`, never both, but StockFit buckets geography four ways (`countries` / `usStates` / `regions` / `residuals`) and a filer tags the United States as a country while the rest of the world lands in `regions`: the total therefore held the US line alone and GOOGL — **48% US** in its FY2025 10-K — reported "**100% of revenue from United States**". 19 of the top-100 tickers carried that 100% bullet in the site's 2026-10-06 run, among them MSFT (US $144.5B + Non-US $137.2B) and KO, both documented US + Non-US filers, and the same short total inflated every *Product revenue concentration* share (denominator = the geographic total). The leaves are now countries + residuals + each region's remainder, via StockFit's documented `explainedByCountries` / `other` reconciliation: a region fully covered by country leaves (Apple's `srt:AmericasMember` around `country:US`) contributes nothing, so a rollup never double counts, and with neither field present the remainder falls back to continent matching. `usStates` stay excluded — they are US-internal splits of the US leaf. Alphabet now computes 48% → below the 60% watch threshold → the bullet disappears (correctly), while a genuinely concentrated filer still reports its real share. Regression tests: `tests/test_footnotes.py`.
+- **Altman Z-Score falls back to StockFit's snapshot instead of disappearing** — the local diagnostic needs every input from the ticker's own statements, so one missing row (a flaky yfinance fetch) dropped the whole section while Piotroski, which needs fewer rows, survived: 4 of the top-100 (GOOGL, NVDA, JNJ, WTW) shipped without an Altman figure, and because `risk_signals()` receives that same value, **JNJ's grey zone (2.87) and WTW's distress zone (0.90) were also missing their medium/high bullets**. `build_deep_dive()` now fills `altman` from `research.snapshot.{altmanZScore,altmanZone}` when the local figure is `None` — placed after the research fetch and before the risk layer so the zone bullets see it. Never fabricated: no key / no tier / fetch failed / snapshot without both fields → still `None`, and the local figure stays primary when it exists. Regression tests: `tests/test_deep_dive.py`.
+
 ## v0.17.1 (2026-10-07)
 
 ### Changes

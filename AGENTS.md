@@ -442,7 +442,7 @@ investdaytip deep-dive -t "AAPL MSFT" --export-html report.html
 |---|---|---|
 | InvestDayTip score + factor breakdown | live `fetch_asset` + `score_stock` | no |
 | Earnings snapshot (EPS, margins, ROE/ROIC, FCF, growth, next dates) | StockFit `company/research-summary` (Starter tier) | yes — omitted with a note otherwise |
-| Piotroski F-Score (9 checks ✓/✗) + Altman Z + zone | **local** (`financial_health`) from the ticker's own annual statements | no |
+| Piotroski F-Score (9 checks ✓/✗) + Altman Z + zone | **local** (`financial_health`) from the ticker's own annual statements; Altman alone falls back to StockFit's snapshot `altmanZScore`/`altmanZone` when a statement row is missing (never both fields → `None`) | no |
 | Devil's advocate — risk signals (local + footnotes layer) | `risk_signals`: keyless heuristics + StockFit `footnotes/*` bullets (Pro; segmentation pair on Starter) | no — footnotes omitted with a note below Pro |
 
 - Piotroski/Altman are **diagnostics, never scored** (validated and rejected
@@ -476,8 +476,13 @@ investdaytip deep-dive -t "AAPL MSFT" --export-html report.html
 - **Footnote parsing is defensive by design** — the Pro `footnotes/*` response
   shapes come from the API **documentation only** (the session's plan is
   Starter, so they could not be verified live; the segmentation pair was
-  verified 2026-10-06: `geography.countries[].{name,value}` /
-  `product[].{name,value}` and `segments[].{role,metrics.revenue}`). Every
+  verified 2026-10-06: `geography.{countries,usStates,regions,residuals}[]` /
+  `product[].{name,value}` and `segments[].{role,metrics.revenue}`). **All
+  four geography buckets feed the total** — countries *or* regions alone is
+  how GOOGL read "100% of revenue from United States" at 48% actual (0.17.2);
+  a region contributes only its `other`/unexplained remainder so a rollup
+  never double counts, and `usStates` are US-internal splits of the US leaf.
+  Every
   reader looks up documented field names (`share`, `dueYear`, `faceAmount`,
   `utilization`, `unrecognized*Cost`, `fundedStatus`, `*outstanding*`/
   `*obligation*`, `level3Share`) and emits **silence** on an unknown shape —
