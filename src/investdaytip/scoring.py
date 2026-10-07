@@ -152,7 +152,7 @@ def _technical_score(d: StockData | EtfData) -> tuple[float, list[str]]:
     rsi = _linear(rsi_raw, best=35.0, worst=65.0, default=50.0)
     macd = _linear(d.macd_histogram, best=0.05, worst=-0.05, default=50.0)
     if d.rsi_14 is not None and d.rsi_14 < 30.0:
-        notes.append(f"RSI {d.rsi_14:.1f} suggests oversold")
+        notes.append(f"RSI {d.rsi_14:.1f} (below 30)")
     if d.macd_histogram is not None and d.macd_histogram > 0.0:
         notes.append("MACD histogram positive")
     return (rsi * 0.375) + (macd * 0.625), notes
@@ -171,9 +171,9 @@ class ClassicStockScorer:
         pb = _linear(_non_negative(d.price_to_book), best=1.0, worst=6.0)
         peg = _linear(_non_negative(d.peg_ratio), best=0.8, worst=3.0)
         if d.trailing_pe is not None and 0 <= d.trailing_pe < 20:
-            notes.append(f"attractive P/E of {d.trailing_pe:.1f}")
+            notes.append(f"P/E of {d.trailing_pe:.1f}")
         if d.peg_ratio is not None and 0 <= d.peg_ratio < 1.5:
-            notes.append(f"PEG of {d.peg_ratio:.2f} suggests growth at reasonable price")
+            notes.append(f"PEG of {d.peg_ratio:.2f}")
         return (pe * 0.45) + (pb * 0.20) + (peg * 0.35), notes
 
     def _quality_score(self, d: StockData) -> tuple[float, list[str]]:
@@ -183,9 +183,9 @@ class ClassicStockScorer:
         earn_g = _linear(d.earnings_growth, best=0.25, worst=-0.05)
         rev_g = _linear(d.revenue_growth, best=0.20, worst=-0.05)
         if d.return_on_equity is not None and d.return_on_equity > 0.15:
-            notes.append(f"strong ROE of {d.return_on_equity * 100:.1f}%")
+            notes.append(f"ROE of {d.return_on_equity * 100:.1f}%")
         if d.profit_margin is not None and d.profit_margin > 0.15:
-            notes.append(f"healthy profit margin of {d.profit_margin * 100:.1f}%")
+            notes.append(f"profit margin of {d.profit_margin * 100:.1f}%")
         if d.earnings_growth is not None and d.earnings_growth > 0.10:
             notes.append(f"earnings growth of {d.earnings_growth * 100:.1f}%")
         return (roe * 0.35) + (margin * 0.25) + (earn_g * 0.25) + (rev_g * 0.15), notes
@@ -207,7 +207,7 @@ class ClassicStockScorer:
         if d.free_cashflow is not None:
             fcf = 80.0 if d.free_cashflow > 0 else 20.0
         if de is not None and de < 0.5:
-            notes.append(f"low leverage (D/E={de:.2f})")
+            notes.append(f"leverage D/E={de:.2f}")
         if d.free_cashflow is not None and d.free_cashflow > 0:
             notes.append("positive free cash flow")
         return (debt * 0.45) + (liq * 0.25) + (fcf * 0.30), notes
@@ -294,11 +294,18 @@ class QuantStockScorer:
             fcf_yield = _linear(d.free_cashflow / d.market_cap, best=0.10, worst=0.00, default=50.0)
 
         if d.trailing_pe is not None and 0 <= d.trailing_pe < 20:
-            notes.append(f"attractive P/E of {d.trailing_pe:.1f}")
+            notes.append(f"P/E of {d.trailing_pe:.1f}")
         if d.peg_ratio is not None and 0 <= d.peg_ratio < 1.5:
-            notes.append(f"PEG of {d.peg_ratio:.2f} suggests growth at reasonable price")
-        if fcf_yield > 70:
-            notes.append("strong free cash flow yield")
+            notes.append(f"PEG of {d.peg_ratio:.2f}")
+        if (
+            fcf_yield > 70
+            and d.free_cashflow is not None
+            and d.market_cap is not None
+            and d.market_cap > 0
+        ):
+            notes.append(
+                f"free cash flow yield {d.free_cashflow / d.market_cap * 100:.1f}%"
+            )
 
         return (pe * 0.35) + (pb * 0.20) + (peg * 0.25) + (fcf_yield * 0.20), notes
 
@@ -326,11 +333,11 @@ class QuantStockScorer:
         # the total score). Stop rule: not Ship here → display-only.
         improving = self._improvement_score(d)
         if d.return_on_equity is not None and d.return_on_equity > 0.15:
-            notes.append(f"strong ROE of {d.return_on_equity * 100:.1f}%")
+            notes.append(f"ROE of {d.return_on_equity * 100:.1f}%")
         if d.profit_margin is not None and d.profit_margin > 0.15:
-            notes.append(f"healthy profit margin of {d.profit_margin * 100:.1f}%")
+            notes.append(f"profit margin of {d.profit_margin * 100:.1f}%")
         if d.margin_improving and d.roa_improving:
-            notes.append("fundamentals improving (margin and ROA expanding YoY)")
+            notes.append("margin and ROA expanding YoY")
         return (roe * 0.30) + (margin * 0.25) + (roa * 0.15) + (improving * 0.30), notes
 
     @staticmethod
@@ -385,9 +392,9 @@ class QuantStockScorer:
 
         score = _linear(d.eps_surprise, best=15.0, worst=-15.0, default=50.0)
         if d.eps_surprise > 5.0:
-            notes.append(f"EPS beat estimates by {d.eps_surprise:.1f}% on average")
+            notes.append(f"EPS vs. estimates: +{d.eps_surprise:.1f}% on average")
         elif d.eps_surprise < -5.0:
-            notes.append(f"EPS missed estimates by {abs(d.eps_surprise):.1f}% on average")
+            notes.append(f"EPS vs. estimates: {d.eps_surprise:.1f}% on average")
         return score, notes
 
     def score(
@@ -488,9 +495,9 @@ def _etf_risk_adj_score(d: EtfData) -> tuple[float, list[str]]:
     # Lower volatility preferred for long-term, but only mildly
     vol = _linear(d.volatility_1y, best=0.10, worst=0.40)
     if d.sharpe_proxy is not None and d.sharpe_proxy > 0.8:
-        notes.append(f"strong risk-adjusted return (Sharpe≈{d.sharpe_proxy:.2f})")
+        notes.append(f"Sharpe≈{d.sharpe_proxy:.2f}")
     if d.volatility_1y is not None and d.volatility_1y < 0.15:
-        notes.append(f"low volatility ({d.volatility_1y * 100:.1f}%)")
+        notes.append(f"1y volatility {d.volatility_1y * 100:.1f}%")
     return (sharpe * 0.70) + (vol * 0.30), notes
 
 
@@ -502,7 +509,7 @@ def _etf_size_score(d: EtfData) -> tuple[float, list[str]]:
     log_aum = math.log10(d.total_assets)
     score = _linear(log_aum, best=11.0, worst=8.0)  # 1e11=100B, 1e8=100M
     if d.total_assets >= 10_000_000_000:
-        notes.append(f"large AUM of ${d.total_assets / 1e9:.1f}B")
+        notes.append(f"AUM ${d.total_assets / 1e9:.1f}B")
     return score, notes
 
 
@@ -512,9 +519,9 @@ def _etf_cost_yield_score(d: EtfData) -> tuple[float, list[str]]:
     cost = _linear(d.expense_ratio, best=0.03, worst=0.75, default=60.0)
     yld = _linear(d.yield_, best=0.04, worst=0.00, default=50.0)
     if d.expense_ratio is not None and d.expense_ratio < 0.001:
-        notes.append(f"ultra-low expense ratio ({d.expense_ratio * 100:.2f}%)")
+        notes.append(f"expense ratio {d.expense_ratio * 100:.2f}%")
     if d.yield_ is not None and d.yield_ > 0.02:
-        notes.append(f"yields {d.yield_ * 100:.2f}%")
+        notes.append(f"dividend yield {d.yield_ * 100:.2f}%")
     return (cost * 0.65) + (yld * 0.35), notes
 
 
@@ -555,9 +562,9 @@ def _etf_momentum_score(d: EtfData) -> tuple[float, list[str]]:
     r12 = _linear(d.return_12m, best=0.50, worst=-0.40)
     score = r1m * 0.15 + r3m * 0.25 + r6m * 0.30 + r12 * 0.30
     if d.return_12m is not None and d.return_12m > 0.30:
-        notes.append(f"strong 1y return of {d.return_12m * 100:.1f}%")
+        notes.append(f"1y return of {d.return_12m * 100:.1f}%")
     if d.return_6m is not None and d.return_6m > 0.20:
-        notes.append(f"strong 6m return of {d.return_6m * 100:.1f}%")
+        notes.append(f"6m return of {d.return_6m * 100:.1f}%")
     return score, notes
 
 
@@ -568,9 +575,9 @@ def _etf_risk_score_v2(d: EtfData) -> tuple[float, list[str]]:
     beta = _linear(d.beta_3y, best=0.5, worst=2.5, default=60.0)
     score = vol * 0.50 + beta * 0.50
     if d.volatility_1y is not None and d.volatility_1y < 0.15:
-        notes.append(f"low volatility ({d.volatility_1y * 100:.1f}%)")
+        notes.append(f"1y volatility {d.volatility_1y * 100:.1f}%")
     if d.beta_3y is not None and d.beta_3y < 0.8:
-        notes.append(f"low beta ({d.beta_3y:.2f})")
+        notes.append(f"beta {d.beta_3y:.2f}")
     return score, notes
 
 
@@ -579,7 +586,7 @@ def _etf_cost_score_v2(d: EtfData) -> tuple[float, list[str]]:
     # yfinance returns expense ratio as the percentage value (e.g. 0.03 = 0.03%)
     score = _linear(d.expense_ratio, best=0.03, worst=1.50, default=60.0)
     if d.expense_ratio is not None and d.expense_ratio < 0.10:
-        notes.append(f"low expense ratio ({d.expense_ratio:.2f}%)")
+        notes.append(f"expense ratio {d.expense_ratio:.2f}%")
     elif d.expense_ratio is not None and d.expense_ratio > 1.00:
         notes.append(f"high expense ratio ({d.expense_ratio:.2f}%)")
     return score, notes
@@ -592,7 +599,7 @@ def _etf_liquidity_score_v2(d: EtfData) -> tuple[float, list[str]]:
     log_aum = math.log10(d.total_assets)
     score = _linear(log_aum, best=12.0, worst=8.0)
     if d.total_assets >= 10_000_000_000:
-        notes.append(f"large AUM of ${d.total_assets / 1e9:.1f}B")
+        notes.append(f"AUM ${d.total_assets / 1e9:.1f}B")
     return score, notes
 
 

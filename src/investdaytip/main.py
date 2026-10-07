@@ -630,7 +630,7 @@ def main(argv: list[str] | None = None) -> int:
     adv.add_argument("--data-source", choices=["yfinance", "yahooquery", "fmp", "stockfit"], default="yfinance",
                      help="Data source (default: yfinance). FMP requires FMP_API_KEY; stockfit (US stocks only) requires STOCKFIT_API_KEY + Starter plan.")
     adv.add_argument("-n", "--top", type=int, default=10,
-                     help="Number of buy recommendations to show (default: 10).")
+                     help="Number of top-scoring picks to show (default: 10).")
     adv_tech = adv.add_mutually_exclusive_group()
     adv_tech.add_argument("--include-technical", action="store_true", dest="include_technical",
                           default=None, help="Include RSI and MACD in scoring (default: True for quant, False for classic).")
@@ -705,7 +705,7 @@ def main(argv: list[str] | None = None) -> int:
 
     main_grp = parser.add_argument_group("Main options")
     main_grp.add_argument("-n", "--top", type=int, default=None,
-                          help="Number of recommendations (default: 5, or all if -t tickers are given).")
+                          help="Number of picks to show (default: 5, or all if -t tickers are given).")
     main_grp.add_argument("-t", "--tickers", nargs="+", default=None,
                           help="Custom ticker list.")
     main_grp.add_argument(

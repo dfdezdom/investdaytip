@@ -175,7 +175,7 @@ def test_quant_eps_revisions_high_surprise():
     base.eps_surprise = 15.0
     s = score_stock(base, model="quant")
     assert s.breakdown["EPS Revisions"] == pytest.approx(100.0)
-    assert any("beat estimates" in note for note in s.rationale)
+    assert any("EPS vs. estimates: +" in note for note in s.rationale)
 
 
 def test_quant_eps_revisions_low_surprise():
@@ -184,7 +184,7 @@ def test_quant_eps_revisions_low_surprise():
     s = score_stock(base, model="quant")
     assert s.breakdown["EPS Revisions"] == pytest.approx(0.0)
     assert s.total <= 50.0  # disqualified
-    assert any("missed estimates" in note for note in s.rationale)
+    assert any("EPS vs. estimates: -" in note for note in s.rationale)
 
 
 def test_quant_eps_revisions_missing_is_neutral():
@@ -266,7 +266,7 @@ def test_quant_improvement_note_when_both_true():
     _, notes = QuantStockScorer()._profitability_score(
         replace(_base_data(), margin_improving=True, roa_improving=True)
     )
-    assert any("fundamentals improving" in n for n in notes)
+    assert any("margin and ROA expanding YoY" in n for n in notes)
 
 
 def test_quant_eps_acceleration_is_not_scored():

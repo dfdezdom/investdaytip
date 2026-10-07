@@ -671,7 +671,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scoring-model", choices=["classic", "quant"], default=None,
                         help="Scoring model (default: quant, classic for conservative).")
     parser.add_argument("-n", "--top", type=int, default=10,
-                        help="Number of buy recommendations to show (default: 10).")
+                        help="Number of top-scoring picks to show (default: 10).")
     adv_tech = parser.add_mutually_exclusive_group()
     adv_tech.add_argument("--include-technical", action="store_true", dest="include_technical",
                           default=None, help="Include RSI and MACD in scoring (default: True for quant, False for classic).")
