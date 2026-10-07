@@ -6,7 +6,10 @@ Combines three sources into one report per ticker:
 2. StockFit's aggregated ``company/research-summary`` (Starter tier) —
    omitted gracefully when no ``STOCKFIT_API_KEY`` is set or the fetch fails;
 3. **keyless local diagnostics**: Piotroski F-Score (9 checks) and Altman
-   Z-Score + zone, computed from the ticker's own annual statements;
+   Z-Score + zone, computed from the ticker's own annual statements — when a
+   statement row an Altman input needs is missing, the value falls back to
+   StockFit's precomputed snapshot figure (same convention) instead of
+   dropping the section;
 4. StockFit ``footnotes/*`` bear-case bullets (tier-aware — Pro for the full
    set, Starter for the segmentation pair) merged into the devil's advocate
    block alongside the keyless local layer.
@@ -20,6 +23,7 @@ app actually launches.
 """
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -84,6 +88,30 @@ class DeepDive:
     errors: list[str] = field(default_factory=list)
 
 
+# The zones StockFit's `altmanZone` may carry (same set as
+# `financial_health.altman_z_score`); anything else is an unknown shape.
+_ALTMAN_ZONES = ("safe", "grey", "distress")
+
+
+def _altman_from_snapshot(snapshot: Optional[dict[str, Any]]) -> Optional[AltmanResult]:
+    """StockFit's precomputed Altman Z from a research snapshot, else ``None``.
+
+    Both fields are required — the report renders the score next to its zone
+    badge — and the zone must be one StockFit documents.  A snapshot without
+    them (or with an unexpected shape) yields silence, never a fabricated
+    diagnostic.
+    """
+    if not snapshot:
+        return None
+    z_score = snapshot.get("altmanZScore")
+    zone = snapshot.get("altmanZone")
+    if isinstance(z_score, bool) or not isinstance(z_score, (int, float)):
+        return None
+    if not math.isfinite(z_score) or zone not in _ALTMAN_ZONES:
+        return None
+    return AltmanResult(z_score=float(z_score), zone=str(zone))
+
+
 def build_deep_dive(
     ticker: str,
     scoring_model: str = "quant",
@@ -126,6 +154,18 @@ def build_deep_dive(
             dd.research = fetch_research_summary(ticker)
         except Exception as exc:  # pragma: no cover - defensive
             dd.errors.append(f"research summary failed: {exc}")
+
+    # Altman fallback (after research, before the risk layer, so the zone
+    # bullets see it too).  The local diagnostic needs every Altman input from
+    # the ticker's own statements, so one missing row (a flaky yfinance fetch —
+    # GOOGL/NVDA/JNJ/WTW shipped without an Altman section while Piotroski,
+    # which needs fewer rows, survived) silently dropped the whole section.
+    # StockFit precomputes the same figure on the same convention
+    # (`financial_health.altman_z_score` reproduces its `financials/scores`),
+    # so its snapshot fills the gap.  Never fabricated: no snapshot (no key, no
+    # tier, fetch failed, unknown shape) → still None.
+    if dd.altman is None and dd.research is not None:
+        dd.altman = _altman_from_snapshot(dd.research.snapshot)
 
     # StockFit footnotes — bear-case layer 2 (Pro; Starter serves only the
     # segmentation pair).  Never raises; {} = nothing fetched.

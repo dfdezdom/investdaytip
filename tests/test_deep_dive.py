@@ -15,7 +15,11 @@ from investdaytip.deep_dive import (
     render_html,
     render_rich,
 )
-from investdaytip.financial_health import altman_z_score, piotroski_f_score
+from investdaytip.financial_health import (
+    AltmanResult,
+    altman_z_score,
+    piotroski_f_score,
+)
 
 _RESEARCH_PAYLOAD = {
     "profile": {"name": "Apple Inc.", "sector": "Technology"},
@@ -189,6 +193,69 @@ def test_build_deep_dive_plan_gated_skips_research(mocker, monkeypatch):
     assert dd.footnote_note == (
         "footnotes bear case omitted — requires Starter plan (current plan: free)"
     )
+
+
+# ── Altman: local diagnostic, StockFit snapshot as fallback ─────────────────
+
+
+def _altman_case(mocker, monkeypatch, snapshot, *, local_statements=True):
+    """Deep-dive whose local Altman works (default) or is starved of an input."""
+    monkeypatch.setenv("STOCKFIT_API_KEY", "k")
+    monkeypatch.setenv("STOCKFIT_PIT_SNAPSHOT_DIR", "/nonexistent")
+    mocker.patch(
+        "investdaytip.deep_dive.fetch_asset",
+        return_value=StockData(ticker="WTW", market_cap=1e11),
+    )
+    income, balance, cash = _frames()
+    if not local_statements:
+        # Retained Earnings feeds the Altman X2 term and nothing else here —
+        # dropping it reproduces the flaky statement fetch: Piotroski computes,
+        # altman_z_score() returns None.
+        balance = balance.drop(index="Retained Earnings")
+    mocker.patch(
+        "investdaytip.deep_dive.fetch_statement_frames", return_value=(income, balance)
+    )
+    mocker.patch("investdaytip.deep_dive.fetch_cash_flow_frame", return_value=cash)
+    mocker.patch("investdaytip.deep_dive.detect_plan", return_value="starter")
+    mocker.patch("investdaytip.deep_dive.fetch_footnotes", return_value={})
+    mocker.patch(
+        "investdaytip.deep_dive.fetch_research_summary",
+        return_value=ResearchSummary(ticker="WTW", snapshot=snapshot),
+    )
+    return build_deep_dive("WTW")
+
+
+def test_altman_falls_back_to_stockfit_snapshot(mocker, monkeypatch):
+    """A starved statement fetch must not lose the section — nor its zone bullet."""
+    dd = _altman_case(
+        mocker,
+        monkeypatch,
+        {"altmanZScore": 0.9, "altmanZone": "distress"},
+        local_statements=False,
+    )
+    assert dd.piotroski is not None  # fewer inputs — it survives the same fetch
+    assert dd.altman == AltmanResult(z_score=0.9, zone="distress")
+    assert [
+        (s.severity, s.label) for s in dd.risks if "Altman" in s.label
+    ] == [("high", "Altman Z in distress zone")]
+
+
+def test_altman_fallback_never_fabricates(mocker, monkeypatch):
+    """No zone, or no snapshot at all → the field stays None (silence)."""
+    for snapshot in ({"altmanZScore": 0.9}, {"altmanZone": "distress"}, {}):
+        dd = _altman_case(
+            mocker, monkeypatch, snapshot, local_statements=False
+        )
+        assert dd.altman is None, snapshot
+
+
+def test_altman_local_diagnostic_wins_over_snapshot(mocker, monkeypatch):
+    """The keyless figure stays primary; the snapshot only fills the gap."""
+    dd = _altman_case(
+        mocker, monkeypatch, {"altmanZScore": 0.9, "altmanZone": "distress"}
+    )
+    assert dd.altman is not None
+    assert dd.altman.zone == "safe"  # local (3.04), not the snapshot's distress
 
 
 # ── footnotes layer (devil's advocate layer 2) ───────────────────────────────
