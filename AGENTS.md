@@ -482,6 +482,12 @@ investdaytip deep-dive -t "AAPL MSFT" --export-html report.html
   how GOOGL read "100% of revenue from United States" at 48% actual (0.17.2);
   a region contributes only its `other`/unexplained remainder so a rollup
   never double counts, and `usStates` are US-internal splits of the US leaf.
+  The **Geographic** bullet then needs the map to *reconcile with the filer's
+  revenue* (0.90–1.10× of `annual_facts()["TotalRevenue"]`, passed as
+  `revenue=` from `build_deep_dive()`): partial maps (NFLX/CSCO/EQIX/EMR, all
+  0.39–0.54×) and double-counted ones (JNJ, 1.43×) yield silence rather than a
+  share, and **Product** lines above that revenue are dropped — the denominator
+  *is* the revenue (0.17.3).
   Every
   reader looks up documented field names (`share`, `dueYear`, `faceAmount`,
   `utilization`, `unrecognized*Cost`, `fundedStatus`, `*outstanding*`/

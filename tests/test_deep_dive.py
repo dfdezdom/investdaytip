@@ -261,18 +261,21 @@ def test_altman_local_diagnostic_wins_over_snapshot(mocker, monkeypatch):
 # ── footnotes layer (devil's advocate layer 2) ───────────────────────────────
 
 
+# Both bullets are shares of the statements' own top line (``Total Revenue``
+# in :func:`_frames`), so this fixture has to reconcile with it: a geography
+# block that does not reach the filer's revenue yields no bullet at all.
 _FOOTNOTE_PAYLOAD = {
     "revenue-segmentation": [{
         "fiscalYear": 2025,
         "geography": {
             "countries": [
                 {"code": "US", "name": "United States",
-                 "continent": "North America", "value": 65e9},
-                {"code": "CN", "name": "China", "continent": "Asia", "value": 35e9},
+                 "continent": "North America", "value": 260.0},
+                {"code": "CN", "name": "China", "continent": "Asia", "value": 140.0},
             ],
             "usStates": [], "regions": [], "residuals": [],
         },
-        "product": [{"member": "iPhone", "name": "iPhone", "value": 100e9}],
+        "product": [{"member": "iPhone", "name": "iPhone", "value": 400.0}],
     }],
 }
 

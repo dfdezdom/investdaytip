@@ -137,6 +137,7 @@ def build_deep_dive(
         dd.errors.append("deep-dive supports stocks only")
 
     # Local diagnostics from the ticker's own annual statements (keyless).
+    revenue: Optional[float] = None
     try:
         income, balance = fetch_statement_frames(ticker)
         cash = fetch_cash_flow_frame(ticker)
@@ -145,6 +146,11 @@ def build_deep_dive(
             prev = annual_facts(income, balance, cash, datetime.now(), years_back=1)
             dd.piotroski = piotroski_f_score(cur, prev)
             dd.altman = altman_z_score(cur)
+            # The top line the segmentation bullets are shares of: the footnote
+            # can only claim a country's/product's part of the company against
+            # the company's own revenue (a partial or over-counted geography
+            # block then yields silence instead of an invented share).
+            revenue = cur.get("TotalRevenue")
     except Exception as exc:  # pragma: no cover - defensive
         dd.errors.append(f"health diagnostics failed: {exc}")
 
@@ -192,7 +198,9 @@ def build_deep_dive(
     # Devil's advocate: keyless local layer + StockFit footnotes layer.
     if isinstance(dd.data, StockData):
         dd.risks = risk_signals(dd.data, dd.piotroski, dd.altman)
-        dd.risks.extend(footnote_risk_signals(dd.footnotes, dd.data.market_cap))
+        dd.risks.extend(
+            footnote_risk_signals(dd.footnotes, dd.data.market_cap, revenue=revenue)
+        )
         dd.risks.sort(key=lambda s: SEVERITY_ORDER.get(s.severity, 9))
 
     return dd

@@ -47,6 +47,15 @@ _LEVEL3_WATCH = 0.30                   # Level 3 share ≥30% of fair-value book
 _COUNTRY_CONCENTRATION_WATCH = 0.60
 _PRODUCT_CONCENTRATION_WATCH = 0.40
 _SEGMENT_CONCENTRATION_WATCH = 0.60
+# A geography block only speaks for the whole company when it reconciles with
+# the filer's own revenue.  Measured across the site's top 100 (2026-10-07):
+# complete maps sit at 0.9999–1.0003 of it, partial ones at 0.39–0.54 — so
+# this band separates the two with room for a fiscal year of drift.  Outside
+# it a country's share would be invented either way: NFLX, CSCO, EQIX and EMR
+# tag only a slice of the world in ``countries`` (the old rule printed "100%
+# of revenue from United States"), and a filer whose ``Non-US`` region
+# overlaps its other regions over-counts (JNJ: 1.43× its revenue).
+_GEO_RECONCILIATION_BAND = (0.90, 1.10)
 
 
 @dataclass
@@ -534,7 +543,38 @@ def _geo_total(geo: Mapping[str, Any]) -> tuple[float, list[dict[str, Any]]]:
     return total, leaves
 
 
-def _revenue_segmentation_signals(payload: Any) -> list[RiskSignal]:
+def _geo_reconciles(total: float, revenue: Optional[float]) -> bool:
+    """True when a geography block accounts for the filer's own revenue.
+
+    The reference is the latest annual top line from the ticker's statements
+    (``annual_facts``).  No reference — statements missing, a source without
+    them — means nothing to reconcile against, so the answer is False: silence
+    is the safe side of a share the map cannot support.
+    """
+    if revenue is None or revenue <= 0 or total <= 0:
+        return False
+    low, high = _GEO_RECONCILIATION_BAND
+    return low <= total / revenue <= high
+
+
+def _revenue_segmentation_signals(
+    payload: Any, revenue: Optional[float] = None
+) -> list[RiskSignal]:
+    """Concentration bullets from the ``revenue-segmentation`` footnote.
+
+    Both bullets say "of revenue", so both are shares of ``revenue`` — the
+    filer's own annual top line, which the geographic total only stands in for
+    when the statements are unavailable.  Two guards keep those shares honest,
+    both learned from the site's 2026-10-07 run:
+
+    * the geography bullet needs the map to reconcile with that revenue
+      (:func:`_geo_reconciles`) — a partial map (NFLX discloses 41% of its
+      revenue in ``countries``, all of it US) or an over-counted one cannot
+      carry a country's share of the company;
+    * a product line is only comparable when it fits inside the denominator —
+      BMY's ``Sales Revenue Gross`` footnote line is 1.83× its revenue — so
+      entries above it are dropped instead of printed as ">100% of revenue".
+    """
     block = _latest_block(payload)
     if not isinstance(block, dict):
         return []
@@ -546,7 +586,7 @@ def _revenue_segmentation_signals(payload: Any) -> list[RiskSignal]:
         entries = [(name, v) for entry in leaves
                    if (name := _text(entry, "name", "code", "member"))
                    and (v := _first_num(entry, "value", "revenue", "amount")) and v > 0]
-        if total > 0 and entries:
+        if total > 0 and entries and _geo_reconciles(total, revenue):
             name, value = max(entries, key=lambda e: e[1])
             if value / total >= _COUNTRY_CONCENTRATION_WATCH:
                 out.append(RiskSignal(
@@ -557,12 +597,14 @@ def _revenue_segmentation_signals(payload: Any) -> list[RiskSignal]:
     products = [(name, v) for entry in _list_of_dicts(block, "product")
                 if (name := _text(entry, "name", "member"))
                 and (v := _first_num(entry, "value", "revenue", "amount")) and v > 0]
-    if total > 0 and products:
-        name, value = max(products, key=lambda e: e[1])
-        if value / total >= _PRODUCT_CONCENTRATION_WATCH:
+    denominator = revenue if revenue is not None and revenue > 0 else total
+    comparable = [(name, v) for name, v in products if v <= denominator]
+    if denominator > 0 and comparable:
+        name, value = max(comparable, key=lambda e: e[1])
+        if value / denominator >= _PRODUCT_CONCENTRATION_WATCH:
             out.append(RiskSignal(
                 "info", "Product revenue concentration",
-                f"{value / total:.0%} of revenue from {name}",
+                f"{value / denominator:.0%} of revenue from {name}",
                 "stockfit",
             ))
     return out
@@ -597,12 +639,16 @@ def _segment_signals(payload: Any) -> list[RiskSignal]:
 def footnote_risk_signals(
     footnotes: Optional[Mapping[str, Any]],
     market_cap: Optional[float] = None,
+    revenue: Optional[float] = None,
 ) -> list[RiskSignal]:
     """Bear-case bullets from StockFit ``footnotes/*`` payloads (layer 2).
 
     Context only — never scored.  A bullet requires a documented, numeric
     field; unrecognized or missing data yields silence, never a fabricated
-    signal.  ``market_cap`` (optional) is used solely for materiality checks.
+    signal.  ``market_cap`` (optional) is used solely for materiality checks,
+    ``revenue`` (optional) is the filer's latest annual total revenue: the
+    segmentation bullets are shares of it, and a geography block that does not
+    reconcile with it says nothing at all.
     """
     if not footnotes:
         return []
@@ -614,7 +660,7 @@ def footnote_risk_signals(
     out.extend(_pension_signals(footnotes.get("retirement-plans"), market_cap))
     out.extend(_supplier_finance_signals(footnotes.get("supplier-finance"), market_cap))
     out.extend(_level3_signals(footnotes.get("fair-value-hierarchy")))
-    out.extend(_revenue_segmentation_signals(footnotes.get("revenue-segmentation")))
+    out.extend(_revenue_segmentation_signals(footnotes.get("revenue-segmentation"), revenue))
     out.extend(_segment_signals(footnotes.get("business-segmentation")))
     out.sort(key=lambda s: SEVERITY_ORDER.get(s.severity, 9))
     return out

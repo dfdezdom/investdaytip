@@ -282,7 +282,7 @@ def test_revenue_segmentation_concentration():
             {"member": "iPhone", "name": "iPhone", "value": 55e9},
             {"member": "Services", "name": "Services", "value": 45e9},
         ]}]}
-    sigs = footnote_risk_signals(footnotes)
+    sigs = footnote_risk_signals(footnotes, revenue=100e9)
     assert {(s.severity, s.label) for s in sigs} == {
         ("info", "Geographic revenue concentration"),
         ("info", "Product revenue concentration"),
@@ -320,8 +320,9 @@ def test_geography_country_alone_never_reads_100_percent():
             "residuals": [],
         },
         "product": []}]}
-    # 48% US — under the 60% watch threshold, so no bullet at all
-    assert footnote_risk_signals(footnotes) == []
+    # revenue reconciles with the map (402,963e6), and 48% US is under the 60%
+    # watch threshold, so no bullet at all
+    assert footnote_risk_signals(footnotes, revenue=402963e6) == []
 
 
 def test_geography_concentration_counts_the_region_remainder():
@@ -341,7 +342,7 @@ def test_geography_concentration_counts_the_region_remainder():
             "residuals": [],
         },
         "product": []}]}
-    sigs = footnote_risk_signals(footnotes)
+    sigs = footnote_risk_signals(footnotes, revenue=100e9)
     assert [(s.severity, s.label) for s in sigs] == [
         ("info", "Geographic revenue concentration"),
     ]
@@ -366,7 +367,7 @@ def test_geography_rollup_region_does_not_double_count():
             "residuals": [],
         },
         "product": []}]}
-    sigs = footnote_risk_signals(footnotes)
+    sigs = footnote_risk_signals(footnotes, revenue=100e9)
     assert sigs[0].detail == "65% of revenue from United States"
 
 
@@ -386,8 +387,139 @@ def test_geography_region_without_reconciliation_fields_falls_back_to_continent(
             "residuals": [],
         },
         "product": []}]}
-    sigs = footnote_risk_signals(footnotes)
+    sigs = footnote_risk_signals(footnotes, revenue=100e9)
     assert sigs[0].detail == "62% of revenue from United States"
+
+
+def test_geography_partial_map_yields_no_bullet():
+    """A map that never reaches the company's revenue cannot speak for it.
+
+    NFLX in the 2026-10-07 run: ``countries`` held the US line alone — 41% of
+    its 45.183e9 revenue — while ``product`` held Streaming in full.  Dividing
+    by that truncated total shipped both "100% of revenue from United States"
+    and "244% of revenue from Streaming"; the map is simply partial.
+    """
+    footnotes = {"revenue-segmentation": [{"fiscalYear": 2025,
+        "geography": {
+            "countries": [
+                {"code": "US", "name": "United States", "continent": "Americas",
+                 "value": 18.5e9},
+            ],
+            "usStates": [], "regions": [], "residuals": [],
+        },
+        "product": [
+            {"member": "nflx:StreamingMember", "name": "Streaming",
+             "value": 45.183e9},
+        ]}]}
+    sigs = footnote_risk_signals(footnotes, revenue=45.183e9)
+    assert [(s.severity, s.label) for s in sigs] == [
+        ("info", "Product revenue concentration"),
+    ]
+    assert sigs[0].detail == "100% of revenue from Streaming"
+
+
+def test_geography_over_counted_map_yields_no_bullet():
+    """Leaves that overlap each other sum past the revenue — no share either.
+
+    A ``Non-US`` region repeated beside the regions it already contains (JNJ
+    measured 1.43× its revenue in the 2026-10-07 run) inflates the total, so
+    every country's share is deflated by the double count — here US would read
+    83% of a 120e9 total that is really 100e9 of revenue.
+    """
+    footnotes = {"revenue-segmentation": [{"fiscalYear": 2025,
+        "geography": {
+            "countries": [
+                {"code": "US", "name": "United States", "continent": "Americas",
+                 "value": 100e9},
+            ],
+            "usStates": [],
+            "regions": [
+                {"member": "x:AmericasMember", "name": "Americas",
+                 "continent": None, "value": 20e9,
+                 "explainedByCountries": 0.0, "other": 20e9},
+            ],
+            "residuals": [],
+        },
+        "product": []}]}
+    assert footnote_risk_signals(footnotes, revenue=100e9) == []
+
+
+def test_product_line_above_revenue_is_dropped():
+    """A footnote line that outsizes the company is not a share of it.
+
+    BMY's ``Sales Revenue Gross`` is 1.83× its revenue (88,085e9 against
+    48,195e9): the pre-0.17.3 rule printed "183% of revenue from Sales Revenue
+    Gross".  The line is dropped and the largest line that fits takes its
+    place; the geography side, which does reconcile, keeps its bullet.
+    """
+    footnotes = {"revenue-segmentation": [{"fiscalYear": 2024,
+        "geography": {
+            "countries": [
+                {"code": "US", "name": "United States", "continent": "Americas",
+                 "value": 33.279e9},
+            ],
+            "usStates": [],
+            "regions": [
+                {"member": "us-gaap:NonUsMember", "name": "Non-US",
+                 "continent": None, "value": 13.828e9,
+                 "explainedByCountries": 0.0, "other": 13.828e9},
+            ],
+            "residuals": [
+                {"member": "bmy:OtherRegionMember", "name": "Other Region",
+                 "value": 1.087e9},
+            ],
+        },
+        "product": [
+            {"member": "bmy:SalesRevenueGrossMember", "name": "Sales Revenue Gross",
+             "value": 88.085e9},
+            {"member": "bmy:NetProductSalesMember", "name": "Net Product Sales",
+             "value": 46.756e9},
+        ]}]}
+    sigs = footnote_risk_signals(footnotes, revenue=48.195e9)
+    details = {s.label: s.detail for s in sigs}
+    assert details["Geographic revenue concentration"] == \
+        "69% of revenue from United States"
+    assert details["Product revenue concentration"] == \
+        "97% of revenue from Net Product Sales"
+
+
+def test_product_share_without_geography_uses_the_revenue():
+    """No geography block is no obstacle: the product line is a share of the
+    revenue, which does not need the map to exist (it used to be a share of
+    the geographic total, so a missing map silenced the bullet)."""
+    footnotes = {"revenue-segmentation": [{"fiscalYear": 2025,
+        "geography": {},
+        "product": [
+            {"member": "nflx:StreamingMember", "name": "Streaming",
+             "value": 45.183e9},
+        ]}]}
+    sigs = footnote_risk_signals(footnotes, revenue=45.183e9)
+    assert [s.detail for s in sigs] == ["100% of revenue from Streaming"]
+
+
+def test_without_revenue_no_share_is_invented():
+    """Statements unavailable → silence, never a share of a truncated total."""
+    footnotes = {"revenue-segmentation": [{"fiscalYear": 2025,
+        "geography": {
+            "countries": [
+                {"code": "US", "name": "United States", "continent": "Americas",
+                 "value": 18.5e9},
+            ],
+            "usStates": [], "regions": [], "residuals": [],
+        },
+        "product": [
+            {"member": "nflx:StreamingMember", "name": "Streaming",
+             "value": 45.183e9},
+        ]}]}
+    # geography has nothing to reconcile against, and the only total left —
+    # the truncated geo one — is smaller than the product line
+    assert footnote_risk_signals(footnotes) == []
+    # …while a line that does fit still gets its share of that total
+    footnotes["revenue-segmentation"][0]["product"] = [
+        {"member": "nflx:StreamingMember", "name": "Streaming", "value": 8e9},
+    ]
+    sigs = footnote_risk_signals(footnotes)
+    assert [s.detail for s in sigs] == ["43% of revenue from Streaming"]
 
 
 def test_business_segmentation_concentration():
