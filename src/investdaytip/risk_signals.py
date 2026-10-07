@@ -466,13 +466,70 @@ def _level3_signals(payload: Any) -> list[RiskSignal]:
     )]
 
 
+def _region_remainders(
+    regions: list[dict[str, Any]], countries: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Regions reduced to the revenue their country leaves do not explain.
+
+    StockFit documents every region with ``explainedByCountries`` (sum of the
+    country leaves on that region's continent) and ``other = value −
+    explainedByCountries`` precisely so a region and its country leaves
+    reconcile without double counting.  Counting that remainder — and nothing
+    more — is what makes a filer that tags "United States" *next to* a regional
+    bucket read as its real mix: MSFT (US 144.5 + Non-US 137.2), KO, and GOOGL
+    (US + EMEA + APAC + Other Americas).  A region fully covered by country
+    leaves (Apple's ``srt:AmericasMember`` around ``country:US``) yields 0 and
+    is dropped, so the rollup never counts twice.  Reconciliation fields are
+    optional: without them the remainder falls back to continent matching, and
+    a region with no matching country leaf (a "Non-US" bucket, ``continent``
+    null) counts in full.
+    """
+    by_continent: dict[str, float] = {}
+    for country in countries:
+        continent = _text(country, "continent")
+        value = _first_num(country, "value", "revenue", "amount")
+        if continent and value is not None and value > 0:
+            by_continent[continent] = by_continent.get(continent, 0.0) + value
+
+    remainders: list[dict[str, Any]] = []
+    for region in regions:
+        value = _first_num(region, "value", "revenue", "amount")
+        if value is None or value <= 0:
+            continue
+        remainder = _first_num(region, "other")
+        if remainder is None:
+            explained = _first_num(region, "explainedByCountries")
+            if explained is None:
+                continent = _text(region, "continent")
+                explained = by_continent.get(continent, 0.0) if continent else 0.0
+            remainder = value - explained
+        if remainder <= 0:
+            continue  # pure rollup of country leaves — adding it would double count
+        leaf = dict(region)
+        leaf["value"] = remainder
+        remainders.append(leaf)
+    return remainders
+
+
 def _geo_total(geo: Mapping[str, Any]) -> tuple[float, list[dict[str, Any]]]:
-    """Leaves with values and their total (regions are rollups — excluded when
-    country leaves exist)."""
+    """Leaves with values and their total.
+
+    StockFit partitions geography into ``countries``, ``usStates``, ``regions``
+    and ``residuals``, and **no bucket may be read alone**: a filer tags the
+    United States as a country while the rest of the world lands in
+    ``regions``, so the old countries-wins rule left the total holding the US
+    line alone — GOOGL read "100% of revenue from United States" against **48%
+    in its FY2025 10-K**, and MSFT and KO (both document a US + Non-US split)
+    read the same way; 19 top-100 tickers carried that 100% bullet in the
+    site's 2026-10-06 run.  The leaves are the country and residual buckets
+    plus each region's remainder (:func:`_region_remainders`).  ``usStates``
+    are US-internal splits of the US leaf, never added (they would double
+    count).
+    """
     countries = _list_of_dicts(geo, "countries")
+    regions = _region_remainders(_list_of_dicts(geo, "regions"), countries)
     residuals = _list_of_dicts(geo, "residuals")
-    leaves = countries or _list_of_dicts(geo, "regions")
-    leaves = leaves + residuals
+    leaves = countries + regions + residuals
     total = sum(v for entry in leaves if (v := _first_num(entry, "value", "revenue", "amount")) and v > 0)
     return total, leaves
 

@@ -292,6 +292,104 @@ def test_revenue_segmentation_concentration():
     assert "55%" in details and "iPhone" in details
 
 
+def test_geography_country_alone_never_reads_100_percent():
+    """US as a country + the rest of the world as regions is one mix, not one country.
+
+    GOOGL's FY2025 10-K: US 194,229 (48%), EMEA 117,152 (29%), APAC 67,680
+    (17%), Other Americas 23,902 (6%).  StockFit buckets the US under
+    ``countries`` and the other three under ``regions``, so reading countries
+    alone (the pre-0.17.2 rule) reported "100% of revenue from United States"
+    — on 19 of the top-100 tickers, MSFT and KO included.
+    """
+    footnotes = {"revenue-segmentation": [{"fiscalYear": 2025,
+        "geography": {
+            "countries": [
+                {"code": "US", "name": "United States", "continent": "Americas",
+                 "value": 194229e6},
+            ],
+            "usStates": [],
+            "regions": [
+                {"member": "goog:EMEAMember", "name": "EMEA", "continent": None,
+                 "value": 117152e6, "explainedByCountries": 0.0, "other": 117152e6},
+                {"member": "goog:APACMember", "name": "APAC", "continent": None,
+                 "value": 67680e6, "explainedByCountries": 0.0, "other": 67680e6},
+                {"member": "goog:OtherAmericasMember", "name": "Other Americas",
+                 "continent": None, "value": 23902e6,
+                 "explainedByCountries": 0.0, "other": 23902e6},
+            ],
+            "residuals": [],
+        },
+        "product": []}]}
+    # 48% US — under the 60% watch threshold, so no bullet at all
+    assert footnote_risk_signals(footnotes) == []
+
+
+def test_geography_concentration_counts_the_region_remainder():
+    """The share is over the whole disclosed mix (regions included)."""
+    footnotes = {"revenue-segmentation": [{"fiscalYear": 2025,
+        "geography": {
+            "countries": [
+                {"code": "US", "name": "United States", "continent": "Americas",
+                 "value": 70e9},
+            ],
+            "usStates": [],
+            "regions": [
+                {"member": "us-gaap:NonUsMember", "name": "Non-US",
+                 "continent": None, "value": 30e9,
+                 "explainedByCountries": 0.0, "other": 30e9},
+            ],
+            "residuals": [],
+        },
+        "product": []}]}
+    sigs = footnote_risk_signals(footnotes)
+    assert [(s.severity, s.label) for s in sigs] == [
+        ("info", "Geographic revenue concentration"),
+    ]
+    assert sigs[0].detail == "70% of revenue from United States"
+
+
+def test_geography_rollup_region_does_not_double_count():
+    """A region fully covered by country leaves contributes nothing (no 2× count)."""
+    footnotes = {"revenue-segmentation": [{"fiscalYear": 2025,
+        "geography": {
+            "countries": [
+                {"code": "US", "name": "United States", "continent": "Americas",
+                 "value": 65e9},
+                {"code": "CN", "name": "China", "continent": "Asia", "value": 35e9},
+            ],
+            "usStates": [],
+            "regions": [
+                {"member": "srt:AmericasMember", "name": "Americas",
+                 "continent": "Americas", "value": 65e9,
+                 "explainedByCountries": 65e9, "other": 0.0},
+            ],
+            "residuals": [],
+        },
+        "product": []}]}
+    sigs = footnote_risk_signals(footnotes)
+    assert sigs[0].detail == "65% of revenue from United States"
+
+
+def test_geography_region_without_reconciliation_fields_falls_back_to_continent():
+    """No ``explainedByCountries``/``other`` (older shape) → continent matching."""
+    footnotes = {"revenue-segmentation": [{"fiscalYear": 2025,
+        "geography": {
+            "countries": [
+                {"code": "US", "name": "United States", "continent": "Americas",
+                 "value": 62e9},
+            ],
+            "usStates": [],
+            "regions": [
+                {"member": "us-gaap:EMEAMember", "name": "EMEA",
+                 "continent": "Europe", "value": 38e9},
+            ],
+            "residuals": [],
+        },
+        "product": []}]}
+    sigs = footnote_risk_signals(footnotes)
+    assert sigs[0].detail == "62% of revenue from United States"
+
+
 def test_business_segmentation_concentration():
     footnotes = {"business-segmentation": [{"fiscalYear": 2024, "unit": "USD",
         "segments": [
