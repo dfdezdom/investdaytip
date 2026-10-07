@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- **Rationale notes are now factual** — the "why" strings dropped promotional wording and state plain facts (metric + value): `attractive P/E of 14.9` → `P/E of 14.9`, `strong ROE of …` / `healthy profit margin of …` → `ROE of …` / `profit margin of …`, `strong free cash flow yield` → `free cash flow yield …%` (now carrying the number), `EPS beat/missed estimates by …` → `EPS vs. estimates: ±…`, and the ETF model's `low` / `ultra-low` / `large` adjectives flattened the same way. Negative model flags keep their wording (`flagged as disqualifying`, `high expense ratio`) — they document the model's rules, they don't sell the output. The rationale is republished on investdaytip.com, where descriptive text is the point. CLI help drops "buy recommendations" for "top-scoring picks".
+
 ## v0.16.1 (2026-10-07)
 
 ### Fixes
