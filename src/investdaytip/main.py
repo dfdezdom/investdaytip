@@ -586,7 +586,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser = argparse.ArgumentParser(
         prog="investdaytip",
-        description="Suggests long-term stock & ETF buy recommendations using multi-factor analysis.",
+        description="Multi-factor scoring and research for long-term stocks & ETFs (US, EU, Asia, superinvestor consensus). Decision support — not investment advice.",
     )
     parser.add_argument(
         "--version",
