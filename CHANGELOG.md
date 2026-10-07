@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.17.2 (2026-10-07)
 
 ### Fixes
 
