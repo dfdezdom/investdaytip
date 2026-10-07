@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.17.1 (2026-10-07)
+
+### Changes
+
+- **User-facing output drops the "recommendations" wording** — completes the decision-support framing started in 0.17.0: CLI status/errors (`Generating buy recommendations` → `Scoring top candidates`, `No recommendations could be generated` → `No candidates could be scored`), the HTML export's table label (`Recommendations` → `Ratings`), the `investdaytip --help` description (the old "Suggests long-term stock & ETF buy recommendations" tagline is gone) and the package docstring. Internal names (`get_recommendations`, `recommender.py`) are unchanged — code is not communication. README synced with the CLI wording.
+
 ## v0.17.0 (2026-10-07)
 
 ### Changes

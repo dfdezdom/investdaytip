@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "investdaytip"
-version = "0.17.0"
+version = "0.17.1"
 description = "Multi-factor stock & ETF scoring and research tool, with backtesting. Decision support — not investment advice."
 readme = "README.md"
 license = { file = "LICENSE" }
