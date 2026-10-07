@@ -580,6 +580,7 @@ below it: they are omitted with an explicit reason, never fabricated.
 - `--no-cache` flag disables cache read/write; `--cache-clear` drops all entries. Both flags work on `backtest` subcommand too
 - `--superinvestor` flag enables the DataRoma superinvestor cache warm-up (~80 HTTP requests) and the "Superinvestors" column in both HTML and CLI output; disabled by default
 - Tests auto-disable cache via `conftest.py::disable_cache` (autouse); an autouse `no_network` guard fails fast on unmocked `yf.Ticker`; `enabled_temp_cache` fixture backs cache tests with a `tmp_path` DB (never the real `~/.investdaytip`)
+- **Quote and history can sit a session apart** (`{ticker}:info` 1d vs `{ticker}:history` 15min — different Yahoo endpoints): `fetch_asset()` refetches history once past the cache when `_history_lags_quote()` sees the chart's last session behind `regularMarketTime`, and `_apply_history_common()` always sets `current_price` from history's last close, which is the base of every trend/RSI metric (`info`'s price fills in only when there is no history at all). Never let one row mix the two — the 2026-10-06 site run shipped 18 of the top-100 with an Oct-6 price next to Oct-5 1M/daily-change/RSI (FIVE: 209.92 vs −10.01%)
 
 ### Rate Limits & Error Handling
 - `fetch_asset()` retries on `YFRateLimitError` with delays [10, 30, 60]s then returns error dataclass
