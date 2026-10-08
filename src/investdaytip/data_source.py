@@ -425,6 +425,61 @@ def _history_lags_quote(info: dict, history: pd.DataFrame) -> bool:
     return quote_date > last.date()
 
 
+def _append_quote_session(
+    info: dict, history: pd.DataFrame
+) -> Optional[pd.DataFrame]:
+    """*history* extended with the quote's own session bar, or ``None``.
+
+    Last resort for the lag :func:`_history_lags_quote` detects: when the
+    chart is still behind after the refetch, the quote **is** the session's
+    close, so that close joins the series and every metric is computed over a
+    series that ends where the price does.  Observed 2026-10-08 01:16 UTC:
+    Yahoo's nightly rebuild had the Oct-7 bar missing for all 100 tickers
+    while ``info`` already carried Oct-7's close, and the run published the
+    Oct-6 session — coherent (thanks to the price rule in
+    :func:`_apply_history_common`) but a session stale.
+
+    Only the close is known, so only the close is written — never an
+    interpolated high/low/volume.  ``None`` whenever the row cannot be built
+    (no usable price, no quote date, nothing to attach it to): silence beats
+    a guessed bar, and the caller keeps the lagging-but-coherent series.  The
+    extended frame is never cached — the provider's own bar replaces it on
+    the next fetch.
+    """
+    if history is None or history.empty or "Close" not in history:
+        return None
+    price = _first(
+        _safe_get(info, "currentPrice"), _safe_get(info, "regularMarketPrice")
+    )
+    if price is None or not math.isfinite(price) or price <= 0:
+        return None
+    raw = info.get("regularMarketTime")
+    if raw is None:
+        return None
+    try:
+        quote_ts = pd.Timestamp(float(raw), unit="s", tz="UTC")
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+    last = history.index[-1]
+    if not isinstance(last, pd.Timestamp):
+        return None
+    tz = last.tz if getattr(last, "tz", None) is not None else "UTC"
+    try:
+        quote_date = quote_ts.tz_convert(tz).date()
+    except (KeyError, TypeError, ValueError):
+        return None
+    if quote_date <= last.date():
+        return None
+    # Keep the bars' own clock convention (exchange midnight, or the naive UTC
+    # instant the cache round-trip leaves): shift the last bar forward by the
+    # calendar days the chart is missing — weekends included.
+    ts = last + pd.Timedelta(days=(quote_date - last.date()).days)
+    out = history.copy()
+    out.loc[ts] = {col: float(price) if col == "Close" else float("nan")
+                   for col in out.columns}
+    return out
+
+
 def _apply_history_common(
     data: StockData | EtfData,
     history: pd.DataFrame,
@@ -1027,7 +1082,9 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0, with_improvements: boo
     # ── Step 2b: recover from a chart that lags the quote ────────────────
     # A chart response can arrive a session behind the quote (independent
     # caches): refetch once, past our own cache, so the price we publish and
-    # every metric derived from *history* describe the same session.
+    # every metric derived from *history* describe the same session.  If the
+    # provider is the one behind (its nightly rebuild), the quote's own close
+    # becomes the series' last bar instead (_append_quote_session).
     if _history_lags_quote(info, history):
         logging.warning(
             "%s: price history ends before the quote's session — refetching", ticker
@@ -1043,11 +1100,22 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0, with_improvements: boo
         except Exception:
             logging.warning("%s: stale price history — refetch failed", ticker)
         if _history_lags_quote(info, history):
-            # Still behind: keep it (price and metrics stay consistent with
-            # each other thanks to _apply_history_common) and leave a trace.
-            logging.warning(
-                "%s: price history still ends before the quote's session", ticker
-            )
+            # Still behind after the refetch: the provider itself is missing
+            # the bar (Yahoo's nightly rebuild, 2026-10-08 01:16 UTC — all
+            # 100 tickers), so the quote's own close becomes the series' last
+            # bar and the metrics follow the price one session forward.  The
+            # extended frame is not cached: the provider's bar replaces it.
+            extended = _append_quote_session(info, history)
+            if extended is not None:
+                history = extended
+                logging.warning(
+                    "%s: price history still ends before the quote's session "
+                    "— appended the quote's own close", ticker
+                )
+            else:
+                logging.warning(
+                    "%s: price history still ends before the quote's session", ticker
+                )
 
     # Cache info now that history also succeeded — atomic snapshot for
     # consistent results across consecutive runs.

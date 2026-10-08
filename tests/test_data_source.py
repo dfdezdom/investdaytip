@@ -11,6 +11,7 @@ from yfinance.exceptions import YFRateLimitError
 from investdaytip.data_source import (
     EtfData,
     StockData,
+    _append_quote_session,
     _apply_history_common,
     _compute_eps_surprise,
     _first,
@@ -673,6 +674,83 @@ class TestHistoryLagsQuote:
         assert _history_lags_quote(info, pd.DataFrame({"Close": []})) is False
 
 
+class TestAppendQuoteSession:
+    def test_appends_the_quote_session_bar(self):
+        history = _session_history("2026-10-05")
+        info = {
+            "regularMarketTime": _quote_epoch("2026-10-06 20:00"),
+            "regularMarketPrice": 209.92,
+        }
+
+        out = _append_quote_session(info, history)
+
+        assert out is not None
+        assert len(out) == len(history) + 1
+        assert out.index[-1].date().isoformat() == "2026-10-06"
+        assert float(out["Close"].iloc[-1]) == pytest.approx(209.92)
+        assert float(out["Close"].iloc[-2]) == float(history["Close"].iloc[-1])
+
+    def test_weekend_gap_lands_on_the_quote_session(self):
+        # Friday's bar, Monday's quote: the row goes to Monday, not to Sunday.
+        history = _session_history("2026-10-03")
+        info = {
+            "regularMarketTime": _quote_epoch("2026-10-06 20:00"),
+            "regularMarketPrice": 204.24,
+        }
+
+        out = _append_quote_session(info, history)
+
+        assert out is not None
+        assert out.index[-1].date().isoformat() == "2026-10-06"
+
+    def test_naive_index_keeps_the_cache_convention(self):
+        naive = _session_history("2026-10-05").tz_convert("UTC").tz_localize(None)
+        info = {
+            "regularMarketTime": _quote_epoch("2026-10-06 20:00"),
+            "regularMarketPrice": 1.0,
+        }
+
+        out = _append_quote_session(info, naive)
+
+        assert out is not None
+        assert out.index[-1].tz is None
+        assert out.index[-1].date().isoformat() == "2026-10-06"
+
+    def test_without_a_usable_price_or_date_nothing_is_appended(self):
+        history = _session_history("2026-10-05")
+        quote_time = _quote_epoch("2026-10-06 20:00")
+
+        assert _append_quote_session({}, history) is None
+        assert _append_quote_session({"regularMarketTime": quote_time}, history) is None
+        assert _append_quote_session(
+            {"regularMarketTime": quote_time, "regularMarketPrice": 0.0}, history
+        ) is None
+        assert _append_quote_session(
+            {"regularMarketTime": quote_time, "regularMarketPrice": float("nan")},
+            history,
+        ) is None
+        assert _append_quote_session(
+            {"regularMarketTime": "soon", "regularMarketPrice": 1.0}, history
+        ) is None
+
+    def test_nothing_to_append_on_the_quote_session_itself(self):
+        history = _session_history("2026-10-05")
+        info = {
+            "regularMarketTime": _quote_epoch("2026-10-05 20:00"),
+            "regularMarketPrice": 100.0,
+        }
+
+        assert _append_quote_session(info, history) is None
+
+    def test_empty_history_cannot_take_a_row(self):
+        info = {
+            "regularMarketTime": _quote_epoch("2026-10-06 20:00"),
+            "regularMarketPrice": 1.0,
+        }
+
+        assert _append_quote_session(info, pd.DataFrame()) is None
+
+
 def test_price_comes_from_the_history_the_metrics_are_built_on():
     # The quote is a session ahead of the chart: the row stays on one session,
     # price equal to the bar every trend metric was computed against.
@@ -728,10 +806,15 @@ def test_fetch_asset_does_not_refetch_when_quote_and_history_agree(mocker, stock
     mock.history.assert_called_once()
 
 
-def test_fetch_asset_stays_self_consistent_when_the_refetch_is_still_stale(mocker, stock_info):
-    # Yahoo can serve the same stale chart twice: the row then reports the
-    # session it actually has — price and metrics together, never mixed.
+def test_fetch_asset_appends_the_quote_when_the_provider_is_still_stale(
+    mocker, stock_info
+):
+    # Yahoo can serve the same stale chart twice — its nightly rebuild had the
+    # bar missing for all 100 tickers at 2026-10-08 01:16 UTC. The quote's own
+    # close is then that session's real last price: it becomes the series'
+    # last bar, so price and metrics describe the same, current session.
     stock_info["regularMarketTime"] = _quote_epoch("2026-10-06 20:00")
+    stock_info["regularMarketPrice"] = 209.92
     stale = _session_history("2026-10-05")
     mock = MagicMock()
     mock.info = stock_info
@@ -741,6 +824,30 @@ def test_fetch_asset_stays_self_consistent_when_the_refetch_is_still_stale(mocke
     mocker.patch("investdaytip.data_source.yf.Ticker", return_value=mock)
 
     result = fetch_asset("STILLSTALE")
+
+    assert mock.history.call_count == 2
+    assert result.current_price == pytest.approx(209.92)
+    assert result.return_1m == pytest.approx(209.92 / float(stale["Close"].iloc[-21]) - 1)
+    assert result.daily_change == pytest.approx(
+        209.92 / float(stale["Close"].iloc[-1]) - 1
+    )
+
+
+def test_fetch_asset_keeps_the_stale_session_without_a_quote_price(
+    mocker, stock_info
+):
+    # No usable price → no guessed bar: the row reports the session it has,
+    # price and metrics together, never mixed.
+    stock_info["regularMarketTime"] = _quote_epoch("2026-10-06 20:00")
+    stale = _session_history("2026-10-05")
+    mock = MagicMock()
+    mock.info = stock_info
+    mock.history.side_effect = [stale, stale]
+    mock.dividends = pd.Series(dtype=float)
+    mock.earnings_dates = pd.DataFrame()
+    mocker.patch("investdaytip.data_source.yf.Ticker", return_value=mock)
+
+    result = fetch_asset("NOPRICE")
 
     assert mock.history.call_count == 2
     assert result.current_price == float(stale["Close"].iloc[-1])
