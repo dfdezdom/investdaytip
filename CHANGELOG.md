@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.17.5 (2026-10-08)
+
+### Fixes
+
+- **A run built before the close publishes the last closed session** — yfinance serves the in-progress session as a partial daily bar (its "close" is just the last trade), so a run made mid-session mixed half a session into an otherwise final series: price, 1M, daily change and RSI all mid-move. `_drop_partial_session()` drops that bar — 16:00 New York is what makes a daily bar final, a session already over is never touched, and the naive UTC index the cache round-trip leaves is read on the exchange's own clock — so every run describes the **last session to have closed**: the one its metrics can describe, and the date the site files it under (its `slots.py` stamps runs with their session, and a partial day has no session yet). The CLI picks up the same rule: a run at noon reports the previous session's figures instead of half of today's. Regression tests: `tests/test_data_source.py` (6 new).
+
+
 ## v0.17.4 (2026-10-08)
 
 ### Fixes
