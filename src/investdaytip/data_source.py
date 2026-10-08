@@ -15,9 +15,10 @@ import threading
 import time
 from contextlib import contextmanager, redirect_stderr
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from io import StringIO
 from typing import Any, Optional, Union
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import yfinance as yf
@@ -478,6 +479,50 @@ def _append_quote_session(
     out.loc[ts] = {col: float(price) if col == "Close" else float("nan")
                    for col in out.columns}
     return out
+
+
+#: The exchange's own clock: a daily bar is only final after the 16:00 New
+#: York close, so a session still in progress is not a bar yet.
+_EXCHANGE_TZ = ZoneInfo("America/New_York")
+_SESSION_CLOSE_HOUR = 16
+
+
+def _now() -> datetime:
+    """Current instant, UTC — indirection so tests can pin the clock."""
+    return datetime.now(timezone.utc)
+
+
+def _drop_partial_session(
+    history: pd.DataFrame, now: Optional[datetime] = None
+) -> pd.DataFrame:
+    """*history* without the bar of a session that has not closed yet.
+
+    Daily bars are end-of-day: yfinance publishes the in-progress session as
+    a partial bar whose close is just the last trade, so a run built before
+    the US close would mix half a session into an otherwise final series —
+    price, 1M, daily change and RSI all mid-move (and the site, whose slot
+    for a session only exists after the close, would ship today's partial
+    day ahead of the run that is meant to publish it).  Dropping that bar
+    leaves every run describing the **last session to have closed**.  A bar
+    whose session is over is never touched.
+    """
+    if history is None or history.empty:
+        return history
+    last = history.index[-1]
+    if not isinstance(last, pd.Timestamp):
+        return history
+    ts = last if last.tz is not None else last.tz_localize("UTC")
+    close = ts.tz_convert(_EXCHANGE_TZ).replace(
+        hour=_SESSION_CLOSE_HOUR, minute=0, second=0, microsecond=0
+    )
+    now = now if now is not None else _now()
+    if now >= close:
+        return history
+    logging.info(
+        "dropping the bar of %s — its session is still in progress",
+        close.date().isoformat(),
+    )
+    return history.iloc[:-1]
 
 
 def _apply_history_common(
@@ -1116,6 +1161,12 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0, with_improvements: boo
                 logging.warning(
                     "%s: price history still ends before the quote's session", ticker
                 )
+
+    # ── Step 2c: an unfinished session is not a bar yet ──────────────────
+    # yfinance serves the in-progress session as a partial daily bar;
+    # dropping it leaves the row on the last session to have closed — the one
+    # every metric above can describe, and the date the run is filed under.
+    history = _drop_partial_session(history)
 
     # Cache info now that history also succeeded — atomic snapshot for
     # consistent results across consecutive runs.

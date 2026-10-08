@@ -14,6 +14,7 @@ from investdaytip.data_source import (
     _append_quote_session,
     _apply_history_common,
     _compute_eps_surprise,
+    _drop_partial_session,
     _first,
     _history_lags_quote,
     _safe_get,
@@ -640,6 +641,11 @@ def _quote_epoch(iso: str) -> float:
     return float(pd.Timestamp(iso, tz="UTC").timestamp())
 
 
+def _utc(iso: str) -> pd.Timestamp:
+    """A tz-aware UTC instant — the pipeline's own clock in the tests."""
+    return pd.Timestamp(iso, tz="UTC")
+
+
 class TestHistoryLagsQuote:
     def test_detects_chart_one_session_behind_the_quote(self):
         history = _session_history("2026-10-05")
@@ -751,6 +757,48 @@ class TestAppendQuoteSession:
         assert _append_quote_session(info, pd.DataFrame()) is None
 
 
+class TestDropPartialSession:
+    def test_drops_the_bar_of_a_session_still_open(self):
+        # 17:55 UTC = 13:55 New York: today's bar is half a session.
+        history = _session_history("2026-10-08")
+
+        out = _drop_partial_session(history, now=_utc("2026-10-08 17:55"))
+
+        assert len(out) == len(history) - 1
+        assert out.index[-1].date().isoformat() == "2026-10-07"
+
+    def test_keeps_the_bar_once_the_session_has_closed(self):
+        # 20:30 UTC = 16:30 New York: the bar is final.
+        history = _session_history("2026-10-08")
+
+        out = _drop_partial_session(history, now=_utc("2026-10-08 20:30"))
+
+        assert len(out) == len(history)
+        assert out.index[-1].date().isoformat() == "2026-10-08"
+
+    def test_a_finished_session_is_never_dropped(self):
+        history = _session_history("2026-10-06")
+
+        out = _drop_partial_session(history, now=_utc("2026-10-08 17:55"))
+
+        assert out.index[-1].date().isoformat() == "2026-10-06"
+
+    def test_naive_cache_index_is_read_on_the_exchange_clock(self):
+        naive = _session_history("2026-10-08").tz_convert("UTC").tz_localize(None)
+
+        out = _drop_partial_session(naive, now=_utc("2026-10-08 17:55"))
+
+        assert len(out) == len(naive) - 1
+
+    def test_empty_or_unindexed_history_is_left_alone(self):
+        now = _utc("2026-10-08 17:55")
+        empty = pd.DataFrame()
+        flat = pd.DataFrame({"Close": [100.0] * 30})  # RangeIndex, not sessions
+
+        assert _drop_partial_session(empty, now=now) is empty
+        assert _drop_partial_session(flat, now=now) is flat
+
+
 def test_price_comes_from_the_history_the_metrics_are_built_on():
     # The quote is a session ahead of the chart: the row stays on one session,
     # price equal to the bar every trend metric was computed against.
@@ -853,4 +901,29 @@ def test_fetch_asset_keeps_the_stale_session_without_a_quote_price(
     assert result.current_price == float(stale["Close"].iloc[-1])
     assert result.return_1m == pytest.approx(
         float(stale["Close"].iloc[-1] / stale["Close"].iloc[-22] - 1)
+    )
+
+
+def test_fetch_asset_publishes_the_last_closed_session(mocker, stock_info):
+    # Built before the US close, the run must describe the last *closed*
+    # session: today's bar is half a session, and the site files a run under
+    # the session its data describes (scripts/slots.py on the web side).
+    mocker.patch(
+        "investdaytip.data_source._now", return_value=_utc("2026-10-08 17:55")
+    )
+    stock_info["regularMarketTime"] = _quote_epoch("2026-10-08 17:55")
+    history = _session_history("2026-10-08")
+    mock = MagicMock()
+    mock.info = stock_info
+    mock.history.return_value = history
+    mock.dividends = pd.Series(dtype=float)
+    mock.earnings_dates = pd.DataFrame()
+    mocker.patch("investdaytip.data_source.yf.Ticker", return_value=mock)
+
+    result = fetch_asset("MIDDAY")
+
+    assert mock.history.call_count == 1  # quote and chart agree: no recovery
+    assert result.current_price == float(history["Close"].iloc[-2])
+    assert result.return_1m == pytest.approx(
+        float(history["Close"].iloc[-2] / history["Close"].iloc[-23] - 1)
     )
