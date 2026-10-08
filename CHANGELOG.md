@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.17.4 (2026-10-08)
+
+### Fixes
+
+- **A lagging chart no longer costs the row a session** — when the price history still ended before the quote's session after the recovery fetch, the engine kept the stale series, so the row reported the *previous* session: coherent, but one session behind. That is no rare edge — Yahoo's nightly rebuild serves daily bars a session behind its own quote, and the site's 2026-10-08 01:16 UTC run (a cron GitHub delivered 3h37m late, into that window) hit it for **all 100 tickers** and published the Oct-6 session under the Oct-7 21:37 slot. The quote *is* that session's close, so `_append_quote_session()` now writes it as the series' last bar and price, 1M, daily change, RSI and MACD all describe the session the quote closed. Only the close is written (an interpolated high/low/volume would be a guess), a row is never built without a usable price and date (the previous behavior — the lagging-but-coherent series — stands then), and the extended frame is never cached, so the provider's own bar replaces it on the next fetch. Regression tests: `tests/test_data_source.py` (7 new; the still-stale fetch test now pins the appended session).
+
 ## v0.17.3 (2026-10-08)
 
 ### Fixes
