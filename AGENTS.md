@@ -1,5 +1,27 @@
 # InvestDayTip — Agent Guide
 
+## Sibling directories (this repo is one of three)
+
+```
+/Users/diego/investdaytip-workspace/
+├── InvestDayTip/       ← you are here: the engine (MIT, public, PyPI)
+├── investdaytip-web/   investdaytip.com (Next.js, proprietary/private). Consumes
+│                       this package pinned in scripts/requirements.txt. Never
+│                       reimplement scoring there — fix it here and release.
+└── stockfit/           decision log (documents, no code): business model, StockFit
+                        API evaluation, before/after baselines from experiments
+```
+
+**Every `stockfit/...` path in this file is relative to `VSCodeProjects/`, not to
+this repo.** Experiment artefacts live under `stockfit/archivo/`. The map of the
+whole ecosystem is `VSCodeProjects/AGENTS.md`, which loads automatically.
+
+Two invariants from the decision log that bind this repo:
+- StockFit ToS §5 forbids redistributing API data as a standalone dataset.
+  Anything exported for public display must stay *slim* — see `snapshot_payload()`
+  in `investdaytip-web/scripts/build_ratings.py`.
+- Never fabricate a missing value: keep `None` and document why.
+
 ## Build / Test / Verify
 
 ```bash
@@ -331,7 +353,7 @@ field-level yfinance enrichment fills **only** `eps_surprise` when available
 cannot derive it from shares. Other StockFit fields are never overwritten by
 the enrichment. `forward_pe`/`peg_ratio` remain `None`. `eps_acceleration` is
 derived but was **rejected** as the EPS-Revisions fallback (factor-IC −0.059) —
-diagnostic only. Details: `stockfit/data_source_stockfit_validation.md`.
+diagnostic only. Details: `stockfit/archivo/data_source_stockfit_validation.md`.
 
 Robustness fixes found during that validation (keep them):
 - shares preference `currentSharesOutstanding → sharesOutstanding →
@@ -377,7 +399,7 @@ FCF prefers the quarterly cash-flow sum. Measured on the same top-20:
 ROE diffs 13/20 → **3/20**, `current_ratio` 7/20 → **0/20**, FCF 16/20 →
 **4/20**, Spearman 0.946 → **0.971**. Residuals are *definitions*, not bases:
 `debt_to_equity` (StockFit `totalDebt` vs yfinance `Total Debt`, 11/20) and
-AMZN capex treatment. Details: `stockfit/top20_comparison.md`.
+AMZN capex treatment. Details: `stockfit/archivo/top20_comparison.md`.
 
 GICS sector names are mapped to yfinance-style (`Information Technology` →
 `Technology`) so `-s` filters and the advisor sector tilt behave identically.
@@ -653,11 +675,11 @@ Two stock-scoring models are available, selectable via `--scoring-model {classic
 
 - **`quant`** (default) — Seeking-Alpha-inspired five-factor model:
   - Value 25%, Growth 20%, Profitability 25%, Momentum 15%, EPS Revisions 15%
-  - Value's PEG sub-metric is **derived** (`trailing_pe / (earnings_growth * 100)` — growth as a **percentage**, the classic PEG convention the scorer's `best=0.8/worst=3.0` thresholds assume; positive growth only — else `None` → neutral; applied in `_derive_stock_data` and `_fetch_stock`, so backtest + both live sources share it). **Gotcha:** dividing by the decimal growth (pre-0.15.2) inflated every PEG 100×, zeroing the sub-metric and tripping the disqualification cap — LLY/AVGO scored exactly 50.0 in the advisor; IC is Spearman so the unit scale never showed it, only the absolute sub-scores did. Factor-IC 2026-10-02: `peg_derived` +0.055 mean / 86% hit vs P/E −0.029 and P/B −0.011 — the best of the Value family. It also unifies the sources (yfinance's `pegRatio` is analyst-based and often absurd: BMY 17.37 with +178% growth). Validated before/after (full US, top-5, min-cap 0): 5y alpha 5.75%→6.51%, Sharpe 0.68→0.73; 3y alpha 12.61%→14.54%, Sharpe 1.56→1.84, win12M 75%→100% — never worse on any metric. Baselines: `stockfit/baseline-{before,after}-peg{5y,3y}.json`.
+  - Value's PEG sub-metric is **derived** (`trailing_pe / (earnings_growth * 100)` — growth as a **percentage**, the classic PEG convention the scorer's `best=0.8/worst=3.0` thresholds assume; positive growth only — else `None` → neutral; applied in `_derive_stock_data` and `_fetch_stock`, so backtest + both live sources share it). **Gotcha:** dividing by the decimal growth (pre-0.15.2) inflated every PEG 100×, zeroing the sub-metric and tripping the disqualification cap — LLY/AVGO scored exactly 50.0 in the advisor; IC is Spearman so the unit scale never showed it, only the absolute sub-scores did. Factor-IC 2026-10-02: `peg_derived` +0.055 mean / 86% hit vs P/E −0.029 and P/B −0.011 — the best of the Value family. It also unifies the sources (yfinance's `pegRatio` is analyst-based and often absurd: BMY 17.37 with +178% growth). Validated before/after (full US, top-5, min-cap 0): 5y alpha 5.75%→6.51%, Sharpe 0.68→0.73; 3y alpha 12.61%→14.54%, Sharpe 1.56→1.84, win12M 75%→100% — never worse on any metric. Baselines: `stockfit/archivo/baseline-{before,after}-peg{5y,3y}.json`.
   - Profitability sub-weights: ROE 30%, margin 25%, ROA 15%, **YoY-improvement 30%** (Δgross margin + ΔROA vs previous fiscal year; neutral 50 when unknown). Shared logic in `financial_health.improvement_flags()`; flags live on `StockData.margin_improving`/`roa_improving`, filled by the live path (`fetch_asset(with_improvements=True)` — 2 statement calls, 7d cache; skipped for `classic`) and by both backtest builders. Validated 2026-09-27 (full US, top-5, min-cap 0): factor-IC +0.134/+0.126 mean (86% hit — top of the table), before/after 5y alpha 6.85%→7.60% (MaxDD unchanged), 3y alpha 7.69%→13.37%, Sharpe 1.16→1.30, win12M 50%→62.5%.
   - **Piotroski F-Score composite and Altman Z were tested and REJECTED as scoring factors** (mean IC +0.039/+0.014 = noise; 5 of the 9 Piotroski checks are negative on large-caps). `financial_health.piotroski_f_score()` / `altman_z_score()` stay available for display use — **reserved as per-ticker diagnostic content for the future `deep-dive` subcommand (product Fase 2, see `stockfit/STOCKFIT_EVALUACION.md` roadmap)**: informative only, never scored.
   - Momentum uses **12-1 momentum** (12m return excluding the most recent month, derived from `return_12m`/`return_1m`; falls back to raw 12m when `return_1m` is missing) — the last month is short-term reversal, not momentum. Validated via factor-IC + before/after backtests (2026-07-17): alpha +0.5pp and Sharpe +0.03 on the 5y wide universe, never worse on 3y/standard configs.
-  - EPS Revisions uses the average EPS surprise (Reported EPS vs Estimate) over the last four reported quarters; `lxml` is required for yfinance to expose this data. **Removal TESTED and REJECTED (2026-09-27):** the factor is IC-noise (`eps_surprise` IC −0.002, `F_eps_revisions` −0.010) but removing it and redistributing its 15% to Growth/Profitability **degraded both windows badly** (5y alpha 7.60%→4.16%, Sharpe 0.73→0.66, MaxDD 24%→27%; 3y alpha 13.37%→3.38%, Sharpe 1.30→0.92) — a near-zero-IC factor still acts as **diversifying ballast** against factor concentration. The before/after backtest overrules the univariate IC, exactly as AGENTS warns. Baselines: `stockfit/baseline-{before,after}-eps{5y,3y}.json`. A variant redistribution (e.g. to Value/Momentum rather than Growth/Profitability) would be a NEW experiment with its own pair of runs. `eps_acceleration` (as-filed EPS 2nd derivative) was separately tested as an estimates-free fallback and rejected too (IC −0.059); it stays as a derived diagnostic on `StockData`, never scored.
+  - EPS Revisions uses the average EPS surprise (Reported EPS vs Estimate) over the last four reported quarters; `lxml` is required for yfinance to expose this data. **Removal TESTED and REJECTED (2026-09-27):** the factor is IC-noise (`eps_surprise` IC −0.002, `F_eps_revisions` −0.010) but removing it and redistributing its 15% to Growth/Profitability **degraded both windows badly** (5y alpha 7.60%→4.16%, Sharpe 0.73→0.66, MaxDD 24%→27%; 3y alpha 13.37%→3.38%, Sharpe 1.30→0.92) — a near-zero-IC factor still acts as **diversifying ballast** against factor concentration. The before/after backtest overrules the univariate IC, exactly as AGENTS warns. Baselines: `stockfit/archivo/baseline-{before,after}-eps{5y,3y}.json`. A variant redistribution (e.g. to Value/Momentum rather than Growth/Profitability) would be a NEW experiment with its own pair of runs. `eps_acceleration` (as-filed EPS 2nd derivative) was separately tested as an estimates-free fallback and rejected too (IC −0.059); it stays as a derived diagnostic on `StockData`, never scored.
   - Disqualifying grades cap the total score at neutral when a factor falls into red-flag territory
   - Uses absolute thresholds (peer-relative scoring is left for a future iteration)
 - **`classic`** — Original InvestDayTip model (Graham/Buffett + momentum):
