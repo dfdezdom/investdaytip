@@ -474,7 +474,7 @@ def _append_quote_session(
     # Keep the bars' own clock convention (exchange midnight, or the naive UTC
     # instant the cache round-trip leaves): shift the last bar forward by the
     # calendar days the chart is missing — weekends included.
-    ts = last + pd.Timedelta(days=(quote_date - last.date()).days)
+    ts = last + pd.Timedelta((quote_date - last.date()).days, unit='D')
     out = history.copy()
     out.loc[ts] = {col: float(price) if col == "Close" else float("nan")
                    for col in out.columns}

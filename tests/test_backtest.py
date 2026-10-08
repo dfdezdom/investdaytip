@@ -398,8 +398,8 @@ class TestBuildHistoricalStockData:
         info = {"shortName": "Test Inc", "sector": "Technology", "currency": "USD"}
 
         snapshot = datetime(2024, 6, 15)
-        past_report = snapshot - pd.Timedelta(days=30)
-        future_report = snapshot + pd.Timedelta(days=30)
+        past_report = snapshot - pd.Timedelta(30, unit='D')
+        future_report = snapshot + pd.Timedelta(30, unit='D')
         earnings_dates = pd.DataFrame(
             {
                 "EPS Estimate": [1.0, 1.0],
@@ -432,10 +432,10 @@ class TestBuildHistoricalStockData:
 class TestComputeHistoricalEpsSurprise:
     def test_only_uses_reports_known_at_snapshot(self):
         today = pd.Timestamp.now().normalize()
-        snapshot = (today - pd.Timedelta(days=60)).to_pydatetime()
+        snapshot = (today - pd.Timedelta(60, unit='D')).to_pydatetime()
         dates = pd.DatetimeIndex([
-            today - pd.Timedelta(days=120),
-            today - pd.Timedelta(days=30),  # after snapshot
+            today - pd.Timedelta(120, unit='D'),
+            today - pd.Timedelta(30, unit='D'),  # after snapshot
         ])
         df = pd.DataFrame(
             {

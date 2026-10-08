@@ -444,7 +444,7 @@ class TestTtmDividendYield:
 
     def test_ignores_dividends_older_than_one_year(self):
         today = pd.Timestamp.now().normalize()
-        old = pd.Series([10.0], index=[today - pd.Timedelta(days=400)])
+        old = pd.Series([10.0], index=[today - pd.Timedelta(400, unit='D')])
         assert _ttm_dividend_yield(old, 100.0) is None
 
     def test_none_or_empty_returns_none(self):
@@ -548,7 +548,7 @@ def test_compute_eps_surprise_averages_last_four_quarters():
 
 def test_compute_eps_surprise_ignores_future_rows():
     today = pd.Timestamp.now().normalize()
-    future = today + pd.Timedelta(days=30)
+    future = today + pd.Timedelta(30, unit='D')
     past = pd.date_range(end=today, periods=4, freq="91D")
     df = pd.DataFrame(
         {
@@ -569,7 +569,7 @@ def test_compute_eps_surprise_returns_none_when_empty():
 def test_compute_eps_surprise_deduplicates_same_report_day():
     today = pd.Timestamp.now().normalize()
     idx = pd.DatetimeIndex(
-        [today, today - pd.Timedelta(days=1), today - pd.Timedelta(days=1)]
+        [today, today - pd.Timedelta(1, unit='D'), today - pd.Timedelta(1, unit='D')]
     )
     df = pd.DataFrame(
         {
@@ -596,7 +596,7 @@ def test_fetch_asset_populates_eps_surprise(mocker, stock_info):
 def test_fetch_asset_deduplicates_earnings_dates_index(mocker, stock_info):
     """Duplicate report days from yfinance must not crash JSON serialization."""
     today = pd.Timestamp.now().normalize()
-    idx = pd.DatetimeIndex([today, today - pd.Timedelta(days=1), today - pd.Timedelta(days=1)])
+    idx = pd.DatetimeIndex([today, today - pd.Timedelta(1, unit='D'), today - pd.Timedelta(1, unit='D')])
     earnings_dates = pd.DataFrame(
         {
             "EPS Estimate": [1.0, 1.0, 1.0],
