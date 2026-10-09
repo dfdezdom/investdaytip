@@ -34,7 +34,7 @@ own terms) built on this engine; the engine itself stays MIT.
 - 🏦 **Stocks & ETFs** — auto-detected and scored with dedicated models
 - 🌍 **US, European, Asian & Superinvestor markets** — S&P 500, DAX, CAC 40, FTSE 100, Nikkei 225, Hang Seng, NSE, and superinvestor consensus picks from DataRoma 13F filings
 - 💱 **Currency filter** — narrow by native currency (`USD`, `EUR`, `JPY`, …)
-- ⚡ **Concurrent fetching** — analyzes ~300 tickers in seconds
+- ⚡ **Concurrent fetching** — analyzes ~500 tickers in seconds
 - 📊 **Rich CLI output** — price, 1M/1Y change, score breakdown and rationale
 - 🧾 **Self-contained HTML export** — interactive report with filters and sortable columns
 - 🧪 **Pure scoring functions** — testable without network
@@ -82,7 +82,7 @@ pip install -e ".[dev]"
 investdaytip
 ```
 
-That's it. You'll see the top 5 highest-scoring candidates across 300+ stocks & ETFs.
+That's it. You'll see the top 5 highest-scoring candidates across the curated universes — ~490 US, EU, Asian & superinvestor tickers before the market-cap filter.
 
 <p align="center">
   <img src="docs/screenshot-CLI.png" alt="InvestDayTip CLI output" width="90%">
@@ -141,6 +141,8 @@ investdaytip --data-source yahooquery  # Use yahooquery (batch-friendly yfinance
                                        # Falls back to yfinance automatically per ticker
 investdaytip --data-source fmp         # Use Financial Modeling Prep (requires FMP_API_KEY env var)
                                        # Get a free key at https://financialmodelingprep.com/
+investdaytip --data-source stockfit    # Use StockFit (US stocks only; STOCKFIT_API_KEY + Starter)
+                                       # Falls back to yfinance per ticker on failure
 investdaytip --no-cache                # Bypass SQLite cache, fetch fresh data
 investdaytip --cache-clear           # Purge all cached data before running
 investdaytip --workers 20            # More parallelism
@@ -179,9 +181,9 @@ investdaytip --help
 | `--include-technical` | Include RSI + MACD technical indicators in the scoring. **Default is `True` for `quant` and `False` for `classic`.** Use `--no-include-technical` to force-disable. | model-dependent |
 | `--no-include-technical` | Force-disable RSI + MACD technical indicators | disabled |
 | `--scoring-model {classic,quant}` | Stock/ETF scoring model | `quant` |
-| `--data-source {yfinance,yahooquery,fmp,stockfit}` | Data source. `stockfit` = US stocks only, requires `STOCKFIT_API_KEY` + Starter plan (rankings differ from yfinance — as-filed FY semantics) | `yfinance` |
+| `--data-source {yfinance,yahooquery,fmp,stockfit}` | Data source. `fmp` = stocks only, needs `FMP_API_KEY`; `stockfit` = US stocks only, needs `STOCKFIT_API_KEY` + Starter plan (TTM trailing fundamentals, same basis as yfinance) | `yfinance` |
 | `--min-market-cap VALUE` | Minimum market cap (`1B`, `500M`, `0` to disable; see [Market Cap Classification](#market-cap-classification)) | `0` with tickers, `2B` otherwise |
-| `--no-cache` | Skip SQLite cache, fetch all data live from Yahoo Finance | disabled |
+| `--no-cache` | Skip SQLite cache, fetch all data live from the configured source | disabled |
 | `--cache-clear` | Purge the SQLite cache before running | disabled |
 | `--workers N` | Parallel fetch threads | `10` |
 | `--version` | Show the installed version and exit | n/a |
@@ -664,17 +666,21 @@ ETF scoring also switches between two models via `--scoring-model {classic,quant
 
 When no `-t` is given, InvestDayTip uses curated universes:
 
-- **US stocks** — 121 large-caps across all S&P sectors (`src/investdaytip/universe.py`)
+- **US stocks** — 122 large-caps across all S&P sectors (`src/investdaytip/universe.py`)
 - **US ETFs** — 41 broad-market, factor, sector and bond ETFs (`etf_universe.py`)
-- **EU stocks** — 99 large-caps from DAX, CAC, FTSE 100, IBEX, AEX, SMI, FTSE MIB, Nordics (`eu_universe.py`)
+- **EU stocks** — 99 large-caps from DAX, CAC, FTSE 100, IBEX, AEX, SMI, FTSE MIB, Euronext Brussels and the Nordics (`eu_universe.py`)
 - **EU UCITS ETFs** — 35 broad, sector and bond UCITS ETFs (`eu_etf_universe.py`)
 - **Asia stocks** — 110 large-caps from Japan, Hong Kong, Singapore, India, South Korea, Taiwan, and Australia (`asia_universe.py`)
 - **Asia ETFs** — 17 broad-market, country-specific, and sector ETFs with significant Asian exposure (`asia_etf_universe.py`)
 - **Superinvestor stocks** — 101 consensus picks held by ≥2 of ~82 top investors tracked by DataRoma 13F filings (`superinvestor_universe.py`)
 
+Merging the pools for a full scan (`-r all -a all`) yields **492 unique
+tickers** — overlapping tickers and cross-listings (e.g. `TSM` / `2330.TW`,
+`VXUS` in two ETF lists) are deduplicated before fetching.
+
 Tickers use Yahoo Finance suffixes: 
 - **US:** no suffix (AAPL, MSFT)
-- **EU:** `.DE` Xetra · `.PA` Paris · `.AS` Amsterdam · `.L` London · `.MC` Madrid · `.MI` Milan · `.SW` Swiss
+- **EU:** `.DE` Xetra · `.PA` Paris · `.AS` Amsterdam · `.L` London · `.MC` Madrid · `.MI` Milan · `.SW` Swiss · `.BR` Brussels · `.ST` Stockholm · `.CO` Copenhagen · `.OL` Oslo · `.HE` Helsinki
 - **Asia:** `.T` Tokyo · `.HK` Hong Kong · `.SI` Singapore · `.NS` NSE India · `.KS` Korea · `.TW` Taiwan · `.AX` Australia
 
 ### Ticker File Examples
@@ -730,7 +736,16 @@ Once enabled, try `investdaytip -<TAB>` or `investdaytip --region <TAB>`.
 
 ## Data Source
 
-All market data is fetched live from **Yahoo Finance** via the [`yfinance`](https://github.com/ranaroussi/yfinance) library. Fundamentals come from `Ticker.info`, prices and trend metrics from `Ticker.history(period="2y")`.
+Four interchangeable data sources, selected with `--data-source` (default `yfinance`). Every source falls back to `yfinance` automatically for the tickers it cannot serve, so a run degrades instead of failing:
+
+| Source | What it is | Scope & requirements |
+|---|---|---|
+| `yfinance` (default) | **Yahoo Finance** via the [`yfinance`](https://github.com/ranaroussi/yfinance) library — fundamentals from `Ticker.info`, prices and trend metrics from `Ticker.history(period="2y")` | stocks & ETFs, all regions; no key |
+| `yahooquery` | Yahoo's internal API in batches of 10 (faster and more resilient to Yahoo HTML changes), mapped onto the same `info` shape | stocks & ETFs, all regions; no key; per-ticker fallback to `yfinance` |
+| `fmp` | [Financial Modeling Prep](https://financialmodelingprep.com/) REST API — 6 endpoints per ticker | stocks only (no ETFs); `FMP_API_KEY`; free tier is 250 req/day (~40 tickers), then auto-falls back to `yfinance` |
+| `stockfit` | [StockFit](https://stockfit.io/) SEC-derived fundamentals and price history (TTM basis, as-filed YoY comparisons) | **US stocks only**; `STOCKFIT_API_KEY` + Starter plan; per-ticker fallback to `yfinance` |
+
+StockFit also feeds features that are orthogonal to `--data-source`: point-in-time backtests (`--pit-source stockfit`), the HTML `--fundamental-insights` section, `deep-dive` research and the devil's-advocate footnotes. Each of those degrades gracefully by plan tier — see [StockFit integration & tiers](#stockfit-integration--tiers).
 
 These libraries and endpoints are third-party services and remain subject to
 those providers' terms of use; generated reports therefore contain third-party
@@ -751,11 +766,12 @@ InvestDayTip includes an **SQLite cache** (`~/.investdaytip/cache.db`) created a
 | Data | TTL |
 |------|-----|
 | Prices & history | 15 minutes |
-| Fundamentals (info dict) | 1 day |
+| Fundamentals (`info`, FMP profile+ratios) | 1 day |
 | Financial statements (balance sheet, income, cash flow) | 7 days |
-| Dividends | 7 days |
+| Dividends · earnings dates | 7 days |
 | Fear & Greed Index | 1 hour |
 | Superinvestor holdings | 7 days |
+| StockFit profile + TTM facts, research summary, fundamental insights, footnotes, detected plan | 1 day |
 
 The cache uses per-thread SQLite connections with a write lock to support concurrent fetches safely. Use `--no-cache` to bypass the cache for a single run, or `--cache-clear` to purge all entries. Both flags work on the main and `backtest` subcommands. Caching is automatically disabled when running tests.
 
@@ -769,7 +785,8 @@ scripts/
 ├── scoring_baseline.py    # Backtest before/after comparison tool
 ├── factor_ic.py           # Factor IC analysis (which metrics predict returns)
 ├── pit_snapshot.py        # StockFit PIT statement snapshot builder
-└── compare_data_sources.py # yfinance vs yahooquery vs FMP field comparison
+├── compare_data_sources.py # yfinance vs yahooquery vs FMP field comparison
+└── diagnose_fmp.py        # FMP endpoint/field diagnostic helper
 src/investdaytip/
 ├── __init__.py            # Public API: get_recommendations
 ├── main.py                # CLI entry point + rich table rendering
@@ -818,6 +835,9 @@ tests/
 ├── test_data_source_stockfit_pit.py # StockFit PIT layer tests (mocked HTTP)
 ├── test_data_source_stockfit_live.py # StockFit live data source tests (mocked HTTP)
 ├── test_fundamental_insights.py # StockFit insights section tests
+├── test_footnotes.py       # StockFit footnotes parsing / bear-case bullets
+├── test_risk_signals.py    # Keyless devil's advocate risk-signal tests
+├── test_stockfit_rate_limit.py # StockFit plan-aware rate limiter tests
 ├── test_pit_snapshot.py   # PIT snapshot layer tests
 ├── test_deep_dive.py      # Deep-dive report tests
 ├── test_stockfit_plan.py  # StockFit tier detection & capability gating tests
@@ -829,7 +849,8 @@ tickers-files-examples/
 ├── energy_relevant_tickers.txt
 ├── space_relevant_tickers.txt
 ├── technology_relevant_tickers.txt
-├── spanish_relevant_tickers.txt
+├── spain_relevant_tickers.txt
+├── eu_etfs_relevant_tickers.txt
 ├── pharma_relevant_tickers.txt
 ├── biotech_relevant_tickers.txt
 ├── health_relevant_tickers.txt
@@ -858,7 +879,7 @@ ruff check src tests      # lint
 mypy                      # type-check
 ```
 
-**335 tests** across 16 test files. The scoring engine is purely functional
+**569 tests** across 26 test files. The scoring engine is purely functional
 and tested without network calls; an autouse guard in `tests/conftest.py` fails
 fast if a test reaches yfinance unmocked. Integration tests mock the full
 `recommend()` → `main()` → export pipeline.
