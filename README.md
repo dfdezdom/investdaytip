@@ -596,8 +596,8 @@ Each row includes:
 | **Ticker / Name / Sector** | Identification |
 | **Ticker link** | Opens Google Finance in a new tab |
 | **T / Y** | Opens TradingView / Yahoo Finance in a new tab |
-| **Price** | Current price in native currency |
-| **% Today** | Daily change vs previous close |
+| **Price** | Close of the session named under the table, in native currency |
+| **1D Δ** | Daily change vs the previous close **of that same session** — not the live intraday move |
 | **P/E** | Trailing price-to-earnings ratio (stocks; `-` when unavailable) |
 | **Yield** | Dividend yield for stocks (TTM from raw dividends, fallback to `dividendYield`) or ETFs (`yield_`) — `-` when unavailable |
 | **1M Δ** | % change vs ~22 trading days ago |
@@ -608,6 +608,14 @@ Each row includes:
 | **Score** | Composite 0-100 weighted score |
 | **Breakdown** | Four sub-scores (shown in a compact single line) |
 | **Why** | Top 3 rationale notes |
+
+Every figure in a row comes from that row's own price series, and a run built while the market is open describes the **last session to have closed** — a session in progress has no close yet, so it is not a bar (`_drop_partial_session()` drops it). The report says so instead of leaving the reader to infer it from a column called "today":
+
+```
+Session: 2026-10-08 (last closed) — Price, 1D Δ, 1M and 1Y are its figures; the live quote is not scored.
+```
+
+The same date is printed in the footer of an exported HTML report (`… · Session: 2026-10-08 (last closed)`).
 
 ---
 

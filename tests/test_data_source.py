@@ -834,6 +834,9 @@ def test_price_comes_from_the_history_the_metrics_are_built_on():
 
     close = history["Close"]
     assert data.current_price == float(close.iloc[-1])
+    # The row labels itself with the session that price comes from — the last
+    # one to have closed, not the calendar "today" of a mid-day run.
+    assert data.session_date == "2026-10-05"
     assert data.return_1m == pytest.approx(float(close.iloc[-1] / close.iloc[-22] - 1))
     assert data.daily_change == pytest.approx(float(close.iloc[-1] / close.iloc[-2] - 1))
     assert data.rsi_14 is not None
@@ -847,6 +850,7 @@ def test_quote_price_survives_when_there_is_no_history():
 
     assert data.current_price == 150.0
     assert data.return_1m is None
+    assert data.session_date is None  # nothing to date the row with
 
 
 def test_fetch_asset_refetches_a_history_that_lags_the_quote(mocker, stock_info):

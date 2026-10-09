@@ -446,6 +446,9 @@ def export_recommendations_html(
     include_technical = resolve_include_technical(include_technical, scoring_model)
     col_count = _TABLE_BASE_COLUMN_COUNT + (1 if include_superinvestor else 0) + (2 if include_technical else 0)
     rows = [_as_row(i, s) for i, s in enumerate(results, start=1)]
+    # The session(s) the rows describe: every figure in a row comes from that
+    # row's price series, whose last bar is the last session to have closed.
+    sessions = sorted({s.data.session_date for s in results if s.data.session_date})
     metadata = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "top_n": top_n,
@@ -455,6 +458,7 @@ def export_recommendations_html(
         "tickers": tickers or [],
         "tickers_file": tickers_file,
         "row_count": len(rows),
+        "sessions": sessions,
         "sector": sector,
         "fear_greed": fear_greed if fear_greed is not None else {},
         "scoring_model": scoring_model,
@@ -720,7 +724,7 @@ def export_recommendations_html(
           <th class="desktop-only sortable region-col" data-sort-key="region" data-sort-type="text" tabindex="0" aria-sort="none">Region<span class="sort-indicator">↕</span></th>
           <th class="desktop-only sortable" data-sort-key="sector" data-sort-type="text" tabindex="0" aria-sort="none">Sector/Category<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="price" data-sort-type="number" tabindex="0" aria-sort="none">Price<span class="sort-indicator">↕</span></th>
-          <th class="num sortable" data-sort-key="daily_change" data-sort-type="number" tabindex="0" aria-sort="none">% Today<span class="sort-indicator">↕</span></th>
+          <th class="num sortable" data-sort-key="daily_change" data-sort-type="number" tabindex="0" aria-sort="none" title="Change vs the previous close of the last session to have closed">1D Δ<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="pe" data-sort-type="number" tabindex="0" aria-sort="none">P/E<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="dividend_yield" data-sort-type="number" tabindex="0" aria-sort="none">Yield<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="return_1m" data-sort-type="number" tabindex="0" aria-sort="none">1M<span class="sort-indicator">↕</span></th>
@@ -787,7 +791,11 @@ def export_recommendations_html(
       }}
       $("runParams").innerHTML = chips.map(c => `<span class=\"chip\">${{escapeHtml(c)}}</span>`).join("");
       const when = new Date(metadata.generated_at).toLocaleString();
-      $("generatedAt").textContent = `Generated: ${{when}} · Rows: ${{metadata.row_count}}`;
+      const sessions = metadata.sessions || [];
+      const sess = sessions.length
+        ? ` · Session${{sessions.length > 1 ? "s" : ""}}: ${{sessions.join(", ")}} (last closed)`
+        : "";
+      $("generatedAt").textContent = `Generated: ${{when}} · Rows: ${{metadata.row_count}}${{sess}}`;
     }}
 
     function asNum(value) {{

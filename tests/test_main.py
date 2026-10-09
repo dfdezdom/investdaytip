@@ -3,12 +3,15 @@
 from datetime import datetime
 from pathlib import Path
 
+from investdaytip.data_source import StockData
 from investdaytip.main import (
     _default_export_html_filename,
     _load_tickers_from_file,
     _merge_ticker_lists,
     _parse_min_market_cap,
+    _session_note,
 )
+from investdaytip.scoring import ScoredAsset
 
 
 def test_default_export_html_filename_format():
@@ -57,6 +60,40 @@ def test_parse_min_market_cap_plain_float():
 
 def test_parse_min_market_cap_zero():
     assert _parse_min_market_cap("0") == 0.0
+
+
+# ── Session labelling of the CLI table ──────────────────────────────────────
+
+
+def _scored(ticker: str, session_date: str | None) -> ScoredAsset:
+    return ScoredAsset(
+        data=StockData(ticker=ticker, session_date=session_date),
+        asset_type="STOCK",
+        total=70.0,
+    )
+
+
+def test_session_note_names_the_session_the_figures_describe():
+    # At 13:01 ET on 2026-10-09 SEZL showed $117.22 · +2.96% (the Oct-8 close
+    # and its change) while it traded at 126.68, +8.07%: the note has to say
+    # which session that day's change belongs to.
+    note = _session_note([_scored("SEZL", "2026-10-08")])
+
+    assert note is not None
+    assert "2026-10-08" in note
+    assert "live quote is not scored" in note
+
+
+def test_session_note_joins_every_session_present():
+    note = _session_note([_scored("A", "2026-10-07"), _scored("B", "2026-10-08")])
+
+    assert note is not None
+    assert note.startswith("Sessions: 2026-10-07, 2026-10-08")
+
+
+def test_session_note_is_silent_without_a_session():
+    assert _session_note([_scored("SEZL", None)]) is None
+    assert _session_note([]) is None
 
 
 # ── Advisor subcommand flags ────────────────────────────────────────────────

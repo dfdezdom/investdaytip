@@ -116,6 +116,11 @@ class StockData:
     return_12m: Optional[float] = None
     sma200_slope: Optional[float] = None
     daily_change: Optional[float] = None
+    # ISO date of the session this row describes: the last bar that survived
+    # `_drop_partial_session`, i.e. the last session to have *closed*.  Price,
+    # 1D/1M/1Y all come from that series, so a mid-day run labels itself as
+    # the previous session instead of passing for "today".
+    session_date: Optional[str] = None
     # Technical indicators
     rsi_14: Optional[float] = None
     macd_histogram: Optional[float] = None
@@ -150,6 +155,8 @@ class EtfData:
     volatility_1y: Optional[float] = None  # annualized
     sharpe_proxy: Optional[float] = None  # (return_12m - rf) / volatility_1y
     daily_change: Optional[float] = None
+    # ISO date of the session this row describes (see StockData.session_date)
+    session_date: Optional[str] = None
     # Technical indicators
     rsi_14: Optional[float] = None
     macd_histogram: Optional[float] = None
@@ -601,6 +608,13 @@ def _apply_history_common(
         # when there is none (market-cap threshold, failed fetch).
         if not close.empty:
             data.current_price = float(close.iloc[-1])
+            # …and label the row with that same bar's session, so the report
+            # can say which day "today's" change belongs to: a run built at
+            # noon describes the previous session (the site files it under
+            # that date), and the reader should not have to guess it.
+            last = close.index[-1]
+            if isinstance(last, pd.Timestamp):
+                data.session_date = last.date().isoformat()
 
 
 # ── Shared StockData derivation (backtest + StockFit live source) ─────────

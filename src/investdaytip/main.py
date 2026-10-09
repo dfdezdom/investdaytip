@@ -195,6 +195,29 @@ def _parse_min_market_cap(raw: str) -> float:
     return float(raw)
 
 
+def _session_note(results: list[ScoredAsset]) -> str | None:
+    """One line naming the session the table describes, or ``None``.
+
+    Every figure in a row comes from that row's single price series, and a run
+    built mid-session describes the last session to have **closed**
+    (``_drop_partial_session`` drops the in-progress bar, which has no close
+    yet).  Saying the date out loud is what keeps the day's change from
+    reading as the live move — the confusion behind the "% Today" column
+    renamed to "1D Δ": at 13:01 ET on 2026-10-09 SEZL showed `$117.22 ·
+    +2.96%` (the Oct-8 close and its change) while the ticker traded at
+    126.68, +8.07%.
+    """
+    sessions = sorted({s.data.session_date for s in results if s.data.session_date})
+    if not sessions:
+        return None
+    label = "Session" if len(sessions) == 1 else "Sessions"
+    its = "its" if len(sessions) == 1 else "their"
+    return (
+        f"{label}: {', '.join(sessions)} (last closed) — Price, 1D Δ, 1M and "
+        f"1Y are {its} figures; the live quote is not scored."
+    )
+
+
 def _render(results: list[ScoredAsset], console: Console, include_superinvestor: bool = False, include_technical: bool = False) -> None:
     if not results:
         logger.error("No candidates could be scored.")
@@ -212,7 +235,7 @@ def _render(results: list[ScoredAsset], console: Console, include_superinvestor:
     table.add_column("Name")
     table.add_column("Sector/Category", style="dim")
     table.add_column("Price", justify="right")
-    table.add_column("% Today", justify="right")
+    table.add_column("1D Δ", justify="right")
     table.add_column("P/E", justify="right")
     table.add_column("Yield", justify="right")
     table.add_column("1M Δ", justify="right")
@@ -257,6 +280,9 @@ def _render(results: list[ScoredAsset], console: Console, include_superinvestor:
         table.add_row(*row)
 
     console.print(table)
+    note = _session_note(results)
+    if note:
+        console.print(f"\n[dim]{note}[/dim]")
     console.print(f"\n[dim]Breakdown legend — {_breakdown_legend(results)}[/dim]")
     console.print(
         "[dim italic]Disclaimer: This is not financial advice. Do your own research.[/dim italic]"

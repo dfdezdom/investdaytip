@@ -52,6 +52,7 @@ def test_export_html_contains_filters_and_rows(tmp_path: Path):
             return_1m=0.03,
             return_12m=0.21,
             currency="USD",
+            session_date="2026-10-08",
         ),
         asset_type="STOCK",
         total=88.2,
@@ -94,6 +95,12 @@ def test_export_html_contains_filters_and_rows(tmp_path: Path):
     assert '"asset_class": "all"' in html
     assert '"top_n": 10' in html
     assert '"tickers_file": "tickers-files-examples/semiconductors_relevant_tickers.txt"' in html
+    # The day's change is labelled by the session it belongs to: "% Today"
+    # read as the live move while the figure is the last *closed* session.
+    assert "% Today" not in html
+    assert "1D Δ" in html
+    assert '"sessions": ["2026-10-08"]' in html
+    assert "(last closed)" in html  # footer spells the session out
 
 
 def test_google_finance_url_uses_exact_exchange_when_mapped():
