@@ -1,10 +1,14 @@
 """Regenerate docs/screenshot-CLI.png from a real CLI run.
 
 Runs the actual CLI (live market data — never mock) with a recording Rich
-console, exports the terminal as SVG, then renders that SVG to PNG with headless
-Chrome. Run from the repo root:
+console, then renders the result to PNG with headless Chrome. Run from the
+repo root:
 
     PYTHONPATH=src .venv/bin/python scripts/screenshot_cli.py
+
+The committed artifact is the **PNG only** — the Rich SVG export is an
+intermediate kept in a temp dir, so no second, divergent capture can end up
+versioned next to the real one.
 """
 
 from __future__ import annotations
@@ -14,13 +18,13 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from rich.console import Console
 from rich.text import Text
 
 REPO = Path(__file__).resolve().parents[1]
-SVG = REPO / "docs" / "screenshot-cli.svg"
 PNG = REPO / "docs" / "screenshot-CLI.png"
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
@@ -31,8 +35,8 @@ WIDTH = 176
 def strip_window_chrome(svg: str) -> str:
     """Drop Rich's fake macOS window bar (title + traffic lights).
 
-    The committed capture starts at the ASCII logo, not at a title bar, and
-    the bar costs 41px of top padding on top of an off-centre origin.
+    The capture starts at the ASCII logo, not at a title bar, and the bar
+    costs 41px of top padding on top of an off-centre origin.
     """
     uid = re.search(r'class="rich-terminal"', svg)
     if not uid:
@@ -110,10 +114,12 @@ def svg_to_png(svg: Path, png: Path) -> None:
 def main_entry() -> None:
     argv = sys.argv[1:] or ["-n", "5"]
     svg = run_cli(argv)
-    SVG.write_text(svg, encoding="utf-8")
-    svg_to_png(SVG, PNG)
+    with tempfile.TemporaryDirectory() as tmp:
+        stage = Path(tmp) / "terminal.svg"
+        stage.write_text(svg, encoding="utf-8")
+        svg_to_png(stage, PNG)
     size = PNG.stat().st_size / 1024
-    print(f"wrote {SVG.relative_to(REPO)} and {PNG.relative_to(REPO)} ({size:.0f} KB)")
+    print(f"wrote {PNG.relative_to(REPO)} ({size:.0f} KB)")
 
 
 if __name__ == "__main__":

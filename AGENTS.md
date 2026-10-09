@@ -647,20 +647,29 @@ user-facing modules — extend that list when a new phrase shows up):
 
 ### Regenerating the CLI screenshot
 
-`docs/screenshot-CLI.png` (README, line 88) and the legacy
-`docs/screenshot-cli.svg` are regenerated from a **real run** — never hand-edited,
-never a mock:
+`docs/screenshot-CLI.png` (README, line 88) is the only committed capture — it
+must show a **real run**, never hand-edited and never a mock, and it must carry
+the framing defended above: the `Long-Term Ratings` title, the `1D Δ` column,
+and the full disclaimer along the bottom. Regenerate it whenever any of those
+change — the capture is the README's first impression.
 
-```bash
-PYTHONPATH=src .venv/bin/python scripts/screenshot_cli.py -n 5
-```
+Two acceptable sources, in order of preference:
 
-The script runs the actual CLI as a subprocess with piped stdout (so Rich's
-`Live` prints each bar's final state instead of being captured mid-refresh),
-replays the ANSI into a recording console, exports the SVG with Rich's window
-chrome stripped, and renders the PNG with headless Chrome at 2×. Regenerate it
-whenever the table's title, columns or disclaimer change — the capture is the
-README's first impression and the framing it shows is the one being defended.
+1. **A real terminal capture** (what is committed as of 2026-10-09) — true
+   colours and the user's own font. Overwrite the PNG in place.
+2. **The scripted fallback**, when a terminal capture is not to hand:
+
+   ```bash
+   PYTHONPATH=src .venv/bin/python scripts/screenshot_cli.py -n 5
+   ```
+
+   It runs the CLI as a subprocess with piped stdout (so Rich's `Live` prints
+   each bar's final state instead of being captured mid-refresh), replays the
+   ANSI into a recording console, and renders through headless Chrome at 2×.
+
+The Rich SVG export is an **intermediate in a temp dir, never versioned**: an
+older `docs/screenshot-cli.svg` was removed for exactly that reason — two
+captures of the same CLI drift apart and someone eventually ships the stale one.
 
 ### CLI Quirks
 - `--export-html` uses `nargs="?"` with `const=""` — no arg means auto-generated filename `investDayTip[-<tag>]-yyyymmdd-hhmm.html`; tag derived from tickers-file stem (stopwords filtered)
