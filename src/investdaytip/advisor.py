@@ -1,8 +1,13 @@
 """Market analysis and portfolio advisor.
 
-Fetches VIX/VXN via yfinance to determine market regime, bubble risk,
-and produces buy/hold/sell signals. Integrates with InvestDayTip's
-scoring engine for portfolio review and buy recommendations.
+Fetches VIX/VXN via yfinance to determine market regime, bubble risk, and
+scores a portfolio and the candidates outside it. Integrates with
+InvestDayTip's scoring engine.
+
+The macro action the module returns keeps its ``buy``/``hold``/``sell``
+values — they are API and test surface — but the CLI never tells the user
+to buy or sell anything: it reports the action as a **posture**, and every
+per-ticker band is a score band, not an instruction.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ from yfinance.exceptions import YFRateLimitError
 from investdaytip import cache as cache_mod
 from investdaytip.data_source import _suppress_stderr
 from investdaytip.dataroma import fetch_superinvestor_universe, get_superinvestor_data
+from investdaytip.disclaimer import DISCLAIMER_CLI
 from investdaytip.html_export import export_recommendations_html
 from investdaytip.main import _load_tickers_from_file, _parse_min_market_cap, _render
 from investdaytip.recommender import recommend
@@ -33,6 +39,15 @@ logger = logging.getLogger(__name__)
 VIX_BULLISH = 15
 VIX_NEUTRAL = 25
 VIX_BEARISH = 35
+
+# How the internal macro action is worded on screen. The stored values stay
+# as they are (API + tests), but the output says "posture" rather than
+# instructing a trade.
+_ACTION_DISPLAY = {"buy": "risk-on", "hold": "neutral", "sell": "defensive"}
+
+
+def _fmt_action(action: str) -> str:
+    return _ACTION_DISPLAY.get(action, str(action))
 
 
 # ---------------------------------------------------------------------------
@@ -106,13 +121,14 @@ def market_regime() -> dict:
     elif vix > VIX_BULLISH:
         regime, label, action = "neutral", "🟡 Normal market", "buy"
     else:
-        regime, label, action = "bullish", "🟢 Calm / Good entry", "buy"
+        regime, label, action = "bullish", "🟢 Calm", "buy"
 
     descriptions = {
-        "crash": "VIX very high. Probable correction underway. Prioritize defense.",
-        "bearish": "Uncertainty. Reduce risk, increase defensives.",
-        "neutral": "Normal conditions. Selective value picking.",
-        "bullish": "Low VIX. Calm market, good time to buy.",
+        "crash": "VIX very high — a sharp correction is usually underway; "
+                 "defensive assets have historically held up better.",
+        "bearish": "Volatility above its normal range — uncertainty elevated.",
+        "neutral": "Volatility within its normal range.",
+        "bullish": "VIX low — volatility has been subdued.",
     }
 
     return {
@@ -315,19 +331,19 @@ def macro_regime() -> dict:
     if score >= 70:
         regime, action = "healthy", "buy"
         label = "🟢 Macro healthy"
-        desc = "Favorable macro backdrop. Good for long-term equity exposure."
+        desc = "Macro indicators currently line up with a benign backdrop for equity risk."
     elif score >= 45:
         regime, action = "neutral", "hold"
         label = "🟡 Mixed signals"
-        desc = "Some macro headwinds but no major risks. Selective buying."
+        desc = "Mixed macro signals — some tailwinds alongside some headwinds."
     elif score >= 25:
         regime, action = "warning", "hold"
         label = "🟠 Macro warning"
-        desc = "Multiple macro stress signals. Reduce risk, favor defensives."
+        desc = "Several macro stress signals at once; volatility tends to run higher in this regime."
     else:
         regime, action = "danger", "sell"
         label = "🔴 Macro danger"
-        desc = "Severe macro stress. Consider raising cash or hedging."
+        desc = "Severe macro stress; volatility and drawdowns have historically been elevated here."
 
     # Sector rotation guidance based on regime
     _rotation_map = {
@@ -403,7 +419,7 @@ def portfolio_review(
     n = len(results)
     if n < 5:
         concentration_warnings.append(
-            f"Only {n} holdings — consider at least 5-10 for adequate diversification."
+            f"Only {n} holdings — diversification guides usually cite 5-10 or more."
         )
     if n >= 3:
         for sec, count in sector_counts.items():
@@ -459,7 +475,7 @@ def run_comprehensive(
     This is the **programmatic API** for the opencode advisor agent.
     It performs market analysis once, portfolio review once, then
     iterates over every requested combination of region and asset class
-    to produce buy recommendations.
+    to produce the candidate lists.
 
     All calls to yfinance are wrapped with ``_suppress_stderr()`` inside
     ``recommend()`` — no stderr noise.
@@ -469,7 +485,7 @@ def run_comprehensive(
         portfolio_path: Path to portfolio ticker file.
         regions: Iterable of region codes (``"us"``, ``"eu"``, ``"asia"``).
         asset_classes: Iterable of asset classes (``"stocks"``, ``"etfs"``).
-        top_n: How many recommendations per combination.
+        top_n: How many candidates per combination.
         currencies: Optional override dict mapping region → currency code.
             Falls back to ``_CURRENCY_DEFAULTS``.
         min_market_cap: Minimum market cap / AUM in native currency.
@@ -671,7 +687,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scoring-model", choices=["classic", "quant"], default=None,
                         help="Scoring model (default: quant, classic for conservative).")
     parser.add_argument("-n", "--top", type=int, default=10,
-                        help="Number of top-scoring picks to show (default: 10).")
+                        help="Number of top-scoring candidates to show (default: 10).")
     adv_tech = parser.add_mutually_exclusive_group()
     adv_tech.add_argument("--include-technical", action="store_true", dest="include_technical",
                           default=None, help="Include RSI and MACD in scoring (default: True for quant, False for classic).")
@@ -853,7 +869,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
 
     market_table.add_row("Macro Regime", macro["label"])
     market_table.add_row("Score", f"{macro['score']}/100")
-    market_table.add_row("Signal", f"[bold]{macro['action'].upper()}[/bold]")
+    market_table.add_row("Macro posture", f"[bold]{_fmt_action(macro['action'])}[/bold]")
     market_table.add_row(
         "Bubble risk",
         f"{bubble['level'].upper()} — {bubble['note']}",
@@ -896,7 +912,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
             port_table.add_column("Ticker")
             port_table.add_column("Score", justify="right")
             port_table.add_column("Sector")
-            port_table.add_column("Signal")
+            port_table.add_column("Band")
             port_table.add_column("Status")
 
             failed_tickers: list[tuple[str, str]] = []
@@ -907,11 +923,11 @@ def advisor_main(argv: list[str] | None = None) -> int:
                     or "-"
                 )
                 if s.total < 40:
-                    signal = "[red]🔴 SELL[/red]"
+                    band = "[red]🔴 LOW[/red]"
                 elif s.total < 60:
-                    signal = "[yellow]🟡 HOLD[/yellow]"
+                    band = "[yellow]🟡 MID[/yellow]"
                 else:
-                    signal = "[green]🟢 OK[/green]"
+                    band = "[green]🟢 HIGH[/green]"
                 errs = getattr(s.data, "errors", None) or []
                 if errs:
                     short_err = errs[0][:50]
@@ -919,7 +935,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
                     status = f"[red]❌ {short_err}[/red]"
                 else:
                     status = "[dim]✅[/dim]"
-                port_table.add_row(str(i), s.data.ticker, f"{s.total:.1f}", sector, signal, status)
+                port_table.add_row(str(i), s.data.ticker, f"{s.total:.1f}", sector, band, status)
 
             console.print(port_table)
 
@@ -930,9 +946,9 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 console.print(f"\nPortfolio health: [bold {avg_color}]{avg:.1f}/100[/bold {avg_color}]"
                               f"  ({review['count']} holdings)")
 
-            # Sell recommendations
+            # Lowest-scoring positions — a score band, not a trade instruction
             if review["weak_positions"]:
-                console.print("\n[bold red]⚠️  Weak positions (consider selling):[/bold red]")
+                console.print("\n[bold red]⚠️  Lowest-scoring positions (score < 40):[/bold red]")
                 for s in review["weak_positions"]:
                     console.print(f"  • [red]{s.data.ticker}[/red] — Score {s.total:.1f}"
                                   f" — {'; '.join(s.rationale[:2])}")
@@ -962,12 +978,12 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 for w in cw:
                     console.print(f"  • [yellow]{w}[/yellow]")
 
-    # ── Buy recommendations (always interactive) ──────────
+    # ── Candidates outside the portfolio (always interactive) ──────────
     macro_action = macro["action"]
     if macro_action == "buy":
-        console.print(f"\n[bold green]✅ Macro signal: {macro_action.upper()}[/bold green]")
+        console.print(f"\n[bold green]✅ Macro posture: {_fmt_action(macro_action)}[/bold green]")
     else:
-        console.print(f"\n[bold yellow]📊 Macro signal: {macro_action.upper()} — {macro['description']}[/bold yellow]")
+        console.print(f"\n[bold yellow]📊 Macro posture: {_fmt_action(macro_action)} — {macro['description']}[/bold yellow]")
 
     # Resolve asset class, region, currency (CLI flags or interactive)
     _risk_defaults = {
@@ -1099,8 +1115,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 new_results = sector_results
             else:
                 label = "missing sectors" if target_sector == "All" else target_sector
-                logger.info("No %s picks found — showing all.", label)
-                console.print(f"[yellow]No {label} picks found — showing all.[/yellow]")
+                logger.info("No %s candidates found — showing all.", label)
+                console.print(f"[yellow]No {label} candidates found — showing all.[/yellow]")
 
     if new_results:
         _render(new_results, console, include_superinvestor=args.superinvestor, include_technical=args.include_technical)
@@ -1128,9 +1144,6 @@ def advisor_main(argv: list[str] | None = None) -> int:
     if macro_action != "buy":
         console.print(f"\n[yellow]💡 {macro['description']}[/yellow]")
 
-    console.print(
-        "\n[dim italic]Disclaimer: This is not financial advice. "
-        "Do your own research.[/dim italic]"
-    )
+    console.print(f"\n{DISCLAIMER_CLI}")
 
     return 0

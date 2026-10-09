@@ -29,6 +29,7 @@ from investdaytip.data_source_stockfit import (
     fetch_fundamental_insights,
 )
 from investdaytip.dataroma import fetch_superinvestor_universe, get_superinvestor_data
+from investdaytip.disclaimer import DISCLAIMER_CLI
 from investdaytip.html_export import export_backtest_html, export_recommendations_html
 from investdaytip.recommender import recommend, take_fallback_notices
 from investdaytip.scoring import ScoredAsset, resolve_include_technical
@@ -58,7 +59,7 @@ def get_recommendations(
     scoring_model: str = "quant",
     data_source: str = "yfinance",
 ) -> list[ScoredAsset]:
-    """Programmatic API: return the top ``top_n`` long-term buy recommendations.
+    """Programmatic API: return the top ``top_n`` long-term rated candidates.
 
     When ``include_technical`` is ``None``, it defaults to ``True`` for the
     ``"quant"`` model and ``False`` for ``"classic"``.
@@ -225,7 +226,7 @@ def _render(results: list[ScoredAsset], console: Console, include_superinvestor:
         return
 
     table = Table(
-        title="📈 InvestDayTip — Long-Term Buy Recommendations",
+        title="📈 InvestDayTip — Long-Term Ratings",
         show_lines=True,
         title_style="bold cyan",
         # The session is the table's own caption, not a footnote drifting
@@ -286,9 +287,7 @@ def _render(results: list[ScoredAsset], console: Console, include_superinvestor:
 
     console.print(table)
     console.print(f"\n[dim]Breakdown legend — {_breakdown_legend(results)}[/dim]")
-    console.print(
-        "[dim italic]Disclaimer: This is not financial advice. Do your own research.[/dim italic]"
-    )
+    console.print(f"\n{DISCLAIMER_CLI}")
 
 
 def _fetch_report_insights(results: list[ScoredAsset], console: Console) -> dict[str, FundamentalInsights]:
@@ -529,6 +528,7 @@ def _render_backtest_result(console: Console, result: BacktestResult) -> None:
     console.print(table)
 
     console.print(f"\n[italic]{_interpret_backtest(result)}[/italic]")
+    console.print(f"\n{DISCLAIMER_CLI}")
 
 
 def _run_deep_dive_cli(args) -> int:
@@ -623,7 +623,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub = parser.add_subparsers(dest="command", required=False)
 
-    adv = sub.add_parser("advisor", help="Market analysis and portfolio advice.")
+    adv = sub.add_parser("advisor", help="Market and portfolio analysis.")
     adv.add_argument(
         "--risk",
         choices=["conservative", "moderate", "aggressive"],
@@ -658,7 +658,7 @@ def main(argv: list[str] | None = None) -> int:
     adv.add_argument("--data-source", choices=["yfinance", "yahooquery", "fmp", "stockfit"], default="yfinance",
                      help="Data source (default: yfinance). FMP requires FMP_API_KEY; stockfit (US stocks only) requires STOCKFIT_API_KEY + Starter plan.")
     adv.add_argument("-n", "--top", type=int, default=10,
-                     help="Number of top-scoring picks to show (default: 10).")
+                     help="Number of top-scoring candidates to show (default: 10).")
     adv_tech = adv.add_mutually_exclusive_group()
     adv_tech.add_argument("--include-technical", action="store_true", dest="include_technical",
                           default=None, help="Include RSI and MACD in scoring (default: True for quant, False for classic).")
@@ -671,7 +671,7 @@ def main(argv: list[str] | None = None) -> int:
 
     bt = sub.add_parser("backtest", help="Historical backtest of the scoring model (stocks only).")
     bt.add_argument("-n", "--top", type=int, default=10,
-                    help="Top N picks per snapshot (default: 10).")
+                    help="Top N candidates per snapshot (default: 10).")
     bt.add_argument("-t", "--tickers", nargs="+", default=None,
                     help="Custom ticker list.")
     bt.add_argument("-r", "--region", metavar="REG", nargs="+",
@@ -733,7 +733,7 @@ def main(argv: list[str] | None = None) -> int:
 
     main_grp = parser.add_argument_group("Main options")
     main_grp.add_argument("-n", "--top", type=int, default=None,
-                          help="Number of picks to show (default: 5, or all if -t tickers are given).")
+                          help="Number of candidates to show (default: 5, or all if -t tickers are given).")
     main_grp.add_argument("-t", "--tickers", nargs="+", default=None,
                           help="Custom ticker list.")
     main_grp.add_argument(

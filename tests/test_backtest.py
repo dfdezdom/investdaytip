@@ -574,20 +574,27 @@ class TestInterpretBacktest:
         assert "positive alpha" in text
         assert "outperforming" in text
         assert "better risk-adjusted" in text
-        assert "Consistent" in text
+        assert "Beat the benchmark in 65% of 12-month periods." in text
 
     def test_negative_alpha(self):
         r = _make_result(alpha=-0.03, sharpe=0.5, bench_sharpe=1.0, wr12=0.35)
         text = _interpret_backtest(r)
         assert "failed to outperform" in text
         assert "higher volatility" in text
-        assert "Weak" in text
+        assert "Beat the benchmark in 35% of 12-month periods." in text
 
     def test_neutral_alpha(self):
         r = _make_result(alpha=0.005, sharpe=0.9, bench_sharpe=0.9, wr12=0.5)
         text = _interpret_backtest(r)
         assert "no significant advantage" in text
-        assert "Near-random" in text
+        assert "Beat the benchmark in 50% of 12-month periods." in text
+
+    def test_win_rate_carries_no_value_judgement(self):
+        """The number is the message: no "consistent"/"weak" adjective on top."""
+        for wr in (0.2, 0.5, 0.95):
+            text = _interpret_backtest(_make_result(0.02, 1.0, 0.9, wr))
+            for word in ("Consistent", "Weak", "Near-random", "coin toss"):
+                assert word not in text
 
 
 # =========================================================================

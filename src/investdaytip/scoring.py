@@ -1,4 +1,4 @@
-"""Multi-factor scoring engines for long-term buy recommendations.
+"""Multi-factor scoring engines for long-term candidate ranking.
 
 Stocks and ETFs are scored with different models but produce a unified
 :class:`ScoredAsset` so they can be ranked together.

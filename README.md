@@ -322,10 +322,13 @@ The advisor fetches six live indicators to compute the composite **macro health 
 
 The score starts at a neutral **50** and each indicator adjusts it up or down based on current readings. The final score determines the macro regime signal — a model output for decision support, not an instruction to trade:
 
-- 🟢 **≥70** — Macro healthy → **buy**
-- 🟡 **≥45** — Mixed signals → **hold**
-- 🟠 **≥25** — Macro warning → **hold**
-- 🔴 **<25** — Macro danger → **sell**
+- 🟢 **≥70** — Macro healthy → **risk-on**
+- 🟡 **≥45** — Mixed signals → **neutral**
+- 🟠 **≥25** — Macro warning → **neutral**
+- 🔴 **<25** — Macro danger → **defensive**
+
+These are the postures the CLI prints (`Macro posture: risk-on`) — the model's
+reading of the macro backdrop, never an instruction to trade.
 
 All indicators are shown live in the `📈 Market Analysis` table when running `investdaytip advisor`.
 
@@ -798,7 +801,7 @@ scripts/
 src/investdaytip/
 ├── __init__.py            # Public API: get_recommendations
 ├── main.py                # CLI entry point + rich table rendering
-├── advisor.py             # Interactive advisor: market pulse (VIX + macro), portfolio review, buy recs
+├── advisor.py             # Interactive advisor: market pulse (VIX + macro), portfolio review, ranked candidates
 ├── backtest.py            # Historical stock scoring validation (stocks only)
 ├── dataroma.py            # DataRoma superinvestor holdings client (13F aggregation)
 ├── html_export.py         # Self-contained HTML report exporter

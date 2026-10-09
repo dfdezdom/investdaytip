@@ -46,6 +46,7 @@ from investdaytip.data_source_stockfit import (
     fetch_research_summary,
     plan_allows,
 )
+from investdaytip.disclaimer import DISCLAIMER_CLI, disclaimer_html
 from investdaytip.financial_health import (
     AltmanResult,
     PiotroskiResult,
@@ -322,6 +323,10 @@ def render_rich(items: list[DeepDive], console: Optional[Console] = None) -> Non
         for err in dd.errors:
             console.print(f"  [red]⚠ {err}[/red]")
 
+    if items:
+        console.print()
+        console.print(DISCLAIMER_CLI)
+
 
 # ── HTML rendering ───────────────────────────────────────────────────────────
 
@@ -474,6 +479,7 @@ td:first-child {{ color: #555; }}
 .risk-info {{ color: #555; }}
 .ok {{ color: #2e9e5b; }}
 .muted {{ color: #8a8f98; font-weight: 400; font-size: .85em; }}
+.disclaimer {{ margin: 2rem 0 1rem; padding: .8rem 1rem; background: #f7f8fa; border-radius: 8px; color: #8a8f98; font-size: .82rem; line-height: 1.55; }}
 .err {{ color: #c94a4a; }}
 </style>
 </head>
@@ -481,6 +487,7 @@ td:first-child {{ color: #555; }}
 <h1>InvestDayTip — Deep Dive</h1>
 <p class="muted">Generated {ts} · Piotroski/Altman are informative diagnostics, never scored.</p>
 {''.join(sections)}
+{disclaimer_html()}
 </body>
 </html>
 """

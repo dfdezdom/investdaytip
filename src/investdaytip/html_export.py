@@ -11,6 +11,7 @@ from urllib.parse import quote, quote_plus
 
 from investdaytip.backtest import BacktestResult, _interpret_backtest
 from investdaytip.data_source_stockfit import FundamentalInsights
+from investdaytip.disclaimer import disclaimer_html
 from investdaytip.scoring import ScoredAsset, resolve_include_technical
 
 # Base number of <th> columns excluding the optional Superinvestors column.
@@ -470,6 +471,9 @@ def export_recommendations_html(
     metadata_json = json.dumps(metadata, ensure_ascii=True).replace("</", "<\\/")
     initial_rows_html = _render_initial_rows(rows, include_superinvestor=include_superinvestor, include_technical=include_technical, column_count=col_count)
     insights_html = _render_insights_section(fundamental_insights or {})
+    # The report outlives the session that wrote it, so it carries the
+    # disclaimer itself rather than relying on the CLI's closing line.
+    disclaimer_footer = disclaimer_html()
 
     # Build optional column sections
     if include_superinvestor:
@@ -567,6 +571,7 @@ def export_recommendations_html(
       border-radius: 2px;
     }}
     .meta {{ color: var(--muted); font-size: 0.92rem; margin-bottom: 16px; }}
+    .disclaimer {{ margin: 22px 0 4px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--muted); font-size: 0.82rem; line-height: 1.55; }}
     .chips {{ display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }}
     .chip {{
       background: var(--accent-soft);
@@ -738,6 +743,8 @@ def export_recommendations_html(
     </table>
 
     {insights_html}
+
+    {disclaimer_footer}
   </div>
 
   <script>
@@ -1034,7 +1041,7 @@ def export_backtest_html(
     ]
     meta_rows = (
         f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} · "
-        f"Region: {region} · Top {top_n} picks per snapshot · "
+        f"Region: {region} · Top {top_n} candidates per snapshot · "
         f"Interval: {interval_months}mo · "
         f"Snapshots: {result.total_snapshots}"
     )
@@ -1085,6 +1092,7 @@ def export_backtest_html(
     .errors h3 {{ margin: 0 0 6px; font-size: 0.95rem; color: #a84035; }}
     .errors ul {{ margin: 0; padding-left: 20px; color: #7a3a30; }}
     .interpretation {{ background: #fff; border: 1px solid #dde5cf; border-radius: 12px; padding: 14px 18px; margin-bottom: 20px; line-height: 1.55; color: #1f2a1f; font-size: 0.95rem; }}
+    .disclaimer {{ margin: 22px 0 4px; padding: 12px 16px; border: 1px solid #dde5cf; border-radius: 12px; background: #fff; color: #58664d; font-size: 0.82rem; line-height: 1.55; }}
     @media (max-width: 700px) {{
       body {{ padding: 14px; }}
       .summary {{ grid-template-columns: repeat(2, 1fr); }}
@@ -1124,6 +1132,8 @@ def export_backtest_html(
       f'<div class="errors"><h3>Warnings / Errors</h3><ul>'
       f'{"".join(f"<li>{escape(e)}</li>" for e in result.errors)}</ul></div>'
     ) if result.errors else ""}
+
+    {disclaimer_html()}
   </div>
 </body>
 </html>"""

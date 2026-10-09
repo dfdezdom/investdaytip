@@ -1089,21 +1089,10 @@ def _interpret_backtest(result: BacktestResult) -> str:
             f"(Sharpe {result.sharpe:.2f} vs {result.benchmark_sharpe:.2f})."
         )
 
-    # Win rate 12M
-    wr = result.win_rate_12m
-    if wr > 0.55:
-        parts.append(
-            f"Consistent 12-month results (beat the benchmark in {wr*100:.0f}% of periods)."
-        )
-    elif wr < 0.45:
-        parts.append(
-            f"Weak 12-month consistency "
-            f"(beat the benchmark in only {wr*100:.0f}% of periods)."
-        )
-    else:
-        parts.append(
-            f"Near-random 12-month results ({wr*100:.0f}%)."
-        )
+    # Win rate 12M — the percentage is the whole point; no adjective on top of it
+    parts.append(
+        f"Beat the benchmark in {result.win_rate_12m*100:.0f}% of 12-month periods."
+    )
 
     return " ".join(parts)
 

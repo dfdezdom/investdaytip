@@ -169,11 +169,11 @@ def recommend(
         scoring_model: str = "quant",
         data_source: str = "yfinance",
 ) -> list[ScoredAsset]:
-    """Score each ticker and return the top ``top_n`` long-term buys.
+    """Score each ticker and return the top ``top_n`` long-term candidates.
 
     Args:
         tickers: Custom universe; overrides ``asset_class``/``region``.
-        top_n: Number of recommendations to return.
+        top_n: Number of candidates to return.
         max_workers: Threads used for parallel data fetching.
         min_market_cap: Filter out tickers below this value. Compared
             against yfinance's reported market cap / AUM. **Note:** yfinance

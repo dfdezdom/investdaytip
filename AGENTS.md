@@ -615,6 +615,53 @@ below it: they are omitted with an explicit reason, never fabricated.
 - Missing data → neutral 50 (never crashes); yfinance errors caught per-ticker, stored in `errors` list
 - FMP rate limit (429 or JSON "limit") → `FmpRateLimitError` → auto-fallback to yfinance
 
+### Decision-support wording (legal framing — do not regress)
+
+The tool scores; it never instructs. This is a product constraint, not a style
+preference — the engine is public on PyPI and the ecosystem works under Spanish
+law, where personalized recommendations are MiFID/CNMV territory. Conventions,
+all guarded by `tests/test_disclaimer.py` (a banned-phrase scan over the
+user-facing modules — extend that list when a new phrase shows up):
+
+- **No verb of instruction, ever.** `consider selling` / `good time to buy` /
+  `Prioritize defense` / `Reduce risk` are out; describe what the model *sees*
+  ("Volatility above its normal range") rather than what the user should do.
+- **Scores have bands, not signals.** The portfolio table column is `Band`
+  (`LOW`/`MID`/`HIGH`), and `Weak positions (consider selling)` is
+  `Lowest-scoring positions (score < 40)` — the threshold is the message.
+- **The macro action is a posture.** `macro_regime()["action"]` keeps its
+  `buy`/`hold`/`sell` values (API + tests + the advisor agent depend on them),
+  but the CLI maps them through `advisor._fmt_action()` to
+  `risk-on`/`neutral`/`defensive` and prints `Macro posture:`, never
+  `Macro signal: BUY`.
+- **Every output carries the disclaimer** — `investdaytip/disclaimer.py` is the
+  single source (`DISCLAIMER_CLI` for Rich, `disclaimer_html()` for the three
+  report templates). A new CLI subcommand or export that renders analysis must
+  print/inline it; do not write the wording locally. The reports carry their own
+  footer because a file outlives the terminal scrollback that showed the
+  closing line.
+- **Adjectives are for the reader to infer.** Backtest interpretation states the
+  figure (`Beat the benchmark in 62% of 12-month periods.`) — no `Consistent` /
+  `Weak` / `Near-random` on top of it. Negative model flags keep their wording
+  (`flagged as disqualifying`) because they document the model's rules.
+
+### Regenerating the CLI screenshot
+
+`docs/screenshot-CLI.png` (README, line 88) and the legacy
+`docs/screenshot-cli.svg` are regenerated from a **real run** — never hand-edited,
+never a mock:
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/screenshot_cli.py -n 5
+```
+
+The script runs the actual CLI as a subprocess with piped stdout (so Rich's
+`Live` prints each bar's final state instead of being captured mid-refresh),
+replays the ANSI into a recording console, exports the SVG with Rich's window
+chrome stripped, and renders the PNG with headless Chrome at 2×. Regenerate it
+whenever the table's title, columns or disclaimer change — the capture is the
+README's first impression and the framing it shows is the one being defended.
+
 ### CLI Quirks
 - `--export-html` uses `nargs="?"` with `const=""` — no arg means auto-generated filename `investDayTip[-<tag>]-yyyymmdd-hhmm.html`; tag derived from tickers-file stem (stopwords filtered)
 - `advisor` subcommand duplicates many flags from main parser but some default to `None` for interactive prompts
@@ -748,9 +795,10 @@ The `advisor` subagent is configured in `.opencode/agents/advisor.md`. It define
 - **Permissions:** bash/read allowed, write with confirmation
 - **Required flow:** always ask the user before running any analysis
 - **Execution methods:** `macro_regime()` (VIX + yield curve + bond vol + DXY + Fear & Greed) for full macro pulse (returns `action`: buy/hold/sell), `market_regime()` + `bubble_risk()` for quick VIX-only pulse, `run_comprehensive()` for multi-region, or interactive CLI `investdaytip advisor`
-- **Devil's advocate (Fase 3 path B):** every portfolio review / buy recommendation includes a bear case — Layer 1 via `investdaytip deep-dive` (keyless risk signals, Piotroski/Altman), Layer 2 via the StockFit footnotes (`footnotes_concentration`, `footnotes_debt_structure`, `footnotes_stock_compensation`, …): the deep-dive renders them itself when the plan unlocks them, and the MCP tools (`tools.stockfit.*`, plus `insider_transactions_summary`, `executives_governance`, …) enrich the case when the server is authenticated. Never fabricate; balanced view; risk is context, never a score.
-- **Output format:** clean markdown (never raw Rich tables)
-- **Interpretation rules:** VIX thresholds (≤15 bullish, ≤25 neutral, ≤35 bearish, >35 crash), bubble risk (VIX percentile <15% → complacency), macro regime (composite 0-100: ≥70 healthy→BUY, ≥45 neutral→HOLD, ≥25 warning→HOLD, <25 danger→SELL), scores, portfolio signals
+- **Devil's advocate (Fase 3 path B):** every **portfolio review** / **candidate scan** includes a bear case — Layer 1 via `investdaytip deep-dive` (keyless risk signals, Piotroski/Altman), Layer 2 via the StockFit footnotes (`footnotes_concentration`, `footnotes_debt_structure`, `footnotes_stock_compensation`, …): the deep-dive renders them itself when the plan unlocks them, and the MCP tools (`tools.stockfit.*`, plus `insider_transactions_summary`, `executives_governance`, …) enrich the case when the server is authenticated. Never fabricate; balanced view; risk is context, never a score.
+- **Output format:** clean markdown (never raw CLI), and it must end with the package disclaimer — `from investdaytip.disclaimer import DISCLAIMER_TEXT` — never a hand-written line
+- **Interpretation rules:** VIX thresholds (≤15 bullish, ≤25 neutral, ≤35 bearish, >35 crash), bubble risk (VIX percentile <15% → complacency), macro regime (composite 0-100: ≥70 healthy, ≥45 neutral, ≥25 warning, <25 danger), scores, portfolio bands
+- **Wording:** the same decision-support framing as the CLI (see that section), enforced on the agent file too by `tests/test_disclaimer.py` — bands (`LOW`/`MID`/`HIGH`) and postures (`risk-on`/`neutral`/`defensive`), never `BUY`/`SELL`, never a verb of instruction
 
 ## Testing Notes
 - Construct `StockData` / `EtfData` directly — never call yfinance in tests
