@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import time
 
+import pandas as pd
 import pytest
 
+from investdaytip.cache import cache_history_set
 from investdaytip.data_source import StockData
 from investdaytip.data_source_stockfit import (
     PitStatements,
@@ -82,7 +84,11 @@ def _ttm_row(facts: dict) -> list:
 
 def _fake_get(path, params=None, **_kw):
     if path == "price/history":
-        start = time.time() - 500 * 86400
+        # 500 daily bars ending two days ago: StockFit only ever publishes
+        # sessions that have already closed, so the fixture must do the same
+        # or `_drop_partial_session` would trim its last bar depending on the
+        # wall clock the test happens to run at.
+        start = time.time() - 501 * 86400
         data = [[int((start + i * 86400) * 1000), 100.0 + i * 0.2] for i in range(500)]
         return {"data": data}
     if path == "earnings/dividend-history":
@@ -231,6 +237,40 @@ def test_fetch_asset_stockfit_history_cached(enabled_temp_cache, mocker):
     second = fetch_asset_stockfit("AAPL")
     assert calls.count("price/history") == 1  # second run is a cache hit
     assert second.current_price == pytest.approx(first.current_price)
+
+
+def test_fetch_asset_stockfit_drops_a_partial_bar_from_the_shared_cache(
+    enabled_temp_cache, mocker
+):
+    # `{ticker}:history` is shared with the yfinance path, which stores the
+    # in-progress session as a partial daily bar. StockFit's own series never
+    # carries one, but a run that reads that shared entry must not publish the
+    # half-session as the row's price and trend metrics.
+    idx = pd.date_range(end="2026-10-09", periods=40, freq="D", tz="America/New_York")
+    cache_history_set(
+        "AAPL",
+        pd.DataFrame({"Close": [100.0 + i for i in range(40)]}, index=idx).to_json(),
+    )
+    # 17:55 UTC = 13:55 New York: the Oct-9 session is still trading.
+    mocker.patch(
+        "investdaytip.data_source._now",
+        return_value=pd.Timestamp("2026-10-09 17:55", tz="UTC").to_pydatetime(),
+    )
+    calls: list[str] = []
+
+    def counting_get(path, params=None, **_kw):
+        calls.append(path)
+        return _fake_get(path, params)
+
+    mocker.patch("investdaytip.data_source_stockfit._lookup_profile", return_value=dict(_PROFILE))
+    mocker.patch("investdaytip.data_source_stockfit.fetch_pit_statements", return_value=_pit())
+    mocker.patch("investdaytip.data_source_stockfit._get", side_effect=counting_get)
+
+    data = fetch_asset_stockfit("AAPL")
+
+    assert calls.count("price/history") == 0  # the cache served it
+    assert data.current_price == pytest.approx(100.0 + 38)  # Oct-8, not Oct-9
+    assert data.daily_change == pytest.approx((100.0 + 38) / (100.0 + 37) - 1)
 
 
 def test_fetch_asset_stockfit_info_cached(enabled_temp_cache, mocker):

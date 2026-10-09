@@ -68,6 +68,7 @@ from investdaytip.data_source import (
     StockData,
     _apply_history_common,
     _derive_stock_data,
+    _drop_partial_session,
     _first,
     _Fundamentals,
 )
@@ -1433,11 +1434,27 @@ def fetch_asset_stockfit(
         points = hist_raw.get("data") if isinstance(hist_raw, dict) else None
         if not points:
             raise StockfitError(f"StockFit: no price history for {ticker}")
+        # StockFit stamps every bar at midnight UTC of its session.
+        # `datetime.fromtimestamp(ts / 1000)` without a timezone would render
+        # that instant in the *machine's* local zone, moving the date by one
+        # session on any host west of UTC — and the date is exactly what the
+        # lag guard compares against the quote.
+        stamps = pd.to_datetime(
+            [ts for ts, _ in points], unit="ms", utc=True
+        ).tz_localize(None)
         history = pd.DataFrame(
-            {"Close": [float(v) for _, v in points]},
-            index=pd.DatetimeIndex([datetime.fromtimestamp(ts / 1000) for ts, _ in points]),
+            {"Close": [float(v) for _, v in points]}, index=stamps
         )
         cache_history_set(ticker, history.to_json())
+    # An unfinished session is not a bar yet (same rule as the yfinance path).
+    # StockFit's own series only ends at a closed session, so this is a no-op
+    # for it — it matters for the shared 15-minute cache, which yfinance also
+    # writes and where it stores today's partial daily bar: without the drop
+    # that half-session would become this row's `price` (line below) and every
+    # trend/RSI metric `_apply_history_common` computes.
+    history = _drop_partial_session(history)
+    if history.empty:
+        raise StockfitError(f"StockFit: no closed session in {ticker} price history")
     price = float(history["Close"].iloc[-1])
 
     # 4) Dividends — TTM DPS = sum of the latest four *quarterly* payments.

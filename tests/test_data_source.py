@@ -679,6 +679,31 @@ class TestHistoryLagsQuote:
         assert _history_lags_quote(info, pd.DataFrame()) is False
         assert _history_lags_quote(info, pd.DataFrame({"Close": []})) is False
 
+    def test_a_session_still_in_progress_is_not_a_lag(self, mocker):
+        # StockFit publishes only completed sessions, so during market hours
+        # its chart ends at the previous close while the yfinance quote (its
+        # own endpoint) already carries the live one.  The only bar missing
+        # has not closed yet — there is nothing to refetch, and a warning here
+        # would spray over the progress bar for all ~197 tickers.
+        mocker.patch(
+            "investdaytip.data_source._now", return_value=_utc("2026-10-06 17:00")
+        )
+        history = _session_history("2026-10-05")
+        info = {"regularMarketTime": _quote_epoch("2026-10-06 15:00")}
+
+        assert _history_lags_quote(info, history) is False
+
+    def test_the_same_pair_lags_once_the_session_closed(self, mocker):
+        # Same chart and quote, 30 minutes after the close: now the bar *is*
+        # missing, and the recovery path has to run.
+        mocker.patch(
+            "investdaytip.data_source._now", return_value=_utc("2026-10-06 20:30")
+        )
+        history = _session_history("2026-10-05")
+        info = {"regularMarketTime": _quote_epoch("2026-10-06 15:00")}
+
+        assert _history_lags_quote(info, history) is True
+
 
 class TestAppendQuoteSession:
     def test_appends_the_quote_session_bar(self):

@@ -30,6 +30,11 @@ from investdaytip.financial_health import annual_facts, improvement_flags, ttm_f
 for _name in ("yfinance", "yfinance.ticker", "yfinance.utils", "yfinance.data", "peewee"):
     logging.getLogger(_name).setLevel(logging.CRITICAL)
 
+# Per-ticker chatter stays at INFO: `recommend()` runs these fetches behind a
+# Rich progress bar, and stderr writes at WARNING+ interleave with Live's
+# in-place redraw and fragment the bar (AGENTS → Conventions).
+logger = logging.getLogger(__name__)
+
 
 _STDERR_LOCK = threading.Lock()
 _stderr_depth = 0
@@ -398,7 +403,10 @@ def _history_lags_quote(info: dict, history: pd.DataFrame) -> bool:
 
     Session *dates* are compared, never prices: while the market is open the
     chart's partial daily bar carries the same date as the quote, so a live
-    price never looks like a lag.
+    price never looks like a lag.  And a session that has not closed is not a
+    bar yet either — :func:`_quote_session_open` skips the comparison until
+    the close, because then the chart's missing bar is legitimately absent
+    rather than late.
     """
     if history is None or history.empty or "Close" not in history:
         return False
@@ -411,6 +419,8 @@ def _history_lags_quote(info: dict, history: pd.DataFrame) -> bool:
     try:
         quote_ts = pd.Timestamp(float(raw), unit="s", tz="UTC")
     except (TypeError, ValueError, OverflowError, OSError):
+        return False
+    if _quote_session_open(quote_ts):
         return False
     last = close.index[-1]
     if not isinstance(last, pd.Timestamp):
@@ -492,6 +502,33 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _quote_session_open(quote_ts: pd.Timestamp) -> bool:
+    """True while the session *quote_ts* belongs to has not closed yet.
+
+    A bar for a session that has not closed does not exist yet, so a chart
+    ending at the previous session is **not** behind: :func:`_drop_partial_session`
+    would drop today's bar anyway and the refetch would land on the same
+    series.  Without this gate every StockFit run made during market hours
+    flagged all ~197 tickers — `price/history` serves only completed sessions
+    while the yfinance quote (fetched separately for the `eps_surprise` /
+    `market_cap` enrichment) already carries the live one — which cost a
+    redundant ``t.history()`` per ticker and sprayed WARNINGs over the
+    progress bar (2026-10-09).
+
+    The clock is the repo's single convention for "a daily bar is final"
+    (16:00 New York, ``_EXCHANGE_TZ`` / ``_SESSION_CLOSE_HOUR``), the same
+    one :func:`_drop_partial_session` applies to bars.  It is read off the
+    quote's UTC instant, so for a non-US listing the check stays skipped a
+    few hours past the local close — a lag that opens then is caught by the
+    next run, and until then the row stays coherent (the price rule in
+    :func:`_apply_history_common`).
+    """
+    close = quote_ts.tz_convert(_EXCHANGE_TZ).replace(
+        hour=_SESSION_CLOSE_HOUR, minute=0, second=0, microsecond=0
+    )
+    return _now() < close
+
+
 def _drop_partial_session(
     history: pd.DataFrame, now: Optional[datetime] = None
 ) -> pd.DataFrame:
@@ -518,7 +555,7 @@ def _drop_partial_session(
     now = now if now is not None else _now()
     if now >= close:
         return history
-    logging.info(
+    logger.info(
         "dropping the bar of %s — its session is still in progress",
         close.date().isoformat(),
     )
@@ -1102,7 +1139,7 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0, with_improvements: boo
         try:
             history = pd.read_json(StringIO(history_str))
         except Exception:
-            logging.warning("Corrupt history cache for %s — refetching", ticker)
+            logger.info("Corrupt history cache for %s — refetching", ticker)
             history_str = None
     if history_str is None:
         try:
@@ -1131,7 +1168,7 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0, with_improvements: boo
     # provider is the one behind (its nightly rebuild), the quote's own close
     # becomes the series' last bar instead (_append_quote_session).
     if _history_lags_quote(info, history):
-        logging.warning(
+        logger.info(
             "%s: price history ends before the quote's session — refetching", ticker
         )
         try:
@@ -1143,7 +1180,7 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0, with_improvements: boo
                 history = fresh
                 cache_history_set(ticker, history.to_json())
         except Exception:
-            logging.warning("%s: stale price history — refetch failed", ticker)
+            logger.info("%s: stale price history — refetch failed", ticker)
         if _history_lags_quote(info, history):
             # Still behind after the refetch: the provider itself is missing
             # the bar (Yahoo's nightly rebuild, 2026-10-08 01:16 UTC — all
@@ -1153,12 +1190,12 @@ def fetch_asset(ticker: str, min_market_cap: float = 0.0, with_improvements: boo
             extended = _append_quote_session(info, history)
             if extended is not None:
                 history = extended
-                logging.warning(
+                logger.info(
                     "%s: price history still ends before the quote's session "
                     "— appended the quote's own close", ticker
                 )
             else:
-                logging.warning(
+                logger.info(
                     "%s: price history still ends before the quote's session", ticker
                 )
 
