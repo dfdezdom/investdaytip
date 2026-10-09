@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.17.6 (2026-10-09)
+
+### Changes
+
+- **Every output states what the model sees, never what the reader should do** — the CLI still opened with `Long-Term Buy Recommendations`, labelled the portfolio table's column `Signal`, tagged rows `Weak positions (consider selling)` and printed `Macro signal: BUY`. Those are instructions, and the engine ships publicly on PyPI under Spanish law, where a *personalised* recommendation is MiFID/CNMV territory. The wording is now descriptive throughout: the title is `Long-Term Ratings`, the column is `Band` (`LOW`/`MID`/`HIGH`), the macro reading is a `Macro posture` (`risk-on`/`neutral`/`defensive`) and the weak-positions line is `Lowest-scoring positions (score < 40)` — the threshold carries the message. The stored `buy`/`hold`/`sell` values are untouched (the API, the tests and the advisor agent depend on them); `advisor._fmt_action()` is the presentation layer. Backtest interpretation dropped its `Consistent`/`Weak`/`Near-random` labels for the figure itself (`Beat the benchmark in 62% of 12-month periods.`), and `--help` strings say `candidates` rather than `picks`. Descriptive, not weaker: a reader can still see exactly what the model scored.
+- **The disclaimer now travels with the output** — `investdaytip/disclaimer.py` is the single source of the wording (`DISCLAIMER_CLI` for Rich, `DISCLAIMER_TEXT` for surfaces that cannot strip markup, `disclaimer_html()` for the reports). It carries the fuller framing — research and decision-support tool, not investment advice, not a personalised recommendation, past performance is not indicative of future results, capital at risk — and it prints on all four CLI flows **and** inlines in all three HTML exports, because a file outlives the terminal scrollback that showed the closing line. A new export that renders analysis must inline it; the wording is never written locally.
+- **A guard so the framing cannot regress** — `tests/test_disclaimer.py` (14 new) scans the user-facing modules *and* `.opencode/agents/advisor.md` for phrases that turn a score into an instruction, pins that the agent cites the package disclaimer instead of writing its own, and anchors the agent's wording-rules section so deleting it cannot silence the scan. The advisor agent itself moved to the same framing — bands and postures instead of `BUY`/`SELL` tables, with an explicit rule against verbs of instruction, since it writes prose to one person about their own money.
+
+### Docs
+
+- **The CLI screenshot is a real terminal capture** — the committed one dated from 2026-06-20 and still showed `% Today` and `attractive P/E`, both changed months earlier, alongside the old title and the one-line disclaimer. `scripts/screenshot_cli.py` reproduces one from a real run when needed (it runs the CLI piped so `Live` is not captured mid-refresh, and keeps the Rich SVG export in a temp dir — never versioned); the unreferenced `docs/screenshot-cli.svg` is removed, since two captures of the same CLI drift apart and someone eventually ships the stale one. `AGENTS.md` gains a *Decision-support wording* section stating the conventions and the reason they exist, plus how to regenerate the capture.
+
+
 ## v0.17.5 (2026-10-08)
 
 ### Fixes
