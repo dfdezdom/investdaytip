@@ -211,10 +211,10 @@ def _session_note(results: list[ScoredAsset]) -> str | None:
     if not sessions:
         return None
     label = "Session" if len(sessions) == 1 else "Sessions"
-    its = "its" if len(sessions) == 1 else "their"
+    those = "that session" if len(sessions) == 1 else "those sessions"
     return (
-        f"{label}: {', '.join(sessions)} (last closed) — Price, 1D Δ, 1M and "
-        f"1Y are {its} figures; the live quote is not scored."
+        f"{label}: {', '.join(sessions)} (last closed) — every figure in the "
+        f"table comes from {those}; the live quote is not scored."
     )
 
 
@@ -228,6 +228,11 @@ def _render(results: list[ScoredAsset], console: Console, include_superinvestor:
         title="📈 InvestDayTip — Long-Term Buy Recommendations",
         show_lines=True,
         title_style="bold cyan",
+        # The session is the table's own caption, not a footnote drifting
+        # below it: the reader meets the date before asking why "1D Δ" is
+        # not the move they see on their broker app.
+        caption=_session_note(results),
+        caption_style="dim",
     )
     table.add_column("#", style="bold")
     table.add_column("Type", style="magenta")
@@ -280,9 +285,6 @@ def _render(results: list[ScoredAsset], console: Console, include_superinvestor:
         table.add_row(*row)
 
     console.print(table)
-    note = _session_note(results)
-    if note:
-        console.print(f"\n[dim]{note}[/dim]")
     console.print(f"\n[dim]Breakdown legend — {_breakdown_legend(results)}[/dim]")
     console.print(
         "[dim italic]Disclaimer: This is not financial advice. Do your own research.[/dim italic]"

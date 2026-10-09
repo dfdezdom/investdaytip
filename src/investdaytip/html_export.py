@@ -723,8 +723,8 @@ def export_recommendations_html(
           <th class="sortable" data-sort-key="name" data-sort-type="text" tabindex="0" aria-sort="none">Name<span class="sort-indicator">↕</span></th>
           <th class="desktop-only sortable region-col" data-sort-key="region" data-sort-type="text" tabindex="0" aria-sort="none">Region<span class="sort-indicator">↕</span></th>
           <th class="desktop-only sortable" data-sort-key="sector" data-sort-type="text" tabindex="0" aria-sort="none">Sector/Category<span class="sort-indicator">↕</span></th>
-          <th class="num sortable" data-sort-key="price" data-sort-type="number" tabindex="0" aria-sort="none">Price<span class="sort-indicator">↕</span></th>
-          <th class="num sortable" data-sort-key="daily_change" data-sort-type="number" tabindex="0" aria-sort="none" title="Change vs the previous close of the last session to have closed">1D Δ<span class="sort-indicator">↕</span></th>
+          <th class="num sortable" data-sort-key="price" data-sort-type="number" tabindex="0" aria-sort="none" title="Close of the last session to have closed — a session in progress is not a bar yet, so during market hours this is not the live quote">Price<span class="sort-indicator">↕</span></th>
+          <th class="num sortable" data-sort-key="daily_change" data-sort-type="number" tabindex="0" aria-sort="none" title="Change vs the previous session's close, over the same session as Price — not the intraday move">1D<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="pe" data-sort-type="number" tabindex="0" aria-sort="none">P/E<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="dividend_yield" data-sort-type="number" tabindex="0" aria-sort="none">Yield<span class="sort-indicator">↕</span></th>
           <th class="num sortable" data-sort-key="return_1m" data-sort-type="number" tabindex="0" aria-sort="none">1M<span class="sort-indicator">↕</span></th>

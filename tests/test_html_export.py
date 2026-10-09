@@ -98,7 +98,8 @@ def test_export_html_contains_filters_and_rows(tmp_path: Path):
     # The day's change is labelled by the session it belongs to: "% Today"
     # read as the live move while the figure is the last *closed* session.
     assert "% Today" not in html
-    assert "1D Δ" in html
+    assert ">1D<" in html  # pairs with the report's 1M / 1Y (the CLI adds Δ)
+    assert "1D Δ" not in html
     assert '"sessions": ["2026-10-08"]' in html
     assert "(last closed)" in html  # footer spells the session out
 

@@ -612,10 +612,10 @@ Each row includes:
 Every figure in a row comes from that row's own price series, and a run built while the market is open describes the **last session to have closed** — a session in progress has no close yet, so it is not a bar (`_drop_partial_session()` drops it). The report says so instead of leaving the reader to infer it from a column called "today":
 
 ```
-Session: 2026-10-08 (last closed) — Price, 1D Δ, 1M and 1Y are its figures; the live quote is not scored.
+Session: 2026-10-08 (last closed) — every figure in the table comes from that session; the live quote is not scored.
 ```
 
-The same date is printed in the footer of an exported HTML report (`… · Session: 2026-10-08 (last closed)`).
+That line is the table's caption in the CLI and the footer of an exported HTML report (`… · Session: 2026-10-08 (last closed)`); the report's own headers read `1D` / `1M` / `1Y`, the CLI's add the `Δ`.
 
 ---
 
