@@ -1118,7 +1118,7 @@ def export_backtest_html(
       <thead>
         <tr>
           <th>Date</th>
-          <th>Picks (score)</th>
+          <th>Candidates (score)</th>
           <th class="num">Port. 6M</th>
           <th class="num">Port. 12M</th>
           <th class="num">Bench. 6M</th>

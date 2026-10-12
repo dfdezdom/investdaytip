@@ -302,7 +302,7 @@ narrative, plus the people-side endpoints the report does not render):
 ### Fear & Greed Index (CNN, 0-100)
 | Score | Rating | Reading |
 |-------|--------|---------|
-| 0-24 | Extreme Fear | 🟢 Historically the cheapest readings — a contrarian entry signal |
+| 0-24 | Extreme Fear | 🟢 Historically the cheapest readings — a contrarian reading |
 | 25-44 | Fear | 🟡 Mildly oversold |
 | 45-55 | Neutral | ⚪ No strong lean |
 | 56-75 | Greed | 🟠 Mildly overbought |
@@ -373,11 +373,13 @@ All sub-indicators are available in `macro["fear_greed"]["sub_indicators"]` for 
 | `vix_trend` | float or None | 5-day % change for VIX |
 | `move_trend` | float or None | 5-day % change for MOVE |
 | `dxy_trend` | float or None | 5-day % change for DXY |
-| `preferred_sectors` | list[str] | Sector rotation suggestions based on regime |
+| `preferred_sectors` | list[str] | The sector map the model holds for this regime — a description, not advice |
 
-### Sector rotation by regime
+### Sector map by regime
 
-| Regime | Preferred sectors |
+The model maps its regime onto a sector list. Report it as the model's own map, never as advice on what to buy.
+
+| Regime | Sectors in the model's map |
 |--------|------------------|
 | 🟢 healthy | Technology, Financials, Consumer Cyclical, Communication Services |
 | 🟡 neutral | Healthcare, Technology, Industrials |
@@ -399,11 +401,11 @@ The portfolio review now includes a **weighted-average aggregate score** (`avg_s
 ## Presentation format
 
 Structure your response as clean markdown (never raw CLI):
-1. **Market diagnosis** — **Macro score** (0-100), VIX + trend, 10Y-2Y spread, MOVE + trend, DXY + trend, Fear & Greed, bubble, posture, **bubble burst signals**, **preferred sectors**
+1. **Market diagnosis** — **Macro score** (0-100), VIX + trend, 10Y-2Y spread, MOVE + trend, DXY + trend, Fear & Greed, bubble, posture, **bubble-burst readings**, the model's sector map for the regime
 2. **Portfolio review** — table with ticker, score, band, aggregate health score, concentration warnings
 3. **Top-rated candidates** — table with ticker, score, sector, rationale
 4. **Devil's advocate** — bear case per analyzed ticker (severity bullets, from the tools actually called — see F)
-5. **Sector gaps** and observations (include the rotation map for the current macro regime)
+5. **Sector gaps** and observations (include the model's sector map for the current macro regime)
 6. **HTML report paths** (if generated)
 
 Always end with the package disclaimer, verbatim (see the wording rules above):

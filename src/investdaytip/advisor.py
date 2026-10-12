@@ -345,7 +345,9 @@ def macro_regime() -> dict:
         label = "🔴 Macro danger"
         desc = "Severe macro stress; volatility and drawdowns have historically been elevated here."
 
-    # Sector rotation guidance based on regime
+    # Sector map for the current regime — a description of the model's own
+    # rotation map, never a recommendation (see the decision-support framing
+    # in AGENTS.md: the wording says what the model holds, not what to do).
     _rotation_map = {
         "healthy":   ["Technology", "Financials", "Consumer Cyclical", "Communication Services"],
         "neutral":   ["Healthcare", "Technology", "Industrials"],
@@ -875,7 +877,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
         f"{bubble['level'].upper()} — {bubble['note']}",
     )
     market_table.add_row(
-        "Preferred sectors",
+        "Regime sector tilt",
         ", ".join(macro.get("preferred_sectors", [])),
     )
     console.print(market_table)

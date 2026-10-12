@@ -12,6 +12,7 @@ the CLI describes scores and postures, never instructions to buy or sell.
 from __future__ import annotations
 
 import io
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -27,6 +28,7 @@ from investdaytip.main import _render
 from investdaytip.scoring import ScoredAsset
 
 _SRC = Path(__file__).resolve().parents[1] / "src" / "investdaytip"
+_ROOT = Path(__file__).resolve().parents[1]
 
 # Phrases that turn a score into an instruction. They may not appear in the
 # user-facing CLI modules (disclaimer.py owns the "not advice" wording).
@@ -46,7 +48,35 @@ _BANNED_PHRASES = (
     "portfolio advice",
     "Consistent 12-month",
     "Near-random",
+    "Picks (score)",
+    "Preferred sectors",
+    "entry signal",
 )
+
+# The CLI modules whose text renders on screen.
+_CLI_MODULES = (
+    "main.py",
+    "advisor.py",
+    "deep_dive.py",
+    "html_export.py",
+    "backtest.py",
+)
+
+# Prose that ships with the package but is never executed — the README is the
+# PyPI/GitHub front page and what a regulator, a journalist or a lawyer reads
+# first, so it is held to the same wording as the CLI. AGENTS.md and
+# CHANGELOG.md are deliberately NOT scanned: both *name* the banned phrases in
+# order to forbid them / record their removal, so a scan would only ever find
+# its own rules (the same exclusion advisor.md already gets below).
+_PROSE_SURFACES = (
+    _ROOT / "README.md",
+    _ROOT / ".github" / "copilot-instructions.md",
+)
+
+# Word forms of "pick" read as a selection to act on. The README is scanned
+# for these separately because its Python examples used to name the variable
+# `picks` — code that reaches a reader is communication, not an internal name.
+_PICK_WORDS = re.compile(r"\bpicks?\b", re.IGNORECASE)
 
 
 def _scored(ticker: str = "AAPL") -> ScoredAsset:
@@ -163,10 +193,25 @@ def test_deep_dive_terminal_report_omits_the_disclaimer_when_empty():
 
 def test_cli_source_never_instructs_a_trade():
     """The CLI describes scores and postures; it never says buy or sell."""
-    for name in ("main.py", "advisor.py", "deep_dive.py", "html_export.py", "backtest.py"):
+    for name in _CLI_MODULES:
         source = (_SRC / name).read_text(encoding="utf-8")
         for phrase in _BANNED_PHRASES:
             assert phrase not in source, f"{phrase!r} found in {name}"
+
+
+def test_docs_that_ship_with_the_package_never_instruct_a_trade():
+    """README and copilot-instructions are the package's front page: they are
+    read before anyone runs the tool, so the wording guard covers them too.
+
+    (AGENTS.md and CHANGELOG.md are excluded — they quote the removed wording
+    in order to forbid it / record its removal.)
+    """
+    for path in _PROSE_SURFACES:
+        text = path.read_text(encoding="utf-8")
+        for phrase in _BANNED_PHRASES:
+            assert phrase not in text, f"{phrase!r} found in {path.name}"
+        match = _PICK_WORDS.search(text)
+        assert match is None, f"{match.group(0)!r} found in {path.name}"
 
 
 def _advisor_agent_source() -> str:

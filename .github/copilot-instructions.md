@@ -4,7 +4,7 @@ Purpose: concise guidance for Copilot sessions to understand and operate on Inve
 
 ## Current repository state
 
-This repository contains a Python 3.10+ CLI application (InvestDayTip) that produces long-term stock & ETF recommendations and self-contained HTML reports. Source lives under src/investdaytip/ and unit tests are in tests/.
+This repository contains a Python 3.10+ CLI application (InvestDayTip) that produces long-term stock & ETF scores and self-contained HTML reports. It is a research and decision-support tool — the wording rules in AGENTS.md ("decision-support wording") are part of the product contract: no verb of instruction, no "buy"/"sell"/"hold" signal, and every user-facing output carries the disclaimer. Source lives under src/investdaytip/ and unit tests are in tests/.
 
 ## Build, test, and lint commands
 

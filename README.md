@@ -32,14 +32,14 @@ own terms) built on this engine; the engine itself stays MIT.
 - 📈 **Multi-factor scoring** — composite 0-100 score per asset
 - 🔗 **Multiple data sources** — yfinance (default), yahooquery (batch), Financial Modeling Prep (FMP) or StockFit (US stocks, Starter plan), with automatic fallback
 - 🏦 **Stocks & ETFs** — auto-detected and scored with dedicated models
-- 🌍 **US, European, Asian & Superinvestor markets** — S&P 500, DAX, CAC 40, FTSE 100, Nikkei 225, Hang Seng, NSE, and superinvestor consensus picks from DataRoma 13F filings
+- 🌍 **US, European, Asian & Superinvestor markets** — S&P 500, DAX, CAC 40, FTSE 100, Nikkei 225, Hang Seng, NSE, and superinvestor consensus holdings from DataRoma 13F filings
 - 💱 **Currency filter** — narrow by native currency (`USD`, `EUR`, `JPY`, …)
 - ⚡ **Concurrent fetching** — analyzes ~500 tickers in seconds
 - 📊 **Rich CLI output** — price, 1M/1Y change, score breakdown and rationale
 - 🧾 **Self-contained HTML export** — interactive report with filters and sortable columns
 - 🧪 **Pure scoring functions** — testable without network
-- 🧠 **Interactive advisor** — market pulse, portfolio review, and model-scored pick lists via the `advisor` subcommand (decision support, not personal recommendations)
-- 🤖 **AI-powered assistant** — chat in natural language to analyze markets, review portfolios, and explore the model's top picks — powered by [OpenCode](https://opencode.ai) agents
+- 🧠 **Interactive advisor** — market pulse, portfolio review, and model-scored candidate lists via the `advisor` subcommand (decision support, not personal recommendations)
+- 🤖 **AI-powered assistant** — chat in natural language to analyze markets, review portfolios, and explore the model's top-rated candidates — powered by [OpenCode](https://opencode.ai) agents
 - 📊 **Backtest validation** — historical backtesting with automated before/after comparison script
 - 🧾 **StockFit integration (optional)** — point-in-time SEC filing dates for backtests (`--pit-source stockfit`, works offline from a local snapshot), a fundamentals insights section in the HTML report (`--fundamental-insights`), per-ticker `deep-dive` reports and a keyless devil's advocate layer (risk signals). Works on every StockFit plan — and without a key at all (`stockfit-status` shows what yours unlocks)
 ---
@@ -99,7 +99,7 @@ That's it. You'll see the top 5 highest-scoring candidates across the curated un
 | Command | What it does | Section |
 |---|---|---|
 | `investdaytip [flags]` | Top-scoring candidates from the curated universes | below |
-| `investdaytip advisor` | Interactive market pulse, portfolio review, model picks | [Advisor](#advisor-subcommand) |
+| `investdaytip advisor` | Interactive market pulse, portfolio review, model candidates | [Advisor](#advisor-subcommand) |
 | `investdaytip deep-dive` | Per-ticker deep report (score + research + diagnostics) | [Deep-dive](#deep-dive-subcommand) |
 | `investdaytip backtest` | Historical validation of the scoring model | [Backtest](#backtest-subcommand) |
 | `investdaytip stockfit-status` | Your StockFit plan + which features unlock | [Tiers](#stockfit-integration--tiers) |
@@ -168,7 +168,7 @@ investdaytip --help
 
 | Flag | Description | Default |
 |---|---|---|
-| `-n, --top N` | Number of picks to show (defaults to ticker count when `-t` is used) | `5` |
+| `-n, --top N` | Number of candidates to show (defaults to ticker count when `-t` is used) | `5` |
 | `-t, --tickers ...` | Custom ticker list (overrides universe; quoted space-separated ok) | curated universe |
 | `--tickers-file PATH` | Text file with custom tickers (merged with `--tickers` if both are used) | disabled |
 | `-a, --asset-class {all,stocks,etfs}` | Asset class filter | `all` |
@@ -207,8 +207,8 @@ curl -fsSL https://opencode.ai/install | bash
 ### What it can do
 
 1. **Market pulse** — Full macro analysis (VIX + yield curve + bond volatility + DXY) in ~30 seconds
-2. **Portfolio review** — Score your holdings, spot weaknesses, and see the model's risk signals
-3. **Model picks** — Highest-scoring candidates filtered by region, asset class, and risk profile
+2. **Portfolio review** — Score your holdings and see the model's risk signals for the lowest-scoring positions
+3. **Candidate scan** — top-scoring tickers filtered by region, asset class, and risk profile
 4. **Devil's advocate** — Bear case + risk signals for specific tickers (see below)
 5. **Full analysis** — All of the above combined into a single comprehensive report
 
@@ -230,12 +230,16 @@ Macro Score: 58/100 (Neutral)
 - DXY: 102.3 (strong)
 - Fear & Greed: 67/Greed
 
-Signal: 🟡 HOLD — selective buying
+Macro posture: neutral — Mixed macro signals: some tailwinds alongside headwinds
 ```
+
+> The agent reports what the model **reads** — a score and a posture
+> (`risk-on` / `neutral` / `defensive`), never a buy/sell/hold signal. See the
+> wording rules in `.opencode/agents/advisor.md`.
 
 ### 🩺 Devil's advocate — bear cases from SEC footnotes
 
-Every portfolio review and model pick now ends with a **bear case**
+Every portfolio review and candidate scan now ends with a **bear case**
 for the analyzed tickers, in two layers:
 
 | Layer | Source | Needs |
@@ -280,7 +284,7 @@ says so explicitly.
 
 See [`.opencode/agents/advisor.md`](.opencode/agents/advisor.md) for:
 - VIX / macro regime interpretation rules
-- Fear & Greed Index signals
+- Fear & Greed Index readings
 - Bubble burst historical indicators (dot-com 2000, railroads 1845)
 - Portfolio scoring thresholds and presentation format
 - Devil's advocate rules (bear-case layers, StockFit tool map, never-fabricate)
@@ -290,7 +294,7 @@ See [`.opencode/agents/advisor.md`](.opencode/agents/advisor.md) for:
 
 ### Advisor subcommand
 
-Interactive market analysis with **multi-indicator macro pulse** (VIX, 10Y-2Y yield curve, MOVE bond volatility, DXY dollar strength), portfolio review, and model-generated pick lists:
+Interactive market analysis with **multi-indicator macro pulse** (VIX, 10Y-2Y yield curve, MOVE bond volatility, DXY dollar strength), portfolio review, and model-scored candidate lists:
 
 ```bash
 investdaytip advisor                          # Interactive mode (asks for risk, region, etc.)
@@ -320,7 +324,7 @@ The advisor fetches six live indicators to compute the composite **macro health 
 | **DXY** | `DX-Y.NYB` | US Dollar Index — strength against EUR, JPY, GBP, CAD, SEK, CHF | <95 weak, 95–100 neutral, 100–105 strong, >105 very strong | −10 / +5 |
 | **Fear & Greed** | [CNN API](https://production.dataviz.cnn.io/index/fearandgreed/graphdata) | Composite market sentiment from 7 sub-indicators (momentum, breadth, put/call, volatility, junk bonds, safe havens) | 0–100; <25 extreme fear, >75 extreme greed | ±10 (contrarian) |
 
-The score starts at a neutral **50** and each indicator adjusts it up or down based on current readings. The final score determines the macro regime signal — a model output for decision support, not an instruction to trade:
+The score starts at a neutral **50** and each indicator adjusts it up or down based on current readings. The final score determines the macro regime and the posture reported with it — a model output for decision support, not an instruction to trade:
 
 - 🟢 **≥70** — Macro healthy → **risk-on**
 - 🟡 **≥45** — Mixed signals → **neutral**
@@ -385,7 +389,7 @@ Historical validation of the stock scoring model:
 
 ```bash
 investdaytip backtest                          # Backtest US stocks (default)
-investdaytip backtest -n 10                    # Top 10 picks per snapshot
+investdaytip backtest -n 10                    # Top 10 candidates per snapshot
 investdaytip backtest -r us                    # US stocks
 investdaytip backtest -r eu                    # European stocks
 investdaytip backtest -r asia                  # Asian stocks
@@ -405,7 +409,7 @@ investdaytip backtest --cache-clear            # Purge cache before run
 
 | Flag | Description | Default |
 |---|---|---|
-| `-n, --top N` | Top N picks per snapshot | `10` |
+| `-n, --top N` | Top N candidates per snapshot | `10` |
 | `-t, --tickers ...` | Custom ticker list | curated US universe |
 | `-r, --region ...` | Region filter(s) | `us` |
 | `-c, --currency ...` | Currency filter(s) | `all` |
@@ -567,24 +571,24 @@ Direct platform links (`Ticker` → Google Finance, `T` → TradingView, `Y` →
 from investdaytip import get_recommendations
 
 # Get top 5 Asian stocks
-picks = get_recommendations(top_n=5, region="asia", asset_class="stocks")
-for s in picks:
+results = get_recommendations(top_n=5, region="asia", asset_class="stocks")
+for s in results:
     print(f"{s.data.ticker} ({s.asset_type}) — score={s.total:.1f}")
     print(f"  Price: {s.data.current_price} {s.data.currency}")
     print(f"  1M: {s.data.return_1m:.2%}  1Y: {s.data.return_12m:.2%}")
     print(f"  Why: {'; '.join(s.rationale[:3])}")
 
 # Or filter by sector (prefix match, case-insensitive)
-picks = get_recommendations(top_n=5, sector="Financial")  # Financial + Financial Services
+results = get_recommendations(top_n=5, sector="Financial")  # Financial + Financial Services
 
 # Or mix regions and asset classes
-picks = get_recommendations(top_n=10, region="all")  # US + EU + Asia stocks & ETFs
+results = get_recommendations(top_n=10, region="all")  # US + EU + Asia stocks & ETFs
 
 # Choose the scoring model explicitly (quant is the default)
-picks = get_recommendations(top_n=5, region="us", scoring_model="classic")
+results = get_recommendations(top_n=5, region="us", scoring_model="classic")
 
 # Use FMP data source (requires FMP_API_KEY env var)
-picks = get_recommendations(top_n=5, region="us", data_source="fmp")
+results = get_recommendations(top_n=5, region="us", data_source="fmp")
 ```
 
 ---
@@ -683,7 +687,7 @@ When no `-t` is given, InvestDayTip uses curated universes:
 - **EU UCITS ETFs** — 35 broad, sector and bond UCITS ETFs (`eu_etf_universe.py`)
 - **Asia stocks** — 110 large-caps from Japan, Hong Kong, Singapore, India, South Korea, Taiwan, and Australia (`asia_universe.py`)
 - **Asia ETFs** — 17 broad-market, country-specific, and sector ETFs with significant Asian exposure (`asia_etf_universe.py`)
-- **Superinvestor stocks** — 101 consensus picks held by ≥2 of ~82 top investors tracked by DataRoma 13F filings (`superinvestor_universe.py`)
+- **Superinvestor stocks** — 101 consensus stocks held by ≥2 of ~82 top investors tracked by DataRoma 13F filings (`superinvestor_universe.py`)
 
 Merging the pools for a full scan (`-r all -a all`) yields **492 unique
 tickers** — overlapping tickers and cross-listings (e.g. `TSM` / `2330.TW`,
@@ -905,7 +909,7 @@ Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Disclaimer
 
-**This is not financial advice.** InvestDayTip is a research and decision-support tool that applies a deterministic scoring model to publicly available data. Scores, buy/hold/sell labels and any AI-generated commentary are **model outputs**, not personal recommendations to buy or sell any security. Backtests are hypothetical simulations over historical data — past performance is not indicative of future results. Always do your own research and consult a licensed advisor before making investment decisions.
+**This is not financial advice.** InvestDayTip is a research and decision-support tool that applies a deterministic scoring model to publicly available data. Scores, score bands and macro postures, and any AI-generated commentary are **model outputs**, not personal recommendations to buy or sell any security. Backtests are hypothetical simulations over historical data — past performance is not indicative of future results. Always do your own research and consult a licensed advisor before making investment decisions.
 
 Third-party names (Yahoo Finance, DataRoma, Financial Modeling Prep, StockFit, Seeking Alpha, OpenCode, …) are used for identification only and imply no affiliation or endorsement.
 
