@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- **Two labels the wording pass could not see** — the backtest report's column still read `Picks (score)` beside a meta line that said `Top N candidates per snapshot`, and the advisor printed a row called `Preferred sectors`, a sector list that survived the decision-support rewrite because a phrase list looks for phrases and these two were descriptions that behaved like advice. They are now `Candidates (score)` and `Regime sector tilt`, and both phrases joined the banned list so they cannot come back. The figures are unchanged.
+- **The wording guard now covers the surfaces that are never executed** — `tests/test_disclaimer.py` scanned the user-facing modules and the advisor agent, so everything shipped alongside them kept the removed vocabulary. It now also scans `README.md` and `.github/copilot-instructions.md`, whose first line described the tool as one "that produces long-term stock & ETF recommendations" — MiFID II attaches to investment advice, which is what a *personalised* recommendation is and what this tool is not. `AGENTS.md` and `CHANGELOG.md` stay outside the scan on purpose: both quote the removed wording in order to forbid it or record its removal, so a scan of them would only ever find its own rules — the same exclusion the advisor agent already had.
+
+### Docs
+
+- **The README says what the CLI says** — it still showed the advisor answering `Signal: 🟡 HOLD — selective buying`, a signal and an instruction the CLI stopped printing in 0.17.6; it described pick lists and "Number of picks to show" where `--help` says candidates, "Model picks", "Top N picks per snapshot" and consensus picks; and its disclaimer promised `buy/hold/sell labels` the output has not carried since the bands and postures replaced them. The advisor agent's tables followed: `Preferred sectors` became the model's sector map, and the Fear & Greed "contrarian entry signal" a contrarian reading. Rename `Unreleased` to the version at release time.
+
 ## v0.17.6 (2026-10-09)
 
 ### Changes
