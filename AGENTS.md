@@ -620,8 +620,23 @@ below it: they are omitted with an explicit reason, never fabricated.
 The tool scores; it never instructs. This is a product constraint, not a style
 preference — the engine is public on PyPI and the ecosystem works under Spanish
 law, where personalized recommendations are MiFID/CNMV territory. Conventions,
-all guarded by `tests/test_disclaimer.py` (a banned-phrase scan over the
-user-facing modules — extend that list when a new phrase shows up):
+all guarded by `tests/test_disclaimer.py` (a banned-phrase scan — extend that
+list when a new phrase shows up), which covers three kinds of surface:
+
+- the user-facing CLI modules (`main`, `advisor`, `deep_dive`, `html_export`,
+  `backtest`);
+- `.opencode/agents/advisor.md`, the highest-exposure surface, minus its
+  wording-rules section (that section names the banned phrases to forbid them,
+  so scanning it would only find its own rules);
+- **the prose that ships with the package but is never executed** —
+  `README.md` (the PyPI/GitHub front page) and `.github/copilot-instructions.md`.
+  The CLI was reframed in 0.17.6 and these kept the old vocabulary for months,
+  including a documented advisor reply of `Signal: 🟡 HOLD — selective buying`.
+  Code that reaches a reader is communication, not an internal name.
+
+`AGENTS.md` and `CHANGELOG.md` are deliberately **not** scanned: the first
+forbids these phrases by quoting them, the second records the removal of the
+older ones, so both would fail their own rules.
 
 - **No verb of instruction, ever.** `consider selling` / `good time to buy` /
   `Prioritize defense` / `Reduce risk` are out; describe what the model *sees*
