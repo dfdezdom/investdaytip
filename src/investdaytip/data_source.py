@@ -859,6 +859,10 @@ def _fetch_stock(
     data.return_on_equity = _safe_get(info, "returnOnEquity")
     data.return_on_assets = _safe_get(info, "returnOnAssets")
     data.profit_margin = _safe_get(info, "profitMargins")
+    # Fallback to yfinance analyst estimates; OVERWRITTEN by statement-derived
+    # values below (line ~905) when statements are available. The analyst
+    # estimates are often wildly inflated (e.g., 3845% for INCY) so the
+    # statement-derived YoY change is strongly preferred.
     data.earnings_growth = _safe_get(info, "earningsGrowth")
     data.revenue_growth = _safe_get(info, "revenueGrowth")
     data.debt_to_equity = _safe_get(info, "debtToEquity")

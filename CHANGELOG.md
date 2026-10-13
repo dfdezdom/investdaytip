@@ -11,6 +11,10 @@
 
 - **The README says what the CLI says** — it still showed the advisor answering `Signal: 🟡 HOLD — selective buying`, a signal and an instruction the CLI stopped printing in 0.17.6; it described pick lists and "Number of picks to show" where `--help` says candidates, "Model picks", "Top N picks per snapshot" and consensus picks; and its disclaimer promised `buy/hold/sell labels` the output has not carried since the bands and postures replaced them. The advisor agent's tables followed: `Preferred sectors` became the model's sector map, and the Fear & Greed "contrarian entry signal" a contrarian reading. Rename `Unreleased` to the version at release time.
 
+### Fixes
+
+- **Earnings growth no longer shows inflated analyst estimates** — the live yfinance path was overwriting the statement-derived YoY earnings growth with yfinance's `info["earningsGrowth"]`, which is an analyst estimate and often wildly inflated (e.g., 3845% for INCY). Now the statement-derived growth (actual YoY net income change) is kept when statements are available; the analyst estimate is only used as a fallback when statements are missing. This fixes the "earnings growth of 3845%" rationale entries and the PEG calculation which uses the same field.
+
 ## v0.17.6 (2026-10-09)
 
 ### Changes
