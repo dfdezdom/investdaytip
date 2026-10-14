@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- **The rationale states a rate when the YoY is not one** — INCY's row read `earnings growth of 3845.0%`, an arithmetically real figure (FY2024 net income had collapsed to 32.6M — R&D at 61% of revenue, a ~90% effective tax rate) that reads as a bug. The note now carries the 2-year CAGR of net income and keeps the raw YoY alongside as the fact it is: `earnings growth of +46.7% CAGR 2Y (YoY +3845.0% off a low prior-year base)`. The same bound the derived PEG uses (`_PEG_MAX_GROWTH`) decides when a YoY stops being a rate; when no rate can be stated — the two endpoints are not both positive — the YoY is labelled instead of dropped. Display only: the scoring never reads the new `StockData.earnings_cagr_2y`, filled by both live paths and both backtest builders. Tests: `tests/test_scoring.py` (3 new), `tests/test_data_source.py` (1 new).
+
 ## v0.17.9 (2026-10-15)
 
 ### Fixes

@@ -53,6 +53,41 @@ def test_strong_stock_scores_high():
     assert len(s.rationale) > 0
 
 
+def test_growth_note_states_the_rate_when_the_yoy_is_not_one():
+    """Past the plausibility bound the YoY is a base effect, not a rate:
+    the note carries the 2-year CAGR and keeps the raw YoY as the fact it is
+    (INCY as the site published it: +3845% off a collapsed FY2024)."""
+    data = _base_data()
+    data.earnings_growth = 38.45          # INCY's YoY, as published
+    data.earnings_cagr_2y = 0.46737       # FY2023 → FY2025, the real rate
+    data.peg_ratio = None                 # the bound leaves no PEG
+
+    s = score_stock(data, model="quant")
+
+    assert (
+        "earnings growth of +46.7% CAGR 2Y (YoY +3845.0% off a low prior-year base)"
+        in s.rationale
+    )
+
+
+def test_growth_note_labels_the_yoy_when_no_rate_can_be_stated():
+    data = _base_data()
+    data.earnings_growth = 38.45
+    data.earnings_cagr_2y = None          # no 2-year endpoint to divide
+    data.peg_ratio = None
+
+    s = score_stock(data, model="quant")
+
+    assert "earnings growth of 3845.0% (YoY off a low prior-year base)" in s.rationale
+    assert "CAGR" not in " ".join(s.rationale)
+
+
+def test_growth_note_keeps_the_plain_wording_for_a_rate():
+    s = score_stock(_base_data(), model="quant")  # earnings_growth 0.15
+
+    assert "earnings growth of 15.0%" in s.rationale
+
+
 def test_weak_stock_scores_low():
     data = StockData(
         ticker="BAD",

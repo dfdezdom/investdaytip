@@ -92,6 +92,10 @@ class StockData:
     profit_margin: Optional[float] = None
     earnings_growth: Optional[float] = None
     revenue_growth: Optional[float] = None
+    # 2-year CAGR of net income (as filed): the rate a base-distorted YoY
+    # cannot state.  Display only — never scored.  None when the two
+    # endpoints are not both positive (no rate to state).
+    earnings_cagr_2y: Optional[float] = None
     # YoY fundamental improvements (statement-derived; None = unknown)
     margin_improving: Optional[bool] = None
     roa_improving: Optional[bool] = None
@@ -677,6 +681,21 @@ def _apply_history_common(
 _PEG_MAX_GROWTH = 1.0
 
 
+def _cagr_2y(
+    current: Optional[float], two_back: Optional[float]
+) -> Optional[float]:
+    """2-year CAGR of a flow figure — the rate a base-distorted YoY cannot be.
+
+    INCY's +3845% YoY is arithmetically real (a collapsed FY2024 base) but is
+    not a rate; this reads +46.7%, the number a reader can use.  Positive
+    endpoints only — a path that crosses zero has no rate to state, and one
+    must never be invented.
+    """
+    if current is None or two_back is None or current <= 0 or two_back <= 0:
+        return None
+    return math.sqrt(current / two_back) - 1.0
+
+
 def _derive_peg(
     trailing_pe: Optional[float], earnings_growth: Optional[float]
 ) -> Optional[float]:
@@ -713,6 +732,7 @@ class _Fundamentals:
     rev: Optional[float] = None
     eps: Optional[float] = None
     ni_prev: Optional[float] = None
+    ni_prev2: Optional[float] = None
     rev_prev: Optional[float] = None
     eps_prev: Optional[float] = None
     eps_prev2: Optional[float] = None
@@ -803,6 +823,10 @@ def _derive_stock_data(
 
     earnings_growth = _pct_change(ni_yoy, fund.ni_prev)
     revenue_growth = _pct_change(rev_yoy, fund.rev_prev)
+    # The rate the YoY cannot state when its base is distorted (INCY: a
+    # collapsed FY2024 turns FY2025 into +3845%) — same as-filed chain as
+    # the comparison above, display only.
+    earnings_cagr_2y = _cagr_2y(ni_yoy, fund.ni_prev2)
 
     # Debt/Equity: yfinance reports as percentage, divide by 100.
     # Negative equity makes the ratio meaningless (and sign flips can clamp
@@ -890,6 +914,7 @@ def _derive_stock_data(
         return_on_assets=roa,
         profit_margin=profit_margin,
         earnings_growth=earnings_growth,
+        earnings_cagr_2y=earnings_cagr_2y,
         revenue_growth=revenue_growth,
         margin_improving=margin_improving,
         roa_improving=roa_improving,
@@ -985,6 +1010,12 @@ def _fetch_stock(
         growth_ni = _pct_change(cur.get("NetIncome"), prev.get("NetIncome"))
         if growth_ni is not None:
             data.earnings_growth = growth_ni
+        data.earnings_cagr_2y = _cagr_2y(
+            cur.get("NetIncome"),
+            annual_facts(
+                income_stmt, balance_sheet, None, datetime.now(), years_back=2
+            ).get("NetIncome"),
+        )
         growth_rev = _pct_change(cur.get("TotalRevenue"), prev.get("TotalRevenue"))
         if growth_rev is not None:
             data.revenue_growth = growth_rev

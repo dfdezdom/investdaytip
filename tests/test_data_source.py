@@ -262,6 +262,29 @@ def test_derived_peg_stops_at_a_growth_that_is_not_a_rate():
     assert _derive_peg(14.2, 1.0) == pytest.approx(14.2 / 100.0)   # the bound
 
 
+def test_earnings_cagr_2y_states_the_rate_the_yoy_cannot():
+    """INCY: FY2023 597.6M → FY2025 1286.7M is +46.7% a year, while the YoY
+    off the collapsed FY2024 reads +3845%. Positive endpoints only — a path
+    crossing zero has no rate to state, and one must not be invented."""
+    from investdaytip.data_source import _cagr_2y, _derive_stock_data, _Fundamentals
+
+    assert _cagr_2y(1286.7, 597.6) == pytest.approx(0.467, abs=1e-3)
+    assert _cagr_2y(1286.7, None) is None
+    assert _cagr_2y(-5.0, 10.0) is None
+    assert _cagr_2y(5.0, -10.0) is None
+
+    fund = _Fundamentals(
+        ni=1286.7, eps=9.0, ni_prev=32.6, ni_prev2=597.6,
+        rev=5141.2, rev_prev=4241.2,
+    )
+    d = _derive_stock_data(
+        "INCY", {"shortName": "INCY"}, 111.36, (None, None, None, None, None, None),
+        None, None, fund, None, None,
+    )
+    assert d.earnings_growth == pytest.approx(1286.7 / 32.6 - 1)
+    assert d.earnings_cagr_2y == pytest.approx(0.467, abs=1e-3)
+
+
 def test_live_peg_never_falls_back_to_the_analyst_ratio():
     """When the derivation declines, the live path must leave PEG at None —
     not at yfinance's analyst `pegRatio`. The backtest path yields None

@@ -460,6 +460,7 @@ def _build_historical_stock_data(
         eps=_latest_value_before(income_stmt, quarter_date, "BasicEPS"),
         # YoY growth (compare with previous fiscal year)
         ni_prev=_value_n_years_before(income_stmt, quarter_date, "NetIncome", n=1),
+        ni_prev2=_value_n_years_before(income_stmt, quarter_date, "NetIncome", n=2),
         rev_prev=_value_n_years_before(income_stmt, quarter_date, "TotalRevenue", n=1),
         eps_prev=_value_n_years_before(income_stmt, quarter_date, "BasicEPS", n=1),
         eps_prev2=_value_n_years_before(income_stmt, quarter_date, "BasicEPS", n=2),
@@ -515,6 +516,7 @@ def _build_pit_stock_data(
     eps = pit_fact_asof(pit.income, "eps", snapshot_date)[0]
     eps_prev = pit_fact_asof(pit.income, "eps", snapshot_date)[1]
     eps_prev2 = pit_fact_n_back(pit.income, "eps", snapshot_date, 2)
+    ni_prev2 = pit_fact_n_back(pit.income, "netIncome", snapshot_date, 2)
     gross_profit, gross_profit_prev = pit_fact_asof(pit.income, "grossProfit", snapshot_date)
     equity = pit_fact_asof(pit.balance, "stockholdersEquity", snapshot_date)[0]
     total_assets = pit_fact_asof(pit.balance, "assets", snapshot_date)[0]
@@ -532,8 +534,8 @@ def _build_pit_stock_data(
         shares = derived_shares if derived_shares > 0 else None
 
     fund = _Fundamentals(
-        ni=ni, rev=rev, eps=eps, ni_prev=ni_prev, rev_prev=rev_prev,
-        eps_prev=eps_prev, eps_prev2=eps_prev2,
+        ni=ni, rev=rev, eps=eps, ni_prev=ni_prev, ni_prev2=ni_prev2,
+        rev_prev=rev_prev, eps_prev=eps_prev, eps_prev2=eps_prev2,
         gross_profit=gross_profit, gross_profit_prev=gross_profit_prev,
         total_assets_prev=total_assets_prev,
         equity=equity, total_assets=total_assets, total_debt=total_debt,

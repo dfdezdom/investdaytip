@@ -1374,6 +1374,7 @@ def fetch_asset_stockfit(
             pit_fact_n_back(pit.income, "eps", now, 2),
         ),
         ni_prev=pit_fact_asof(pit.income, "netIncome", now)[1],
+        ni_prev2=pit_fact_n_back(pit.income, "netIncome", now, 2),
         rev_prev=pit_fact_asof(pit.income, "revenue", now)[1],
         gross_profit=pit_fact_asof(pit.income, "grossProfit", now)[0],
         gross_profit_prev=pit_fact_asof(pit.income, "grossProfit", now)[1],

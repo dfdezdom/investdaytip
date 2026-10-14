@@ -43,8 +43,30 @@ import math
 from dataclasses import dataclass, field
 from typing import Optional
 
-from investdaytip.data_source import AssetData, EtfData, StockData
+from investdaytip.data_source import _PEG_MAX_GROWTH, AssetData, EtfData, StockData
 from investdaytip.dataroma import get_superinvestor_data
+
+
+def _earnings_growth_note(growth: float, cagr_2y: Optional[float]) -> str:
+    """The earnings-growth line of the rationale.
+
+    The YoY change is a *rate* only for moderate values: past
+    ``_PEG_MAX_GROWTH`` the figure is a base effect (INCY — a collapsed
+    FY2024 made FY2025 read +3845%), and the note must not pass it off as
+    one.  The 2-year CAGR of net income then carries the figure, with the
+    raw YoY alongside as the fact it is; with no CAGR to state (the two
+    endpoints are not both positive) the YoY is labelled instead of
+    dropped.  Display only — the scoring never reads the CAGR.
+    """
+    pct = growth * 100
+    if growth <= _PEG_MAX_GROWTH:
+        return f"earnings growth of {pct:.1f}%"
+    if cagr_2y is not None:
+        return (
+            f"earnings growth of {cagr_2y * 100:+.1f}% CAGR 2Y "
+            f"(YoY {pct:+.1f}% off a low prior-year base)"
+        )
+    return f"earnings growth of {pct:.1f}% (YoY off a low prior-year base)"
 
 STOCK_WEIGHTS_CLASSIC = {
     "quality": 0.35,
@@ -187,7 +209,7 @@ class ClassicStockScorer:
         if d.profit_margin is not None and d.profit_margin > 0.15:
             notes.append(f"profit margin of {d.profit_margin * 100:.1f}%")
         if d.earnings_growth is not None and d.earnings_growth > 0.10:
-            notes.append(f"earnings growth of {d.earnings_growth * 100:.1f}%")
+            notes.append(_earnings_growth_note(d.earnings_growth, d.earnings_cagr_2y))
         return (roe * 0.35) + (margin * 0.25) + (earn_g * 0.25) + (rev_g * 0.15), notes
 
     def _health_score(self, d: StockData) -> tuple[float, list[str]]:
@@ -314,7 +336,7 @@ class QuantStockScorer:
         earn_g = _linear(d.earnings_growth, best=0.25, worst=-0.05)
         rev_g = _linear(d.revenue_growth, best=0.20, worst=-0.05)
         if d.earnings_growth is not None and d.earnings_growth > 0.10:
-            notes.append(f"earnings growth of {d.earnings_growth * 100:.1f}%")
+            notes.append(_earnings_growth_note(d.earnings_growth, d.earnings_cagr_2y))
         if d.revenue_growth is not None and d.revenue_growth > 0.08:
             notes.append(f"revenue growth of {d.revenue_growth * 100:.1f}%")
         return (earn_g * 0.55) + (rev_g * 0.45), notes
