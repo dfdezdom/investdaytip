@@ -248,6 +248,39 @@ def test_derived_peg_requires_positive_pe_and_growth():
     assert d2.peg_ratio < 5.0     # percent units, not a decimal-division ×100
 
 
+def test_derived_peg_stops_at_a_growth_that_is_not_a_rate():
+    """A doubling is the widest YoY change a PEG can divide by. Beyond it
+    the figure is a base effect, not a rate — INCY as the site published it:
+    FY2024 net income collapsed to 32.6M (R&D at 61% of revenue, ~90%
+    effective tax rate), so FY2025's 1.29B reads +3845% and the derived PEG
+    degenerated to 0.00, saturating Value's sub-metric."""
+    from investdaytip.data_source import _derive_peg
+
+    assert _derive_peg(14.2, 38.45) is None          # INCY as published
+    assert _derive_peg(14.2, 1.5) is None            # +150%: still not a rate
+    assert _derive_peg(14.2, 0.5) == pytest.approx(14.2 / 50.0)    # +50% is
+    assert _derive_peg(14.2, 1.0) == pytest.approx(14.2 / 100.0)   # the bound
+
+
+def test_live_peg_never_falls_back_to_the_analyst_ratio():
+    """When the derivation declines, the live path must leave PEG at None —
+    not at yfinance's analyst `pegRatio`. The backtest path yields None
+    there, and one row must not mix two definitions (2026-10-15: INCY showed
+    a derived PEG of 0.00 while the analyst ratio was 0.38)."""
+    from investdaytip.data_source import _fetch_stock
+
+    info = {
+        "trailingPE": 14.2,
+        "pegRatio": 0.38,
+        "trailingPegRatio": 0.42,
+        "earningsGrowth": 38.45,  # the figure INCY's row carries
+    }
+    data = _fetch_stock("INCY", info, pd.DataFrame())
+
+    assert data.earnings_growth == 38.45
+    assert data.peg_ratio is None
+
+
 def test_fetch_stock_ttm_levels_from_quarterly_frames(mocker):
     """Levels read TTM (4-quarter sums / latest balances) when quarterly
     frames exist; comparisons stay FY-vs-FY; TTM FCF wins over info."""

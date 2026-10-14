@@ -666,6 +666,45 @@ def _apply_history_common(
 
 # ── Shared StockData derivation (backtest + StockFit live source) ─────────
 
+#: Beyond this YoY change the figure is not a *rate* a PEG can divide by:
+#: a collapsed prior year (INCY's FY2024 — R&D at 61% of revenue plus a ~90%
+#: effective tax rate left 32.6M of net income, so FY2025's 1.29B reads
+#: +3845%), a one-off, or a cycle peak.  The quotient is then a tiny number
+#: that saturates the sub-metric and reads as "cheapest possible" (INCY's
+#: derived PEG was 0.00) — the antithesis of a valuation signal.  PEG's own
+#: convention distrusts growth beyond a doubling, and the scorer's sub-metric
+#: is already saturated well below it.
+_PEG_MAX_GROWTH = 1.0
+
+
+def _derive_peg(
+    trailing_pe: Optional[float], earnings_growth: Optional[float]
+) -> Optional[float]:
+    """P/E ÷ earnings growth as a **percentage** — the model's only PEG.
+
+    The classic PEG convention, and the scale the scorer's thresholds assume
+    (best 0.8 / worst 3.0): a decimal-growth division inflated every PEG 100×,
+    zeroing the sub-metric and tripping the disqualification cap (0.15.2).
+    Unifies the sources — yfinance's ``pegRatio`` is analyst-based and often
+    absurd (BMY 17.37 with +178% growth) — and carries the best IC of the
+    Value family (2026-10-02: ``peg_derived`` +0.055 mean / 86% hit vs P/E
+    −0.029 and P/B −0.011; IC is Spearman, so the percent-vs-decimal scale
+    leaves it identical, the absolute sub-score does not).
+
+    ``None`` — the sub-metric scores neutral — whenever the division would
+    not be a PEG: no positive P/E, no positive growth (decliners have no
+    meaningful PEG), or growth above :data:`_PEG_MAX_GROWTH`, where the
+    "growth" is a base effect rather than a rate.  One definition for the
+    backtest and the yfinance/StockFit live paths (FMP serves its own TTM
+    ratio).
+    """
+    if trailing_pe is None or trailing_pe <= 0:
+        return None
+    if earnings_growth is None or not 0 < earnings_growth <= _PEG_MAX_GROWTH:
+        return None
+    return trailing_pe / (earnings_growth * 100.0)
+
+
 @dataclass
 class _Fundamentals:
     """Raw fundamental inputs shared by the classic and PIT snapshot builders."""
@@ -833,21 +872,9 @@ def _derive_stock_data(
     # EPS-revisions fallback: as-filed EPS growth acceleration.
     accel = _eps_acceleration(eps_yoy, fund.eps_prev, fund.eps_prev2)
 
-    # Derived PEG — P/E ÷ earnings growth as a **percentage** (the classic
-    # PEG convention, and the scale the scorer's thresholds assume:
-    # best 0.8 / worst 3.0), only for positive growth (decliners have no
-    # meaningful PEG → None → neutral).  Unifies the sources and adds the
-    # best IC of the Value family (2026-10-02: peg_derived IC +0.055 / 86%
-    # hit vs P/E −0.029 and P/B −0.011 — IC is Spearman, so percent-vs-
-    # decimal scale leaves it identical; the absolute sub-score does not,
-    # hence the *100: a decimal-growth division inflated every PEG 100×,
-    # zeroing the sub-metric and tripping the disqualification cap).
-    peg = (
-        trailing_pe / (earnings_growth * 100.0)
-        if (trailing_pe is not None and trailing_pe > 0
-            and earnings_growth is not None and earnings_growth > 0)
-        else None
-    )
+    # Derived PEG — one definition for every source, plausibility bound
+    # included (see _derive_peg).
+    peg = _derive_peg(trailing_pe, earnings_growth)
 
     return StockData(
         ticker=ticker,
@@ -902,7 +929,10 @@ def _fetch_stock(
     data.trailing_pe = _safe_get(info, "trailingPE")
     data.forward_pe = _safe_get(info, "forwardPE")
     data.price_to_book = _safe_get(info, "priceToBook")
-    data.peg_ratio = _first(_safe_get(info, "pegRatio"), _safe_get(info, "trailingPegRatio"))
+    # PEG is always the derived one (see `_derive_peg`, applied below once
+    # growth is known): yfinance's `pegRatio` is analyst-based and often
+    # absurd, and leaving it here when the derivation declines would mix two
+    # definitions in one row (the backtest path yields None there).
     data.return_on_equity = _safe_get(info, "returnOnEquity")
     data.return_on_assets = _safe_get(info, "returnOnAssets")
     data.profit_margin = _safe_get(info, "profitMargins")
@@ -998,13 +1028,11 @@ def _fetch_stock(
         if accel is not None:
             data.eps_acceleration = accel
 
-    # Derived PEG (same rule as `_derive_stock_data`): P/E ÷ growth as a
-    # percentage when both are positive — overrides Yahoo's `pegRatio` so
-    # both sources share one definition (yfinance's peg is analyst-based
-    # and often absurd).
-    if (data.trailing_pe is not None and data.trailing_pe > 0
-            and data.earnings_growth is not None and data.earnings_growth > 0):
-        data.peg_ratio = data.trailing_pe / (data.earnings_growth * 100.0)
+    # Derived PEG — one definition for every source, plausibility bound
+    # included (see _derive_peg).  Assigned unconditionally: when the
+    # division would not be a PEG the field stays None → neutral, never a
+    # different definition.
+    data.peg_ratio = _derive_peg(data.trailing_pe, data.earnings_growth)
 
     # FCF fallback: derive TTM OCF − capex from info when the quarterly
     # cash-flow frame did not provide one.  The ``freeCashflow`` info field

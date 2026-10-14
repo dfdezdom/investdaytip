@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **The derived PEG stops at a growth that is not a rate** — INCY's row read `earnings growth of 3845.0%` next to `PEG of 0.00`. The growth figure is real (FY2024 net income had collapsed to 32.6M — R&D at 61% of revenue and a ~90% effective tax rate — so FY2025's 1.29B is +3845% YoY), but P/E ÷ 3845 is not a PEG: just a number small enough to saturate Value's sub-metric and read as "cheapest possible". The same class of base effect carried INDV +2900%, WTW +1738%, GILD +1673% — 20 of the site's top-100 read a YoY above +100%. `_derive_peg()` now yields `None` — the sub-metric scores neutral — above +100% growth, a doubling being the widest change a PEG can divide by, alongside the existing positive-P/E/positive-growth rules; and the live path no longer leaves yfinance's analyst `pegRatio` in place when the derivation declines (it used to, mixing two definitions in one row where the backtest path had `None`). The growth figure itself stays: it is the real YoY change, and only pretends to be a rate no longer. Validated before/after (full US, top-5, min-cap 0, quant): 5y alpha 8.18% → 10.41%, cumulative 361% → 443%, Sharpe 0.81 → 0.80, drawdown and 12M win unchanged; 3y alpha 10.35% → 14.07%, cumulative 222% → 268%, Sharpe 1.64 → 1.27 over 8 snapshots. The AGENTS *Consider* outcome — alpha up in both windows, the long one never worse anywhere else. Baselines: `stockfit/archivo/baseline-{before,after}-pegbound{5y,3y}.json`. Regression tests: `tests/test_data_source.py` (2 new).
+
 ## v0.17.8 (2026-10-14)
 
 ### Fixes
