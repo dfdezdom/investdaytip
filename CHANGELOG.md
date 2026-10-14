@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## v0.17.8 (2026-10-14)
+
+### Fixes
+
+- **A chart row without a close no longer hides the missing bar** — the 2026-10-13 site run published all 100 rows a session stale ("Data from Oct 13" over Oct-12 prices and metrics) while the quote already carried that session's close in its P/E and market cap: Yahoo's chart served the session as a row with a **NaN close**, and `_append_quote_session()` compared the quote's date against the raw index — the placeholder's date — concluded the provider had the bar and declined to write it. The lag check had a matching blind spot: `regularMarketTime` can arrive as a `datetime` or as a formatted string (yfinance takes `fmt` for exactly that key), and `float()` rejected both into a silent skip of the whole recovery. The gap is now measured against the last bar that carries a **close** — the one every metric reads — the quote's date is parsed in any shape it arrives in (`_quote_timestamp()`), the appended bar prefers `regularMarketPrice` (the session's close) over `currentPrice` (a post-market print once the session is over), and the frame is re-sorted after the write so a placeholder past the new bar cannot become "the last bar" again. Regression tests: `tests/test_data_source.py` (3 new).
+
+## v0.17.7 (2026-10-13)
 
 ### Changes
 
@@ -9,11 +15,10 @@
 
 ### Docs
 
-- **The README says what the CLI says** — it still showed the advisor answering `Signal: 🟡 HOLD — selective buying`, a signal and an instruction the CLI stopped printing in 0.17.6; it described pick lists and "Number of picks to show" where `--help` says candidates, "Model picks", "Top N picks per snapshot" and consensus picks; and its disclaimer promised `buy/hold/sell labels` the output has not carried since the bands and postures replaced them. The advisor agent's tables followed: `Preferred sectors` became the model's sector map, and the Fear & Greed "contrarian entry signal" a contrarian reading. Rename `Unreleased` to the version at release time.
+- **The README says what the CLI says** — it still showed the advisor answering `Signal: 🟡 HOLD — selective buying`, a signal and an instruction the CLI stopped printing in 0.17.6; it described pick lists and "Number of picks to show" where `--help` says candidates, "Model picks", "Top N picks per snapshot" and consensus picks; and its disclaimer promised `buy/hold/sell labels` the output has not carried since the bands and postures replaced them. The advisor agent's tables followed: `Preferred sectors` became the model's sector map, and the Fear & Greed "contrarian entry signal" a contrarian reading.
 
 ### Fixes
 
-- **A chart row without a close no longer hides the missing bar** — the 2026-10-13 site run published all 100 rows a session stale ("Data from Oct 13" over Oct-12 prices and metrics) while the quote already carried that session's close in its P/E and market cap: Yahoo's chart served the session as a row with a **NaN close**, and `_append_quote_session()` compared the quote's date against the raw index — the placeholder's date — concluded the provider had the bar and declined to write it. The lag check had a matching blind spot: `regularMarketTime` can arrive as a `datetime` or as a formatted string (yfinance takes `fmt` for exactly that key), and `float()` rejected both into a silent skip of the whole recovery. The gap is now measured against the last bar that carries a **close** — the one every metric reads — the quote's date is parsed in any shape it arrives in (`_quote_timestamp()`), the appended bar prefers `regularMarketPrice` (the session's close) over `currentPrice` (a post-market print once the session is over), and the frame is re-sorted after the write so a placeholder past the new bar cannot become "the last bar" again. Regression tests: `tests/test_data_source.py` (3 new).
 - **Earnings growth no longer shows inflated analyst estimates** — the live yfinance path was overwriting the statement-derived YoY earnings growth with yfinance's `info["earningsGrowth"]`, which is an analyst estimate and often wildly inflated (e.g., 3845% for INCY). Now the statement-derived growth (actual YoY net income change) is kept when statements are available; the analyst estimate is only used as a fallback when statements are missing. This fixes the "earnings growth of 3845%" rationale entries and the PEG calculation which uses the same field.
 
 ## v0.17.6 (2026-10-09)
