@@ -673,6 +673,21 @@ class TestHistoryLagsQuote:
         assert _history_lags_quote({}, history) is False
         assert _history_lags_quote({"regularMarketTime": "soon"}, history) is False
 
+    def test_the_quote_date_is_read_in_every_shape_it_arrives_in(self):
+        # yfinance serves epoch seconds, but the same key has also arrived as
+        # a datetime and as a formatted string (its scraper takes ``fmt`` for
+        # exactly this key).  A silent skip on an unparseable date is what
+        # left the 2026-10-13 rows a session stale: the quote carried the
+        # close in its P/E and market cap while the chart kept Oct-12 bars.
+        history = _session_history("2026-10-05")
+        for raw in (
+            _quote_epoch("2026-10-06 20:00"),
+            pd.Timestamp("2026-10-06 20:00", tz="UTC").to_pydatetime(),
+            "2026-10-06T20:00:00+00:00",
+            "2026-10-06 20:00:00",  # naive: the pipeline reads it as UTC
+        ):
+            assert _history_lags_quote({"regularMarketTime": raw}, history) is True
+
     def test_empty_history_never_lags(self):
         info = {"regularMarketTime": _quote_epoch("2026-10-06 20:00")}
 
@@ -720,6 +735,45 @@ class TestAppendQuoteSession:
         assert out.index[-1].date().isoformat() == "2026-10-06"
         assert float(out["Close"].iloc[-1]) == pytest.approx(209.92)
         assert float(out["Close"].iloc[-2]) == float(history["Close"].iloc[-1])
+
+    def test_a_close_less_placeholder_is_not_the_missing_bar(self):
+        # 2026-10-13 regression: Yahoo's chart carried the missing session as
+        # a row with a NaN close.  That placeholder is not "the provider has
+        # the bar" — the quote's close fills the session instead of the run
+        # publishing the previous one (all 100 rows shipped that way).
+        history = _session_history("2026-10-12")
+        placeholder = pd.DataFrame(
+            {"Close": [float("nan")]},
+            index=history.index[-1:] + pd.Timedelta(1, unit="D"),
+        )
+        history = pd.concat([history, placeholder])
+        info = {
+            "regularMarketTime": _quote_epoch("2026-10-13 20:00"),
+            "regularMarketPrice": 108.62,
+        }
+
+        out = _append_quote_session(info, history)
+
+        assert out is not None
+        assert out.index[-1].date().isoformat() == "2026-10-13"
+        assert float(out["Close"].iloc[-1]) == pytest.approx(108.62)
+        assert list(out.index) == sorted(out.index)  # never leaves it unsorted
+
+    def test_the_regular_close_is_appended_not_the_last_trade(self):
+        # After the close ``currentPrice`` can be a post-market print; the bar
+        # being written is the session's close, the same kind of number every
+        # other bar in the series is.
+        history = _session_history("2026-10-05")
+        info = {
+            "regularMarketTime": _quote_epoch("2026-10-06 20:00"),
+            "regularMarketPrice": 209.92,
+            "currentPrice": 212.50,
+        }
+
+        out = _append_quote_session(info, history)
+
+        assert out is not None
+        assert float(out["Close"].iloc[-1]) == pytest.approx(209.92)
 
     def test_weekend_gap_lands_on_the_quote_session(self):
         # Friday's bar, Monday's quote: the row goes to Monday, not to Sunday.
@@ -908,6 +962,39 @@ def test_fetch_asset_appends_the_quote_when_the_provider_is_still_stale(
     assert result.daily_change == pytest.approx(
         209.92 / float(stale["Close"].iloc[-1]) - 1
     )
+
+
+def test_fetch_asset_recovers_the_quote_session_over_a_close_less_placeholder(
+    mocker, stock_info
+):
+    # The 2026-10-13 site run end to end: the chart carried the session as a
+    # NaN-close row (twice), the quote already priced off that session's
+    # close.  The row must land on the quote's session — price 108.62, dated
+    # Oct-13 — never on the one behind, with its P/E and market cap mixed in.
+    stock_info["regularMarketTime"] = _quote_epoch("2026-10-13 20:00")
+    stock_info["regularMarketPrice"] = 108.62
+    stale = _session_history("2026-10-12")
+    stale = pd.concat(
+        [
+            stale,
+            pd.DataFrame(
+                {"Close": [float("nan")]},
+                index=stale.index[-1:] + pd.Timedelta(1, unit="D"),
+            ),
+        ]
+    )
+    mock = MagicMock()
+    mock.info = stock_info
+    mock.history.side_effect = [stale, stale]
+    mock.dividends = pd.Series(dtype=float)
+    mock.earnings_dates = pd.DataFrame()
+    mocker.patch("investdaytip.data_source.yf.Ticker", return_value=mock)
+
+    result = fetch_asset("PLACEHOLDER")
+
+    assert mock.history.call_count == 2  # one recovery fetch, still stale
+    assert result.session_date == "2026-10-13"
+    assert result.current_price == pytest.approx(108.62)
 
 
 def test_fetch_asset_keeps_the_stale_session_without_a_quote_price(

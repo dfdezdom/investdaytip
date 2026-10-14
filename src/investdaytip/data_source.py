@@ -398,6 +398,44 @@ def _technical_indicators(
     return rsi, hist_pct
 
 
+def _quote_timestamp(info: dict) -> Optional[pd.Timestamp]:
+    """The quote's own last-trade instant (UTC), or ``None``.
+
+    yfinance serves ``regularMarketTime`` as epoch seconds, but the same key
+    has also arrived as a ``datetime`` and as a formatted string (the scraper
+    takes ``fmt`` for exactly this key).  Every parseable shape is accepted
+    because the alternative — a silent skip — is what let the 2026-10-13 site
+    run publish 100 rows a session stale: the quote carried that session's
+    close (its P/E and market cap priced off it) while an unparseable
+    ``regularMarketTime`` quietly ended the quote-vs-chart comparison, so the
+    lag was never noticed and the chart's Oct-12 bars were published as "the
+    last closed session".
+    """
+    raw = info.get("regularMarketTime")
+    if raw is None:
+        return None
+    try:
+        epoch = float(raw)
+    except (TypeError, ValueError):
+        epoch = None
+    if epoch is not None:
+        if not math.isfinite(epoch):
+            return None
+        try:
+            return pd.Timestamp(epoch, unit="s", tz="UTC")
+        except (ValueError, OverflowError, OSError):
+            return None
+    try:
+        ts = pd.Timestamp(raw)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+    if ts is pd.NaT:
+        return None
+    # The pipeline's convention: an instant without a zone is UTC (the same
+    # reading the cache round-trip's naive index gets).
+    return ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+
+
 def _history_lags_quote(info: dict, history: pd.DataFrame) -> bool:
     """True when *history*'s last bar belongs to an earlier session than the quote.
 
@@ -420,12 +458,8 @@ def _history_lags_quote(info: dict, history: pd.DataFrame) -> bool:
     close = history["Close"].dropna()
     if close.empty:
         return False
-    raw = info.get("regularMarketTime")
-    if raw is None:
-        return False
-    try:
-        quote_ts = pd.Timestamp(float(raw), unit="s", tz="UTC")
-    except (TypeError, ValueError, OverflowError, OSError):
+    quote_ts = _quote_timestamp(info)
+    if quote_ts is None:
         return False
     if _quote_session_open(quote_ts):
         return False
@@ -466,19 +500,29 @@ def _append_quote_session(
     """
     if history is None or history.empty or "Close" not in history:
         return None
+    # The bar being written is a session **close**: ``regularMarketPrice`` is
+    # the regular session's last price, while ``currentPrice`` can be a
+    # post-market print once the session is over — and the series' other bars
+    # are closes.
     price = _first(
-        _safe_get(info, "currentPrice"), _safe_get(info, "regularMarketPrice")
+        _safe_get(info, "regularMarketPrice"), _safe_get(info, "currentPrice")
     )
     if price is None or not math.isfinite(price) or price <= 0:
         return None
-    raw = info.get("regularMarketTime")
-    if raw is None:
+    quote_ts = _quote_timestamp(info)
+    if quote_ts is None:
         return None
-    try:
-        quote_ts = pd.Timestamp(float(raw), unit="s", tz="UTC")
-    except (TypeError, ValueError, OverflowError, OSError):
+    # The gap is measured against the last bar that carries a **close** — the
+    # one every metric reads.  A trailing row with a NaN close (Yahoo's chart
+    # mid-rebuild) is not the provider "having" the session: comparing on the
+    # raw index let that placeholder stand in for the missing bar, the quote's
+    # close was never appended, and the run published the previous session
+    # (2026-10-13: all 100 rows, price and metrics a session behind a quote
+    # that already carried the close in its P/E and market cap).
+    close = history["Close"].dropna()
+    if close.empty:
         return None
-    last = history.index[-1]
+    last = close.index[-1]
     if not isinstance(last, pd.Timestamp):
         return None
     tz = last.tz if getattr(last, "tz", None) is not None else "UTC"
@@ -495,7 +539,10 @@ def _append_quote_session(
     out = history.copy()
     out.loc[ts] = {col: float(price) if col == "Close" else float("nan")
                    for col in out.columns}
-    return out
+    # ``loc`` on a new label appends at the end whatever the order: with a
+    # placeholder row past *ts* the index would end unsorted and "the last
+    # bar" would point at a bar without a close again.
+    return out.sort_index()
 
 
 #: The exchange's own clock: a daily bar is only final after the 16:00 New
