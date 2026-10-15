@@ -1121,7 +1121,9 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 console.print(f"[yellow]No {label} candidates found — showing all.[/yellow]")
 
     if new_results:
-        _render(new_results, console, include_superinvestor=args.superinvestor, include_technical=args.include_technical)
+        # disclaimer=False: the flow goes on printing (HTML report, macro
+        # note) and closes with the disclaimer itself — see _render.
+        _render(new_results, console, include_superinvestor=args.superinvestor, include_technical=args.include_technical, disclaimer=False)
         Path("advisor_recommendations").mkdir(parents=True, exist_ok=True)
         dest = f"advisor_recommendations/recommendations_advisor_{datetime.now():%Y%m%d-%H%M}.html"
         try:

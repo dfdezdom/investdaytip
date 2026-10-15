@@ -147,6 +147,34 @@ def test_rankings_table_drops_the_buy_recommendations_wording():
     assert "not investment advice" in out
 
 
+def test_table_render_yields_the_disclaimer_when_the_flow_closes_with_it():
+    """One disclaimer per output, never twice. A flow that goes on printing
+    after the table (the advisor: HTML-report line, macro note) closes with
+    the disclaimer itself and passes ``disclaimer=False`` — the advisor used
+    to show it under the table and again at the end (2026-10-15)."""
+    buf = io.StringIO()
+    _render([_scored()], Console(file=buf, force_terminal=False, width=200))
+    assert buf.getvalue().count("Disclaimer:") == 1
+
+    buf = io.StringIO()
+    _render(
+        [_scored()],
+        Console(file=buf, force_terminal=False, width=200),
+        disclaimer=False,
+    )
+    assert buf.getvalue().count("Disclaimer:") == 0
+
+
+def test_the_advisor_closes_with_a_single_disclaimer():
+    """The advisor flow ends with the disclaimer (after its last analysis
+    line) and stops the table renderer from printing its own."""
+    from investdaytip import advisor
+
+    src = Path(advisor.__file__).read_text()
+    assert src.count("{DISCLAIMER_CLI}") == 1  # the single closing print
+    assert "disclaimer=False" in src
+
+
 def test_recommendations_report_carries_the_disclaimer(tmp_path: Path):
     out = tmp_path / "report.html"
     export_recommendations_html(

@@ -219,7 +219,14 @@ def _session_note(results: list[ScoredAsset]) -> str | None:
     )
 
 
-def _render(results: list[ScoredAsset], console: Console, include_superinvestor: bool = False, include_technical: bool = False) -> None:
+def _render(results: list[ScoredAsset], console: Console, include_superinvestor: bool = False, include_technical: bool = False, disclaimer: bool = True) -> None:
+    """Print the ratings table.
+
+    ``disclaimer=False`` for a flow that goes on printing after the table and
+    closes with the disclaimer itself — one per output, never twice (the
+    advisor used to show it under the table and again at the end, with its
+    HTML-report line and macro note in between).
+    """
     if not results:
         logger.error("No candidates could be scored.")
         console.print("[red]No candidates could be scored.[/red]")
@@ -287,7 +294,8 @@ def _render(results: list[ScoredAsset], console: Console, include_superinvestor:
 
     console.print(table)
     console.print(f"\n[dim]Breakdown legend — {_breakdown_legend(results)}[/dim]")
-    console.print(f"\n{DISCLAIMER_CLI}")
+    if disclaimer:
+        console.print(f"\n{DISCLAIMER_CLI}")
 
 
 def _fetch_report_insights(results: list[ScoredAsset], console: Console) -> dict[str, FundamentalInsights]:

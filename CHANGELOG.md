@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **The disclaimer appears once per output** — the advisor's terminal output showed it twice: the shared table renderer closes with it, and the advisor printed it again at the end of its flow, with its HTML-report line and the macro note in between (2026-10-15). `_render()` now takes `disclaimer=False` for a flow that goes on printing and closes with the disclaimer itself — one per output: never zero, never twice. Tests: `tests/test_disclaimer.py` (2 new).
+
 ## v0.17.11 (2026-10-15)
 
 ### Changes

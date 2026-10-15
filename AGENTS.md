@@ -654,7 +654,10 @@ older ones, so both would fail their own rules.
   report templates). A new CLI subcommand or export that renders analysis must
   print/inline it; do not write the wording locally. The reports carry their own
   footer because a file outlives the terminal scrollback that showed the
-  closing line.
+  closing line. **Once per output, never twice**: a flow that prints after the
+  table renderer closes with the disclaimer itself and passes
+  `disclaimer=False` to `_render()` (the advisor showed it under the table and
+  again at the end, 2026-10-15).
 - **Adjectives are for the reader to infer.** Backtest interpretation states the
   figure (`Beat the benchmark in 62% of 12-month periods.`) — no `Consistent` /
   `Weak` / `Near-random` on top of it. Negative model flags keep their wording
