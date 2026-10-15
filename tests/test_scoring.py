@@ -65,7 +65,8 @@ def test_growth_note_states_the_rate_when_the_yoy_is_not_one():
     s = score_stock(data, model="quant")
 
     assert (
-        "earnings growth of +46.7% CAGR 2Y (YoY +3845.0% off a low prior-year base)"
+        "earnings growth of +46.7% a year over 2 years "
+        "(+3845.0% in the latest year alone, inflated by an unusually low prior year)"
         in s.rationale
     )
 
@@ -78,7 +79,7 @@ def test_growth_note_labels_the_yoy_when_no_rate_can_be_stated():
 
     s = score_stock(data, model="quant")
 
-    assert "earnings growth of 3845.0% (YoY off a low prior-year base)" in s.rationale
+    assert "earnings growth of 3845.0% (inflated by an unusually low prior year)" in s.rationale
     assert "CAGR" not in " ".join(s.rationale)
 
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.17.11 (2026-10-15)
+
+### Changes
+
+- **The growth note drops its jargon** — the 0.17.10 wording (`earnings growth of +46.7% CAGR 2Y (YoY +3845.0% off a low prior-year base)`) read as three pieces of financial shorthand to the very reader the note exists for ("¿qué significa YoY off a low prior-year base?", 2026-10-15). It now says the same thing in words: `earnings growth of +46.7% a year over 2 years (+3845.0% in the latest year alone, inflated by an unusually low prior year)`, and the no-rate variant labels the figure outright: `earnings growth of +3845.0% (inflated by an unusually low prior year)`. Figures and scoring unchanged — only the wording. Tests: `tests/test_scoring.py` (expectations updated).
+
 ## v0.17.10 (2026-10-15)
 
 ### Changes

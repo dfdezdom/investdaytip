@@ -53,20 +53,23 @@ def _earnings_growth_note(growth: float, cagr_2y: Optional[float]) -> str:
     The YoY change is a *rate* only for moderate values: past
     ``_PEG_MAX_GROWTH`` the figure is a base effect (INCY — a collapsed
     FY2024 made FY2025 read +3845%), and the note must not pass it off as
-    one.  The 2-year CAGR of net income then carries the figure, with the
-    raw YoY alongside as the fact it is; with no CAGR to state (the two
-    endpoints are not both positive) the YoY is labelled instead of
-    dropped.  Display only — the scoring never reads the CAGR.
+    one.  The 2-year rate then carries the figure, and the raw YoY stays
+    alongside as the fact it is; with no rate to state (the two endpoints
+    are not both positive) the YoY is labelled instead of dropped.  Plain
+    wording throughout — no CAGR/YoY jargon, since the reader this note
+    exists for could not parse "YoY off a low prior-year base" (2026-10-15).
+    Display only — the scoring never reads the CAGR.
     """
     pct = growth * 100
     if growth <= _PEG_MAX_GROWTH:
         return f"earnings growth of {pct:.1f}%"
     if cagr_2y is not None:
         return (
-            f"earnings growth of {cagr_2y * 100:+.1f}% CAGR 2Y "
-            f"(YoY {pct:+.1f}% off a low prior-year base)"
+            f"earnings growth of {cagr_2y * 100:+.1f}% a year over 2 years "
+            f"({pct:+.1f}% in the latest year alone, inflated by an unusually "
+            f"low prior year)"
         )
-    return f"earnings growth of {pct:.1f}% (YoY off a low prior-year base)"
+    return f"earnings growth of {pct:.1f}% (inflated by an unusually low prior year)"
 
 STOCK_WEIGHTS_CLASSIC = {
     "quality": 0.35,
