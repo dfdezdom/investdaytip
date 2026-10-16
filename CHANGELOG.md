@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.17.13 (2026-10-16)
+
+### Changes
+
+- **The advisor accepts `--data-source stockfit`** — `main.py`'s subparser allowed the choice but `advisor_main()`'s own parser rejected it with `invalid choice`, so `investdaytip advisor --data-source stockfit` exited before doing anything. The advisor now gates StockFit the same way (fail-fast on a missing `STOCKFIT_API_KEY`, on a plan below Starter via the `live_source` capability, and on `-a etfs`), forces its interactive defaults to US stocks, and drains the aggregated fallback notices after `portfolio_review()`/`recommend()` so a per-ticker yfinance fallback cannot print over the progress bar. Tests: `tests/test_advisor.py` (4 new), `tests/test_main.py` (1 new).
+- **The macro pulse carries a 30-day SEC corporate pulse** — `macro_regime()` gains a `corporate_pulse` key fed by a new `fetch_market_pulse()`: three Free-tier `filings/latest` feeds (registration effectiveness notices `EFFECT`, 8-K `restructuring` Item 2.05, 8-K `bankruptcy` Item 1.03) that historically preceded bubble bursts, rendered as a `SEC Filings (30d)` row in the advisor's Market Analysis table and printed by the advisor agent's quick-pulse snippet. It never raises, never fabricates, and makes **zero** network calls without `STOCKFIT_API_KEY` — the key is optional and the row/`corporate_pulse` is simply `None` without it, cached 1 hour (`_global:stockfit_market_pulse`). New `market_pulse` capability (`free`) in `CAPABILITIES` and the `stockfit-status` matrix. Tests: `tests/test_advisor.py` (3 new), `tests/test_stockfit_plan.py` (matrix).
+- **The Market Analysis labels state what the score charges** — the table contradicted the formula it reports from: `10Y-2Y` read `normal` while a 0–0.5% spread deducted 5 points (now `(flat)`, plus `(steep)` above 1%); `DXY` read `(neutral)` while 100–105 deducted 5 (now `(firm)`, `(neutral)` moved to 95–100); the Fear & Greed row and its seven sub-indicators used the composite's contrarian semaphore, so a CNN component reading of 2.4 (*Extreme fear* = max stress) printed a green `🟢` (now direct: `🔴` < 25 … `🟢` ≥ 76, and the composite row says `(contrarian)` when the tilt applies). No scoring change — presentation only.
+
 ## v0.17.12 (2026-10-15)
 
 ### Fixes
