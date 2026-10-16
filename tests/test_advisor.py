@@ -98,9 +98,11 @@ class TestMacroRegime:
             return vals.get(ticker)
         mocker.patch("investdaytip.advisor._fetch_index", side_effect=_fetch)
         mocker.patch("investdaytip.advisor._fetch_trend", return_value=None)
+        mocker.patch("investdaytip.advisor.fear_greed_index", return_value=None)
         r = advisor.macro_regime()
         assert r["regime"] == "healthy"
         assert r["score"] >= 70
+        assert r["corporate_pulse"] is None
 
     def test_danger_inverted_curve(self, mocker):
         """Inverted yield curve + high VIX + high MOVE -> danger."""
@@ -116,6 +118,7 @@ class TestMacroRegime:
             return vals.get(ticker)
         mocker.patch("investdaytip.advisor._fetch_index", side_effect=_fetch)
         mocker.patch("investdaytip.advisor._fetch_trend", return_value=None)
+        mocker.patch("investdaytip.advisor.fear_greed_index", return_value=None)
         r = advisor.macro_regime()
         assert r["regime"] == "danger"
         assert r["score"] < 25
@@ -134,6 +137,7 @@ class TestMacroRegime:
             return vals.get(ticker)
         mocker.patch("investdaytip.advisor._fetch_index", side_effect=_fetch)
         mocker.patch("investdaytip.advisor._fetch_trend", return_value=None)
+        mocker.patch("investdaytip.advisor.fear_greed_index", return_value=None)
         r = advisor.macro_regime()
         assert r["regime"] == "warning"
         assert 25 <= r["score"] < 45
@@ -292,3 +296,127 @@ class TestAdvisorMain:
             include_technical=True, data_source="yfinance",
         )
         html_mock.assert_called_once()
+
+    def test_stockfit_requires_api_key(self, monkeypatch):
+        monkeypatch.delenv("STOCKFIT_API_KEY", raising=False)
+        rc = advisor.advisor_main(["--data-source", "stockfit", "-a", "stocks", "-r", "us"])
+        assert rc == 1
+
+    def test_stockfit_requires_starter_plan(self, mocker, monkeypatch):
+        monkeypatch.setenv("STOCKFIT_API_KEY", "k")
+        mocker.patch("investdaytip.data_source_stockfit.detect_plan", return_value="free")
+        rc = advisor.advisor_main(["--data-source", "stockfit", "-a", "stocks", "-r", "us"])
+        assert rc == 1
+
+    def test_stockfit_rejects_etfs(self, monkeypatch):
+        monkeypatch.setenv("STOCKFIT_API_KEY", "k")
+        rc = advisor.advisor_main(["--data-source", "stockfit", "-a", "etfs", "-r", "us"])
+        assert rc == 1
+
+    def test_stockfit_forwards_data_source(self, mocker, monkeypatch, tmp_path):
+        monkeypatch.setenv("STOCKFIT_API_KEY", "k")
+        mocker.patch("investdaytip.data_source_stockfit.detect_plan", return_value="starter")
+        p = tmp_path / "portfolio.txt"
+        p.write_text("AAPL\n")
+
+        mocker.patch("investdaytip.advisor.macro_regime", return_value={
+            "vix": {"vix": 15.0, "vxn": 18.0, "regime": "bullish"},
+            "vix_trend": None,
+            "yield": {"y10": 4.5, "y2": 4.0, "spread": 0.5},
+            "move": 80.0, "move_trend": None,
+            "dxy": 100.0, "dxy_trend": None,
+            "fear_greed": {"score": 50.0, "rating": "neutral"},
+            "regime": "healthy", "label": "Healthy", "score": 75,
+            "action": "buy", "description": "Favorable conditions.",
+            "preferred_sectors": ["Technology"],
+        })
+        mocker.patch("investdaytip.advisor.bubble_risk", return_value={
+            "level": "low", "pct_rank": 45.0, "note": "Normal volatility.",
+        })
+        port_mock = mocker.patch("investdaytip.advisor.portfolio_review", return_value={
+            "count": 1,
+            "results": [],
+            "weak_positions": [],
+            "moderate_positions": [],
+            "strong_positions": [],
+            "sectors": ["Technology"],
+        })
+        rec_mock = mocker.patch("investdaytip.advisor.recommend", return_value=[])
+        mocker.patch("investdaytip.advisor.Path.mkdir")
+
+        rc = advisor.advisor_main([
+            "--portfolio", str(p),
+            "--risk", "moderate",
+            "--data-source", "stockfit",
+            "-a", "stocks",
+            "-r", "us",
+            "-c", "USD",
+        ])
+
+        assert rc == 0
+        port_mock.assert_called_once_with(str(p), None, "quant", True, "stockfit")
+        rec_mock.assert_called_once_with(
+            asset_class="stocks", region=["us"], top_n=11,
+            currency=["USD"], min_market_cap=None,
+            sector=None, scoring_model="quant",
+            include_technical=True, data_source="stockfit",
+        )
+
+
+class TestMarketPulseStockfit:
+    """Optional StockFit 30-day SEC corporate pulse in macro_regime()."""
+
+    def test_fetch_market_pulse_without_key_returns_none(self, mocker, monkeypatch):
+        from investdaytip.data_source_stockfit import fetch_market_pulse
+
+        monkeypatch.delenv("STOCKFIT_API_KEY", raising=False)
+        get_mock = mocker.patch("investdaytip.data_source_stockfit._get")
+        assert fetch_market_pulse() is None
+        get_mock.assert_not_called()
+
+    def test_fetch_market_pulse_with_key_parses_and_caches(
+        self, enabled_temp_cache, mocker, monkeypatch
+    ):
+        from investdaytip.data_source_stockfit import fetch_market_pulse
+
+        monkeypatch.setenv("STOCKFIT_API_KEY", "k")
+        mocker.patch("investdaytip.data_source_stockfit._ensure_plan_rate")
+
+        def fake_get(path, params=None, **_kw):
+            assert path == "filings/latest"
+            p = params or {}
+            if p.get("type") == "EFFECT":
+                return {
+                    "totalResults": 304,
+                    "data": [{"symbol": "GEMI"}, {"symbol": "IAM"}, {"symbol": "GEMI"}],
+                }
+            if p.get("event") == "restructuring":
+                return {"totalResults": 20, "data": [{"symbol": "FICO"}]}
+            if p.get("event") == "bankruptcy":
+                return {"totalResults": 6, "data": [{"symbol": "GNLN"}]}
+            raise AssertionError(f"unexpected params: {p}")
+
+        get_mock = mocker.patch("investdaytip.data_source_stockfit._get", side_effect=fake_get)
+        first = fetch_market_pulse()
+        assert first == {
+            "ipo_registrations_30d": 304,
+            "ipo_tickers": ["GEMI", "IAM"],
+            "restructurings_30d": 20,
+            "restructuring_tickers": ["FICO"],
+            "bankruptcies_30d": 6,
+            "bankruptcy_tickers": ["GNLN"],
+        }
+        second = fetch_market_pulse()
+        assert second == first
+        assert get_mock.call_count == 3  # second call served from 1h cache
+
+    def test_fetch_market_pulse_degrades_on_error(self, mocker, monkeypatch):
+        from investdaytip.data_source_stockfit import StockfitError, fetch_market_pulse
+
+        monkeypatch.setenv("STOCKFIT_API_KEY", "k")
+        mocker.patch("investdaytip.data_source_stockfit._ensure_plan_rate")
+        mocker.patch(
+            "investdaytip.data_source_stockfit._get",
+            side_effect=StockfitError("down"),
+        )
+        assert fetch_market_pulse() is None

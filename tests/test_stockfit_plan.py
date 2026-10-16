@@ -81,6 +81,7 @@ def test_detect_plan_unknown_on_network_error(mocker, monkeypatch):
 def test_plan_allows_matrix():
     assert plan_allows("free", "pit_statements")
     assert plan_allows("free", "fundamental_insights")
+    assert plan_allows("free", "market_pulse")
     assert not plan_allows("free", "deep_dive_summary")
     assert not plan_allows("free", "footnotes_segments")
     assert plan_allows("starter", "deep_dive_summary")
@@ -91,6 +92,7 @@ def test_plan_allows_matrix():
     assert plan_allows("pro", "footnotes")
     assert plan_allows("none", "pit_statements")  # snapshot path needs no key
     assert not plan_allows("none", "fundamental_insights")  # needs any key
+    assert not plan_allows("none", "market_pulse")  # needs any key
     assert not plan_allows("none", "deep_dive_summary")
     # an undetected plan never blocks a feature (degrade at the fetch)
     assert plan_allows("unknown", "footnotes")

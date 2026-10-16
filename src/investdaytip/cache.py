@@ -345,6 +345,20 @@ def cache_stockfit_info_set(ticker: str, info_json: str) -> None:
     get_db().set(_cache_key(ticker, "stockfit_info"), info_json, TTL_FUNDAMENTALS)
 
 
+def cache_stockfit_market_pulse_get() -> str | None:
+    """Return cached StockFit 30-day SEC market pulse JSON string or None."""
+    if not enabled:
+        return None
+    return get_db().get(_cache_key("_global", "stockfit_market_pulse"))
+
+
+def cache_stockfit_market_pulse_set(pulse_json: str) -> None:
+    """Store StockFit 30-day SEC market pulse JSON string with 1-hour TTL."""
+    if not enabled:
+        return
+    get_db().set(_cache_key("_global", "stockfit_market_pulse"), pulse_json, TTL_SENTIMENT)
+
+
 def clear_cache() -> None:
     """Purge all cached data."""
     get_db().clear()

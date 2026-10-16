@@ -58,6 +58,8 @@ from investdaytip.cache import (
     cache_stockfit_info_set,
     cache_stockfit_insights_get,
     cache_stockfit_insights_set,
+    cache_stockfit_market_pulse_get,
+    cache_stockfit_market_pulse_set,
     cache_stockfit_plan_get,
     cache_stockfit_plan_set,
     cache_stockfit_research_get,
@@ -139,6 +141,7 @@ PLAN_ORDER: dict[str, int] = {
 CAPABILITIES: dict[str, Optional[str]] = {
     "pit_statements": None,          # backtest --pit-source stockfit + snapshot
     "fundamental_insights": "free",  # --fundamental-insights charts (any key)
+    "market_pulse": "free",          # advisor 30d SEC filings pulse (filings/latest)
     "deep_dive_summary": "starter",  # company/research-summary
     "economic_model": "stock",       # company/economic-model
     "footnotes": "pro",              # footnotes/* — rich devil's advocate
@@ -1546,3 +1549,72 @@ def _load_stockfit_info(
         _safe_float(payload.get("dividend_per_share")),
         (ttm if isinstance(ttm, dict) else None),
     )
+
+
+# ── Advisor 30-day SEC corporate pulse (`filings/latest`) ───────────────────
+
+_PULSE_QUERIES: tuple[tuple[str, str, dict[str, str]], ...] = (
+    ("ipo_registrations_30d", "ipo_tickers", {"type": "EFFECT", "pageSize": "5"}),
+    ("restructurings_30d", "restructuring_tickers", {"event": "restructuring", "pageSize": "5"}),
+    ("bankruptcies_30d", "bankruptcy_tickers", {"event": "bankruptcy", "pageSize": "5"}),
+)
+
+
+def fetch_market_pulse() -> Optional[dict[str, Any]]:
+    """Best-effort 30-day SEC EDGAR corporate pulse for ``advisor.macro_regime``.
+
+    Queries three Free-tier ``filings/latest`` feeds (registration
+    effectiveness notices ``EFFECT``, 8-K ``restructuring`` Item 2.05, and
+    8-K ``bankruptcy`` Item 1.03).  **Never raises** and makes **zero** network
+    calls when ``STOCKFIT_API_KEY`` is unset: returns ``None`` so callers
+    degrade silently when StockFit is not configured.  Cached for 1 hour when
+    all three feeds succeed.
+    """
+    if not os.environ.get("STOCKFIT_API_KEY"):
+        return None
+
+    cached = cache_stockfit_market_pulse_get()
+    if cached is not None:
+        try:
+            payload = json.loads(cached)
+            if isinstance(payload, dict):
+                return payload
+        except (TypeError, ValueError):
+            logger.debug("Corrupt StockFit market pulse cache")
+
+    _ensure_plan_rate()
+    pulse: dict[str, Any] = {}
+    failures = 0
+    for count_key, tickers_key, params in _PULSE_QUERIES:
+        try:
+            raw = _get("filings/latest", params)
+        except StockfitError as exc:
+            logger.debug("StockFit filings/latest (%s) failed: %s", params, exc)
+            failures += 1
+            continue
+        if not isinstance(raw, dict):
+            failures += 1
+            continue
+        total = raw.get("totalResults")
+        if not isinstance(total, int) or isinstance(total, bool):
+            failures += 1
+            continue
+        raw_data = raw.get("data")
+        rows = raw_data if isinstance(raw_data, list) else []
+        symbols: list[str] = []
+        for row in rows:
+            if isinstance(row, dict):
+                sym = row.get("symbol")
+                if isinstance(sym, str) and sym.strip() and sym not in symbols:
+                    symbols.append(sym.strip())
+        pulse[count_key] = total
+        pulse[tickers_key] = symbols[:5]
+
+    if not pulse:
+        return None
+    if failures == 0:
+        try:
+            cache_stockfit_market_pulse_set(json.dumps(pulse))
+        except (TypeError, ValueError):
+            logger.debug("Could not cache StockFit market pulse")
+    return pulse

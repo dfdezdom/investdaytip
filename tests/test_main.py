@@ -123,3 +123,13 @@ def test_advisor_subcommand_accepts_no_include_technical(mocker):
     rc = main(["advisor", "--data-source", "yahooquery", "--no-include-technical"])
     assert rc == 0
     fake.assert_called_once_with(["--data-source", "yahooquery", "--no-include-technical"])
+
+
+def test_advisor_subcommand_accepts_stockfit_data_source(mocker):
+    import investdaytip.advisor as adv
+    from investdaytip.main import main
+
+    fake = mocker.patch.object(adv, "advisor_main", return_value=0)
+    rc = main(["advisor", "--data-source", "stockfit", "-a", "stocks", "-r", "us"])
+    assert rc == 0
+    fake.assert_called_once_with(["--data-source", "stockfit", "-a", "stocks", "-r", "us"])

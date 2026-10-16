@@ -25,11 +25,12 @@ from yfinance.exceptions import YFRateLimitError
 
 from investdaytip import cache as cache_mod
 from investdaytip.data_source import _suppress_stderr
+from investdaytip.data_source_stockfit import fetch_market_pulse
 from investdaytip.dataroma import fetch_superinvestor_universe, get_superinvestor_data
 from investdaytip.disclaimer import DISCLAIMER_CLI
 from investdaytip.html_export import export_recommendations_html
 from investdaytip.main import _load_tickers_from_file, _parse_min_market_cap, _render
-from investdaytip.recommender import recommend
+from investdaytip.recommender import recommend, take_fallback_notices
 from investdaytip.scoring import resolve_include_technical
 from investdaytip.sentiment import fear_greed_index
 
@@ -355,6 +356,7 @@ def macro_regime() -> dict:
         "danger":    ["Utilities", "Healthcare", "Consumer Staples", "Cash"],
     }
     preferred_sectors = _rotation_map.get(regime, [])
+    corporate_pulse = fetch_market_pulse()
 
     return {
         "score": score,
@@ -371,6 +373,7 @@ def macro_regime() -> dict:
         "dxy_trend": dxy_trend,
         "fear_greed": fg,
         "preferred_sectors": preferred_sectors,
+        "corporate_pulse": corporate_pulse,
     }
 
 
@@ -682,8 +685,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
                         help="Minimum market cap (default: 0 with tickers, 2B otherwise).")
     parser.add_argument("-s", "--sector", type=str, default=None,
                         help="Filter by sector (case-insensitive).")
-    parser.add_argument("--data-source", choices=["yfinance", "yahooquery", "fmp"], default="yfinance",
-                        help="Data source (default: yfinance). yahooquery uses Yahoo's internal API (faster, more stable). FMP requires FMP_API_KEY env var.")
+    parser.add_argument("--data-source", choices=["yfinance", "yahooquery", "fmp", "stockfit"], default="yfinance",
+                        help="Data source (default: yfinance). yahooquery uses Yahoo's internal API (faster, more stable). FMP requires FMP_API_KEY; stockfit (US stocks only) requires STOCKFIT_API_KEY + Starter plan.")
     parser.add_argument("--superinvestor", action="store_true",
                         help="Include superinvestor ownership data.")
     parser.add_argument("--scoring-model", choices=["classic", "quant"], default=None,
@@ -709,6 +712,31 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 "[red]FMP data source requires the FMP_API_KEY environment variable.[/red]\n"
                 "  Get a free API key at [underline]https://financialmodelingprep.com/[/underline]\n"
                 "  Then set:  [bold]export FMP_API_KEY=your_key_here[/bold]"
+            )
+            return 1
+
+    if args.data_source == "stockfit":
+        import os as _os
+
+        from rich.console import Console
+
+        from investdaytip.data_source_stockfit import detect_plan, plan_allows
+
+        if args.asset_class == "etfs":
+            Console().print("[red]--data-source stockfit supports stocks only.[/red]")
+            return 1
+        if not _os.environ.get("STOCKFIT_API_KEY"):
+            Console().print(
+                "[red]StockFit data source requires the STOCKFIT_API_KEY environment variable.[/red]\n"
+                "  Get a free key at [underline]https://developer.stockfit.io[/underline]\n"
+                "  Then set:  [bold]export STOCKFIT_API_KEY=your_key_here[/bold]"
+            )
+            return 1
+        plan = detect_plan()
+        if not plan_allows(plan, "live_source"):
+            Console().print(
+                "[red]--data-source stockfit needs a Starter plan "
+                f"(detected plan: {plan}).[/red]"
             )
             return 1
 
@@ -799,7 +827,14 @@ def advisor_main(argv: list[str] | None = None) -> int:
     yd = macro["yield"]
     if yd.get("y10") is not None and yd.get("y2") is not None:
         yield_str = f"{yd['spread']:.2f}% ({yd['y10']:.2f}% − {yd['y2']:.2f}%)"
-        yield_note = "inverted" if yd["spread"] < 0 else "normal"
+        if yd["spread"] < 0:
+            yield_note = "(inverted)"
+        elif yd["spread"] < 0.5:
+            yield_note = "(flat)"
+        elif yd["spread"] > 1.0:
+            yield_note = "(steep)"
+        else:
+            yield_note = "(normal)"
     else:
         yield_str = "N/A"
         yield_note = ""
@@ -822,9 +857,11 @@ def advisor_main(argv: list[str] | None = None) -> int:
         if macro["dxy"] > 105:
             dxy_note = " (strong)"
         elif macro["dxy"] > 100:
-            dxy_note = " (neutral)"
+            dxy_note = " (firm)"
         elif macro["dxy"] < 95:
             dxy_note = " (weak)"
+        else:
+            dxy_note = " (neutral)"
 
     def _arrow(v):
         a = _trend_arrow(v)
@@ -843,12 +880,13 @@ def advisor_main(argv: list[str] | None = None) -> int:
         fg_score = fg["score"]
         fg_rating = fg.get("rating", "").capitalize()
         icon = "🟢" if fg_score < 25 else "🟡" if fg_score < 45 else "⚪" if fg_score < 56 else "🟠" if fg_score < 76 else "🔴"
-        fg_str = f"{icon} {fg_score:.1f} — {fg_rating}"
+        contrarian_note = " (contrarian)" if fg_score < 45 or fg_score > 55 else ""
+        fg_str = f"{icon} {fg_score:.1f} — {fg_rating}{contrarian_note}"
     else:
         fg_str = "N/A"
     market_table.add_row("Fear & Greed", fg_str)
 
-    # F&G sub-indicators
+    # F&G sub-indicators (direct component readings: low = fear/stress, high = greed/strength)
     _FG_DISPLAY: dict[str, str] = {
         "market_momentum": "├ Market Momentum",
         "stock_price_strength": "├ Stock Price Strength",
@@ -864,7 +902,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
         if sub and sub.get("score") is not None:
             s = sub["score"]
             r = (sub.get("rating") or "").capitalize()
-            icon = "🟢" if s < 25 else "🟡" if s < 45 else "⚪" if s < 56 else "🟠" if s < 76 else "🔴"
+            icon = "🔴" if s < 25 else "🟠" if s < 45 else "⚪" if s < 56 else "🟡" if s < 76 else "🟢"
             market_table.add_row(f"[dim]{label}[/dim]", f"{icon} {s:.1f} — {r}")
         else:
             market_table.add_row(f"[dim]{label}[/dim]", "[dim]N/A[/dim]")
@@ -876,6 +914,17 @@ def advisor_main(argv: list[str] | None = None) -> int:
         "Bubble risk",
         f"{bubble['level'].upper()} — {bubble['note']}",
     )
+    cp = macro.get("corporate_pulse")
+    if isinstance(cp, dict) and cp:
+        parts: list[str] = []
+        if cp.get("ipo_registrations_30d") is not None:
+            parts.append(f"EFFECT registrations: {cp['ipo_registrations_30d']}")
+        if cp.get("restructurings_30d") is not None:
+            parts.append(f"8-K restructurings: {cp['restructurings_30d']}")
+        if cp.get("bankruptcies_30d") is not None:
+            parts.append(f"8-K bankruptcies: {cp['bankruptcies_30d']}")
+        if parts:
+            market_table.add_row("SEC Filings (30d)", " · ".join(parts))
     market_table.add_row(
         "Regime sector tilt",
         ", ".join(macro.get("preferred_sectors", [])),
@@ -904,6 +953,8 @@ def advisor_main(argv: list[str] | None = None) -> int:
                     "Wait 1-2 minutes and try again.[/yellow]"
                 )
                 return 1
+        for notice in take_fallback_notices():
+            console.print(f"[yellow]{notice}[/yellow]")
 
         if "error" in review:
             logger.error("Portfolio review error: %s", review['error'])
@@ -989,10 +1040,11 @@ def advisor_main(argv: list[str] | None = None) -> int:
 
     # Resolve asset class, region, currency (CLI flags or interactive)
     _risk_defaults = {
-        "conservative": ("etfs", "eu"),
-        "moderate": ("all", "all"),
-        "aggressive": ("stocks", "all"),
+        "conservative": ("stocks", "us") if args.data_source == "stockfit" else ("etfs", "eu"),
+        "moderate": ("stocks", "us") if args.data_source == "stockfit" else ("all", "all"),
+        "aggressive": ("stocks", "us") if args.data_source == "stockfit" else ("stocks", "all"),
     }
+    _ac_choices = ["all", "stocks"] if args.data_source == "stockfit" else ["all", "stocks", "etfs"]
     try:
         if args.asset_class:
             ac = args.asset_class
@@ -1000,7 +1052,7 @@ def advisor_main(argv: list[str] | None = None) -> int:
             d_ac, _ = _risk_defaults.get(risk, ("all", "all"))
             ac = Prompt.ask(
                 "What asset types do you want to analyze?",
-                choices=["all", "stocks", "etfs"],
+                choices=_ac_choices,
                 default=d_ac,
             )
 
@@ -1119,6 +1171,9 @@ def advisor_main(argv: list[str] | None = None) -> int:
                 label = "missing sectors" if target_sector == "All" else target_sector
                 logger.info("No %s candidates found — showing all.", label)
                 console.print(f"[yellow]No {label} candidates found — showing all.[/yellow]")
+
+    for notice in take_fallback_notices():
+        console.print(f"[yellow]{notice}[/yellow]")
 
     if new_results:
         # disclaimer=False: the flow goes on printing (HTML report, macro

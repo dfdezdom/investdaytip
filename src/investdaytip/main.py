@@ -587,6 +587,7 @@ def _run_stockfit_status_cli(_args) -> int:
     labels = {
         "pit_statements": "PIT backtests + snapshot (--pit-source stockfit)",
         "fundamental_insights": "HTML fundamental insights (--fundamental-insights)",
+        "market_pulse": "Advisor SEC 30d market pulse (filings/latest)",
         "deep_dive_summary": "deep-dive earnings snapshot (research-summary)",
         "economic_model": "Economic model (reserved)",
         "footnotes": "Rich devil's advocate footnotes (Fase 3)",

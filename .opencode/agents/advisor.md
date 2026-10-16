@@ -96,15 +96,16 @@ MiFID/CNMV territory; nothing you output may read as one. The rules:
 
 ## Data source selection
 
-The agent supports 3 data sources, selectable via `--data-source` or `data_source=`:
+The agent supports 4 data sources, selectable via `--data-source` or `data_source=`:
 
 | Source | Flag | Best for | Limitations |
 |--------|------|----------|-------------|
 | **yfinance** | `yfinance` (default) | Universal, ETFs, backtest | Slower for large universes, rate limits |
 | **yahooquery** | `yahooquery` | Large stock universes, speed | No backtest, no ETFs |
 | **FMP** | `fmp` | When yfinance fails or rate-limited | Requires `FMP_API_KEY`, 250 req/day free tier, no ETFs |
+| **StockFit** | `stockfit` | SEC-verified US stock fundamentals | Requires `STOCKFIT_API_KEY` + Starter plan, US stocks only, no ETFs |
 
-When using FMP, ask the user if they have `FMP_API_KEY` set. If not, default to yfinance.
+When using FMP, ask the user if they have `FMP_API_KEY` set; when using StockFit, check `STOCKFIT_API_KEY` + Starter plan (`investdaytip stockfit-status`). If not, default to yfinance.
 
 ## Scoring model selection
 
@@ -145,6 +146,7 @@ print(f'Macro={m[\"regime\"]} score={m[\"score\"]}/100 action={m[\"action\"]}')
 print(f'VIX={m[\"vix\"][\"vix\"]} VXN={m[\"vix\"][\"vxn\"]}')
 print(f'10Y-2Y={m[\"yield\"].get(\"spread\", \"N/A\")} MOVE={m[\"move\"]} DXY={m[\"dxy\"]}')
 print(f'Fear&Greed={m.get(\"fear_greed\", {}).get(\"score\", \"N/A\")}/{m.get(\"fear_greed\", {}).get(\"rating\", \"N/A\")}')
+print(f'SEC_30d={m.get(\"corporate_pulse\")}')
 print(f'bubble={b[\"level\"]} pct={b[\"pct_rank\"]} note={b[\"note\"]}')
 "
 ```
@@ -354,17 +356,9 @@ Include this analysis in the **Market diagnosis** section whenever running a mar
 
 The macro output now includes **trend arrows** (↑/↓/→) showing 5-day direction for VIX, MOVE, and DXY, sourced from the same cached index data.
 
-### Fear & Greed sub-indicators used in macro score
+### Fear & Greed sub-indicators
 
-In addition to the composite Fear & Greed score, three sub-indicators now contribute to the macro score:
-
-| Sub-indicator | Impact on macro score |
-|---|---|
-| **Put/Call Options** | Extreme put buying (< 25) → +3 (contrarian tilt); extreme call buying (> 75) → −3 (contrarian tilt) |
-| **Junk Bond Demand** | Credit stress (< 25) → −5; chasing yield (> 75) → −3 (complacency) |
-| **Safe Haven Demand** | Flight to safety (> 75) → +3 (fear); no demand (< 25) → −3 (complacency) |
-
-All sub-indicators are available in `macro["fear_greed"]["sub_indicators"]` for programmatic access.
+All 7 CNN sub-indicators (`market_momentum`, `stock_price_strength`, `stock_price_breadth`, `put_call_options`, `market_volatility`, `junk_bond_demand`, `safe_haven_demand`) are available in `macro["fear_greed"]["sub_indicators"]` and displayed in the CLI table as direct component readings (`🔴` < 25 extreme fear/weakness, `🟠` 25–44 fear, `⚪` 45–55 neutral, `🟡` 56–75 greed, `🟢` ≥ 76 extreme strength/greed). Only the composite Fear & Greed score is used in `macro_regime()` (±10 contrarian tilt) so sub-indicators are not double-counted.
 
 ### New keys in `macro_regime()` return dict
 
@@ -374,6 +368,7 @@ All sub-indicators are available in `macro["fear_greed"]["sub_indicators"]` for 
 | `move_trend` | float or None | 5-day % change for MOVE |
 | `dxy_trend` | float or None | 5-day % change for DXY |
 | `preferred_sectors` | list[str] | The sector map the model holds for this regime — a description, not advice |
+| `corporate_pulse` | dict or None | Optional 30-day SEC EDGAR pulse (`ipo_registrations_30d`, `restructurings_30d`, `bankruptcies_30d` + sample tickers) when `STOCKFIT_API_KEY` is set; `None` without StockFit (omitted cleanly) |
 
 ### Sector map by regime
 
