@@ -1,6 +1,10 @@
 # Changelog
 
-## v0.17.13 (2026-10-16)
+## v0.17.14 (2026-10-17)
+
+### Changes
+
+- **Stocks and ETFs carry their 52-week range** — `StockData` and `EtfData` gain `week52_low` / `week52_high`, the min and max close of the last ~252 sessions. `investdaytip-web` renders them as a range bar with the current price as a point inside it (ticker modal and mobile cards), so a viewer sees at a glance where the quote sits inside its year. Computed in `_apply_history_common()`, the shared history path, so **all three data sources fill it identically** (yfinance, yahooquery/FMP's fallback and StockFit's `price/history`); like every other history-derived metric it rides the existing `{ticker}:history` cache (15 min). A ticker with no usable history keeps both fields `None` and the bar is simply omitted — never derived from the live quote alone, which would mislabel the range.
 
 ### Changes
 
