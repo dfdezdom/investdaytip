@@ -128,6 +128,10 @@ class StockData:
     # Technical indicators
     rsi_14: Optional[float] = None
     macd_histogram: Optional[float] = None
+    # 52-week range (low / high of the last ~252 trading sessions), in the
+    # asset's currency. None when there was no usable price history.
+    week52_low: Optional[float] = None
+    week52_high: Optional[float] = None
 
     errors: list[str] = field(default_factory=list)
 
@@ -164,6 +168,10 @@ class EtfData:
     # Technical indicators
     rsi_14: Optional[float] = None
     macd_histogram: Optional[float] = None
+    # 52-week range (low / high of the last ~252 trading sessions), in the
+    # asset's currency. None when there was no usable price history.
+    week52_low: Optional[float] = None
+    week52_high: Optional[float] = None
 
     errors: list[str] = field(default_factory=list)
 
@@ -649,6 +657,12 @@ def _apply_history_common(
         rsi, macd = _technical_indicators(close)
         data.rsi_14 = rsi
         data.macd_histogram = macd
+        # 52-week low / high: min / max close over the trailing ~252 sessions
+        # (a full trading year). Only computed when there is real history —
+        # never fabricated from the live quote alone.
+        if not close.empty and len(close) >= 2:
+            data.week52_low = float(close.min())
+            data.week52_high = float(close.max())
         # Price and metrics must describe the same session: the quote in
         # ``info`` is a separate endpoint with its own cache, and when it is a
         # session ahead of *history* the row pairs today's price with a 1M /
