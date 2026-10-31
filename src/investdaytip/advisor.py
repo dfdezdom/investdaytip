@@ -13,12 +13,17 @@ per-ticker band is a score band, not an instruction.
 from __future__ import annotations
 
 import argparse
+import csv
+import http.client
+import io
 import logging
 import math
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Optional
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 import yfinance as yf
 from yfinance.exceptions import YFRateLimitError
@@ -198,13 +203,75 @@ def bubble_risk() -> dict:
 # Macro indicators
 # ---------------------------------------------------------------------------
 
+_TREASURY_YIELD_CSV = (
+    "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/"
+    "daily-treasury-rates.csv/{year}/all"
+    "?type=daily_treasury_yield_curve&field_tdr_date_value={year}&page&_format=csv"
+)
+
+
+def _latest_treasury_par_yields(text: str) -> Optional[tuple[float, float]]:
+    """Return ``(10Y, 2Y)`` from the newest row of a Treasury par-yield CSV."""
+    best: Optional[tuple[datetime, float, float]] = None
+    try:
+        rows = csv.DictReader(io.StringIO(text))
+        for row in rows:
+            try:
+                date = datetime.strptime(row["Date"], "%m/%d/%Y")
+                y10 = float(row["10 Yr"])
+                y2 = float(row["2 Yr"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not (math.isfinite(y10) and math.isfinite(y2)):
+                continue
+            if best is None or date > best[0]:
+                best = (date, y10, y2)
+    except csv.Error:
+        return None
+    if best is None:
+        return None
+    return best[1], best[2]
+
+
+def _fetch_treasury_curve() -> dict[str, Optional[float]]:
+    """10Y-2Y from the official US Treasury daily par-yield curve (keyless).
+
+    The primary source pairs ``^TNX`` (10Y) with ``2YY=F`` (CME 2-year yield
+    futures); Yahoo stopped serving ``2YY=F`` on 2026-10-30, which blanked the
+    spread while the rest of the pulse kept working. This CSV is the
+    replacement: both legs come from the same official row, so the difference
+    is a real curve rather than a mix of two vendors. Any failure returns
+    ``{}`` — a missing figure stays missing, never invented.
+    """
+    # Near 1 January the current year's file can still be empty; the last
+    # sessions then live in the previous year's file.
+    now_year = datetime.now(timezone.utc).year
+    for year in (now_year, now_year - 1):
+        req = Request(
+            _TREASURY_YIELD_CSV.format(year=year),
+            headers={"User-Agent": "investdaytip/1.0 (macro regime)"},
+        )
+        try:
+            with urlopen(req, timeout=20) as resp:
+                text = resp.read().decode("utf-8")
+        except (URLError, OSError, http.client.HTTPException, TimeoutError):
+            logger.warning("Failed to fetch Treasury yield curve for %s", year, exc_info=True)
+            continue
+        yields = _latest_treasury_par_yields(text)
+        if yields is None:
+            continue
+        y10, y2 = yields
+        return {"y10": y10, "y2": y2, "spread": y10 - y2}
+    return {}
+
+
 def _fetch_yield_curve() -> dict[str, Optional[float]]:
     """Fetch 10Y and 2Y Treasury yields and compute spread."""
     y10 = _fetch_index("^TNX")
     y2 = _fetch_index("2YY=F")
     if y10 is not None and y2 is not None:
         return {"y10": y10, "y2": y2, "spread": y10 - y2}
-    return {}
+    return _fetch_treasury_curve()
 
 
 def _fetch_bond_volatility() -> Optional[float]:

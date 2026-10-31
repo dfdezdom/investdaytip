@@ -714,6 +714,7 @@ captures of the same CLI drift apart and someone eventually ships the stale one.
 - `market_regime()` fetches `^VIX` and `^VXN` via yfinance; thresholds: ≤15 bullish, ≤25 neutral, ≤35 bearish, >35 crash
 - `bubble_risk()` computes VIX percentile over trailing 2 years; <15% → high (complacency), 15-30% → medium, >30% → low
 - `macro_regime()` — composite 0-100 macro health score combining VIX + 10Y-2Y yield curve + MOVE index (bond vol) + DXY (dollar strength) + CNN Fear & Greed; regimes: ≥70 healthy→buy, ≥45 neutral→hold, ≥25 warning→hold, <25 danger→sell
+- `_fetch_yield_curve()` pairs `^TNX` (10Y) with `2YY=F` (2Y). Yahoo stopped serving `2YY=F` on 2026-10-30 (empty history, “possibly delisted”), which blanked the spread while the rest of the pulse kept working; when either leg is missing it now falls back to `_fetch_treasury_curve()`, the keyless official daily par-yield CSV (`home.treasury.gov`, current year then previous near 1 January). Both fallback legs come from the same official row so the spread is one curve, never a mix of vendors; a failed fetch returns `{}` and the figure stays missing. Tests: `tests/test_advisor.py::TestYieldCurve`.
 - `portfolio_review()` loads tickers from file with `_load_tickers_from_file()`, passes through `recommend()` scoring, returns categorized results
 - `run_comprehensive()` is the programmatic API for multi-region/asset-class analysis; exports HTML per combination to `advisor_recommendations/`
 - `advisor_main()` writes the final HTML report to `advisor_recommendations/recommendations_advisor_<timestamp>.html`
@@ -956,8 +957,10 @@ assert t.income_stmt is not None
 assert t.cashflow is not None
 assert len(t.dividends) > 0
 
-# Verify macro indices
-for idx in ['^VIX', '^VXN', '^TNX', '2YY=F', '^MOVE', 'DX-Y.NYB']:
+# Verify macro indices. ``2YY=F`` (the 2-year leg) stopped serving data on
+# 2026-10-30; ``_fetch_yield_curve()`` then falls back to the keyless Treasury
+# par-yield CSV, so its emptiness is expected and not a regression.
+for idx in ['^VIX', '^VXN', '^TNX', '^MOVE', 'DX-Y.NYB']:
     assert not yf.Ticker(idx).history(period='5d').empty
 ```
 

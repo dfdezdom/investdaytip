@@ -5,6 +5,9 @@ are patched so no live calls occur.
 """
 from __future__ import annotations
 
+import io
+from urllib.error import URLError
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -83,6 +86,55 @@ class TestFetchIndex:
         assert r["action"] == "hold"
 
 
+class TestYieldCurve:
+    """10Y-2Y: Yahoo's pair first, official Treasury par yields as fallback."""
+
+    _CSV = (
+        'Date,"1 Mo","2 Yr","10 Yr"\n'
+        "10/29/2026,4.06,4.61,4.98\n"
+        "10/30/2026,4.06,4.56,4.94\n"
+        "10/28/2026,4.07,4.67,5.05\n"
+    )
+
+    def test_primary_source_uses_tnx_and_2yy(self, mocker):
+        def _fetch(ticker):
+            return {"^TNX": 4.94, "2YY=F": 4.56}.get(ticker)
+
+        mocker.patch("investdaytip.advisor._fetch_index", side_effect=_fetch)
+        urlopen = mocker.patch("investdaytip.advisor.urlopen")
+        curve = advisor._fetch_yield_curve()
+        assert curve["y10"] == 4.94
+        assert curve["y2"] == 4.56
+        assert curve["spread"] == pytest.approx(0.38)
+        urlopen.assert_not_called()
+
+    def test_falls_back_to_treasury_when_2yy_is_gone(self, mocker):
+        # 2YY=F stopped serving data on 2026-10-30; ^TNX alone is not a curve.
+        def _fetch(ticker):
+            return 4.94 if ticker == "^TNX" else None
+
+        mocker.patch("investdaytip.advisor._fetch_index", side_effect=_fetch)
+        mocker.patch(
+            "investdaytip.advisor.urlopen",
+            return_value=io.BytesIO(self._CSV.encode()),
+        )
+        curve = advisor._fetch_yield_curve()
+        assert curve["y10"] == 4.94
+        assert curve["y2"] == 4.56
+        assert curve["spread"] == pytest.approx(0.38)
+
+    def test_treasury_failure_leaves_the_curve_missing(self, mocker):
+        mocker.patch("investdaytip.advisor._fetch_index", return_value=None)
+        mocker.patch("investdaytip.advisor.urlopen", side_effect=URLError("down"))
+        assert advisor._fetch_yield_curve() == {}
+
+    def test_parser_takes_newest_row_and_needs_both_tenors(self):
+        assert advisor._latest_treasury_par_yields(self._CSV) == (4.94, 4.56)
+        assert advisor._latest_treasury_par_yields('Date,"2 Yr"\n10/30/2026,4.56\n') is None
+        assert advisor._latest_treasury_par_yields("") is None
+        assert advisor._latest_treasury_par_yields("Date,2 Yr,10 Yr\nbad,4.56,4.94\n") is None
+
+
 class TestMacroRegime:
     def test_healthy_all_good(self, mocker):
         """All signals favorable -> healthy macro."""
@@ -147,9 +199,11 @@ class TestMacroRegime:
         mocker.patch("investdaytip.advisor._fetch_index", return_value=None)
         mocker.patch("investdaytip.advisor._fetch_trend", return_value=None)
         mocker.patch("investdaytip.advisor.fear_greed_index", return_value=None)
+        mocker.patch("investdaytip.advisor.urlopen", side_effect=URLError("down"))
         r = advisor.macro_regime()
         assert r["regime"] == "neutral"
         assert 45 <= r["score"] <= 55
+        assert r["yield"].get("spread") is None
 
 
 class TestBubbleRisk:

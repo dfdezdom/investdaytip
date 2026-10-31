@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.17.15 (2026-10-31)
+
+### Fixes
+
+- **The yield curve survives Yahoo dropping its 2-year leg** — the site's Market pulse showed `10Y-2Y —` from the 2026-10-30 run on: `_fetch_yield_curve()` pairs `^TNX` with `2YY=F` (CME 2-year yield futures), and Yahoo's chart for `2YY=F` now returns an empty history (“possibly delisted”). `_fetch_yield_curve()` therefore falls back to the official US Treasury daily par-yield curve (`home.treasury.gov`, keyless CSV, current year then the previous one near 1 January), reading both legs from the same row so the spread is a real curve rather than a mix of vendors. The live check returned 10Y 4.94 / 2Y 4.56 / spread +0.38% for the 2026-10-30 session. Any failure still returns `{}` — a missing figure stays missing, never invented. Tests: `tests/test_advisor.py::TestYieldCurve` (primary pair, fallback, failure, parser).
+
 ## v0.17.14 (2026-10-17)
 
 ### Changes
