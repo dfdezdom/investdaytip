@@ -248,6 +248,33 @@ def test_derived_peg_requires_positive_pe_and_growth():
     assert d2.peg_ratio < 5.0     # percent units, not a decimal-division ×100
 
 
+def test_derive_stock_data_populates_asset_growth():
+    """Investment-anomaly input: YoY change in TotalAssets, as-filed. ``None``
+    when the previous year is missing or non-positive (never fabricated)."""
+    from investdaytip.data_source import _derive_stock_data, _Fundamentals
+
+    growing = _Fundamentals(total_assets=120.0, total_assets_prev=100.0)
+    d = _derive_stock_data(
+        "T", {"shortName": "T"}, 100.0, (None, None, None, None, None, None),
+        None, None, growing, None, None,
+    )
+    assert d.asset_growth == pytest.approx(0.20)
+
+    no_prev = _Fundamentals(total_assets=120.0)
+    d2 = _derive_stock_data(
+        "T", {"shortName": "T"}, 100.0, (None, None, None, None, None, None),
+        None, None, no_prev, None, None,
+    )
+    assert d2.asset_growth is None
+
+    zero_prev = _Fundamentals(total_assets=120.0, total_assets_prev=0.0)
+    d3 = _derive_stock_data(
+        "T", {"shortName": "T"}, 100.0, (None, None, None, None, None, None),
+        None, None, zero_prev, None, None,
+    )
+    assert d3.asset_growth is None
+
+
 def test_derived_peg_stops_at_a_growth_that_is_not_a_rate():
     """A doubling is the widest YoY change a PEG can divide by. Beyond it
     the figure is a base effect, not a rate — INCY as the site published it:

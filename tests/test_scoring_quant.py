@@ -45,7 +45,7 @@ def test_quant_model_returns_scored_asset():
     assert 0 <= s.total <= 100
 
 
-def test_quant_model_has_five_breakdown_factors():
+def test_quant_model_has_six_breakdown_factors():
     s = score_stock(_base_data(), model="quant")
     assert set(s.breakdown.keys()) == {
         "Value",
@@ -53,6 +53,7 @@ def test_quant_model_has_five_breakdown_factors():
         "Profitability",
         "Momentum",
         "EPS Revisions",
+        "Asset Growth",
     }
     for v in s.breakdown.values():
         assert 0 <= v <= 100
@@ -142,7 +143,7 @@ def test_quant_is_default_model():
     assert s_default.total == s_quant.total
     assert s_default.breakdown == s_quant.breakdown
     assert set(s_quant.breakdown.keys()) == {
-        "Value", "Growth", "Profitability", "Momentum", "EPS Revisions"
+        "Value", "Growth", "Profitability", "Momentum", "EPS Revisions", "Asset Growth"
     }
 
 
@@ -159,7 +160,7 @@ def test_score_asset_dispatches_by_model():
     s_quant = score_asset(base, model="quant")
     assert set(s_classic.breakdown.keys()) == {"Quality", "Value", "Health", "Trend"}
     assert set(s_quant.breakdown.keys()) == {
-        "Value", "Growth", "Profitability", "Momentum", "EPS Revisions"
+        "Value", "Growth", "Profitability", "Momentum", "EPS Revisions", "Asset Growth"
     }
 
 
@@ -203,6 +204,35 @@ def test_quant_eps_revisions_does_not_use_growth():
     s = score_stock(base, model="quant")
     assert s.breakdown["EPS Revisions"] > 90.0
     assert s.breakdown["Growth"] < 20.0
+
+
+def test_quant_asset_growth_scores_slower_growth_higher():
+    """Investment anomaly: slow/negative asset growth scores higher."""
+    slow = _base_data()
+    slow.asset_growth = -0.05
+    fast = _base_data()
+    fast.asset_growth = 0.30
+    s_slow = score_stock(slow, model="quant")
+    s_fast = score_stock(fast, model="quant")
+    assert s_slow.breakdown["Asset Growth"] == pytest.approx(100.0)
+    assert s_fast.breakdown["Asset Growth"] == pytest.approx(0.0)
+    assert s_slow.total > s_fast.total
+
+
+def test_quant_asset_growth_missing_is_neutral():
+    data = _base_data()
+    data.asset_growth = None
+    s = score_stock(data, model="quant")
+    assert s.breakdown["Asset Growth"] == pytest.approx(50.0)
+
+
+def test_quant_asset_growth_is_not_a_disqualifier():
+    """Fast asset growth is a tilt, not a red flag — it must not cap the score."""
+    data = _base_data()
+    data.asset_growth = 0.50
+    s = score_stock(data, model="quant")
+    assert s.breakdown["Asset Growth"] == pytest.approx(0.0)
+    assert s.total > 50.0
 
 
 def test_quant_negative_peg_gets_neutral():

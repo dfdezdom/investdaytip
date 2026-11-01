@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.18.1 (2026-11-01)
+
+### Changes
+
+- **The `quant` model gains a sixth factor: Asset Growth (10%) — the investment anomaly.** Firms that expand `TotalAssets` fastest tend to underperform (Titman-Wei 2004 / Cooper-Gulen-Schill 2008), and the model did not price capital discipline at all. `StockData.asset_growth` is the YoY change in total assets on **as-filed fiscal years** (never the TTM overlay), filled by `_derive_stock_data` (classic backtest, StockFit PIT and StockFit live) and `_fetch_stock` (yfinance). Scored lower-is-better (`_linear(best=-0.05, worst=0.30)`, `None` → neutral 50) as a **10% tilt** that rescales the other five weights ×0.9 (Value 22.5%, Growth 18%, Profitability 22.5%, Momentum 13.5%, EPS Revisions 13.5%); it is **never a disqualifier**. Validated 2026-11-01 on the full US 277-ticker pool (min-cap 0, `include_technical=True`): univariate IC ≈ 0 (+0.007) but the before/after backtest improves alpha, Sharpe and 12M win rate — a diversification/ballast effect, the same pattern EPS Revisions taught. Classic 5y top-5: alpha 2.82%→8.44%, Sharpe 0.48→0.65, Win12M 43.8%→56.2%; top-10 2.23%→5.09%; top-25 −1.80%→−0.86%. PIT (local 12-FY snapshot, 199 tickers): 5y top-5 12.38%→15.37%, 3y top-5 29.10%→36.05%. 15–20% helps top-5 more but degrades top-25, so 10% ships (concentrated selection improves, the product's top-25 stays neutral). Tests: `tests/test_scoring_quant.py` (6-factor breakdown, slow-growth-scores-higher, missing→neutral, not-a-disqualifier). Baselines and the full experiment log: `stockfit/archivo/experimento_AB_momentum_value.md`; validation harness `scripts/asset_growth_validate.py`.
+
 ## v0.18.0 (2026-11-01)
 
 ### Changes

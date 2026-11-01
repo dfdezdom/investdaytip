@@ -96,6 +96,12 @@ class StockData:
     # cannot state.  Display only — never scored.  None when the two
     # endpoints are not both positive (no rate to state).
     earnings_cagr_2y: Optional[float] = None
+    # Asset growth (investment anomaly, Titman-Wei / Cooper-Gulen-Schill):
+    # YoY change in TotalAssets.  Fast asset growth predicts lower future
+    # returns; the quant model scores it lower-is-better as a small tilt.
+    # As-filed fiscal years (never the TTM overlay) so both endpoints are
+    # non-overlapping annual spans.
+    asset_growth: Optional[float] = None
     # YoY fundamental improvements (statement-derived; None = unknown)
     margin_improving: Optional[bool] = None
     roa_improving: Optional[bool] = None
@@ -842,6 +848,20 @@ def _derive_stock_data(
     # the comparison above, display only.
     earnings_cagr_2y = _cagr_2y(ni_yoy, fund.ni_prev2)
 
+    # Asset growth (investment anomaly, Titman-Wei / Cooper-Gulen-Schill):
+    # YoY change in TotalAssets, as-filed fiscal years (total_assets_yoy vs
+    # total_assets_prev) so the TTM overlay cannot mix bases.  None when the
+    # previous year is missing or non-positive.
+    asset_growth = (
+        (total_assets_yoy - fund.total_assets_prev) / fund.total_assets_prev
+        if (
+            total_assets_yoy is not None
+            and fund.total_assets_prev is not None
+            and fund.total_assets_prev > 0
+        )
+        else None
+    )
+
     # Debt/Equity: yfinance reports as percentage, divide by 100.
     # Negative equity makes the ratio meaningless (and sign flips can clamp
     # to a perfect score in the scorers), so it is treated as missing — the
@@ -929,6 +949,7 @@ def _derive_stock_data(
         profit_margin=profit_margin,
         earnings_growth=earnings_growth,
         earnings_cagr_2y=earnings_cagr_2y,
+        asset_growth=asset_growth,
         revenue_growth=revenue_growth,
         margin_improving=margin_improving,
         roa_improving=roa_improving,
@@ -1030,6 +1051,11 @@ def _fetch_stock(
                 income_stmt, balance_sheet, None, datetime.now(), years_back=2
             ).get("NetIncome"),
         )
+        # Asset growth (investment anomaly) — as-filed annual TotalAssets YoY,
+        # the same definition as _derive_stock_data (no TTM overlay here).
+        ta_cur, ta_prev = cur.get("TotalAssets"), prev.get("TotalAssets")
+        if ta_cur is not None and ta_prev is not None and ta_prev > 0:
+            data.asset_growth = (ta_cur - ta_prev) / ta_prev
         growth_rev = _pct_change(cur.get("TotalRevenue"), prev.get("TotalRevenue"))
         if growth_rev is not None:
             data.revenue_growth = growth_rev

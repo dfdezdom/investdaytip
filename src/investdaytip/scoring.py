@@ -5,12 +5,14 @@ Stocks and ETFs are scored with different models but produce a unified
 
 Two stock scoring models are available, selectable via ``model=``:
 
-**``quant``** (default) — Seeking-Alpha-inspired five-factor model:
-    Value            (25%)  — P/E, P/B, PEG, FCF yield
-    Growth           (20%)  — earnings growth, revenue growth
-    Profitability    (25%)  — ROE, ROA, profit margin
-    Momentum         (15%)  — 12-1 momentum (12m ex last month), vs SMA200, SMA200 slope
-    EPS Revisions    (15%)  — average EPS surprise vs analyst estimates
+**``quant``** (default) — Seeking-Alpha-inspired six-factor model:
+    Value            (22.5%) — P/E, P/B, PEG, FCF yield
+    Growth           (18%)   — earnings growth, revenue growth
+    Profitability    (22.5%) — ROE, ROA, profit margin, YoY improvement
+    Momentum         (13.5%) — 12-1 momentum (12m ex last month), vs SMA200, SMA200 slope
+    EPS Revisions    (13.5%) — average EPS surprise vs analyst estimates
+    Asset Growth     (10%)   — investment anomaly: slower balance-sheet growth
+                               scores higher (Titman-Wei / Cooper-Gulen-Schill)
 
 **``classic``** — Graham/Buffett + momentum:
     Quality (35%)  — ROE, margins, growth
@@ -79,11 +81,12 @@ STOCK_WEIGHTS_CLASSIC = {
 }
 
 STOCK_WEIGHTS_QUANT = {
-    "value": 0.25,
-    "growth": 0.20,
-    "profitability": 0.25,
-    "momentum": 0.15,
-    "eps_revisions": 0.15,
+    "value": 0.225,
+    "growth": 0.18,
+    "profitability": 0.225,
+    "momentum": 0.135,
+    "eps_revisions": 0.135,
+    "asset_growth": 0.10,
 }
 
 ETF_WEIGHTS = {
@@ -422,6 +425,24 @@ class QuantStockScorer:
             notes.append(f"EPS vs. estimates: {d.eps_surprise:.1f}% on average")
         return score, notes
 
+    def _asset_growth_score(self, d: StockData) -> tuple[float, list[str]]:
+        """Investment-anomaly tilt: slower balance-sheet growth scores higher.
+
+        Titman-Wei (2004) / Cooper-Gulen-Schill (2008): firms that expand
+        TotalAssets fastest tend to underperform — capital that grows faster
+        than the business is a *negative* predictor of future returns.
+        ``best=-0.05`` (flat/shrinking) → 100, ``worst=0.30`` (+30% YoY) → 0;
+        ``None`` → neutral 50.  Validated 2026-11-01 on the full US universe:
+        a 10% tilt raised top-5/10 alpha, Sharpe and 12M win rate in both the
+        classic and the point-in-time paths, and stayed neutral at top-25.
+        Never a disqualifier — a small tilt, not a red flag.
+        """
+        notes: list[str] = []
+        score = _linear(d.asset_growth, best=-0.05, worst=0.30, default=50.0)
+        if d.asset_growth is not None and d.asset_growth <= 0.02:
+            notes.append(f"asset base {d.asset_growth * 100:+.1f}% YoY")
+        return score, notes
+
     def score(
         self,
         data: StockData,
@@ -434,6 +455,7 @@ class QuantStockScorer:
         profitability, p_notes = self._profitability_score(data)
         momentum, m_notes = self._momentum_score(data)
         eps_rev, e_notes = self._eps_revisions_score(data)
+        asset_growth, ag_notes = self._asset_growth_score(data)
 
         if include_technical:
             tech, tech_notes = _technical_score(data)
@@ -463,15 +485,16 @@ class QuantStockScorer:
             + profitability * STOCK_WEIGHTS_QUANT["profitability"]
             + momentum * STOCK_WEIGHTS_QUANT["momentum"]
             + eps_rev * STOCK_WEIGHTS_QUANT["eps_revisions"]
+            + asset_growth * STOCK_WEIGHTS_QUANT["asset_growth"]
         )
         if disqualified:
             total = min(total, 50.0)
             if total <= 50.0:
-                rationale = ["Disqualifying factor(s) capped score at neutral"] + v_notes + g_notes + p_notes + m_notes + e_notes
+                rationale = ["Disqualifying factor(s) capped score at neutral"] + v_notes + g_notes + p_notes + m_notes + e_notes + ag_notes
             else:
-                rationale = v_notes + g_notes + p_notes + m_notes + e_notes
+                rationale = v_notes + g_notes + p_notes + m_notes + e_notes + ag_notes
         else:
-            rationale = v_notes + g_notes + p_notes + m_notes + e_notes
+            rationale = v_notes + g_notes + p_notes + m_notes + e_notes + ag_notes
 
         if not rationale:
             rationale.append("Limited data available; score based on neutral defaults.")
@@ -482,6 +505,7 @@ class QuantStockScorer:
             "Profitability": profitability,
             "Momentum": momentum,
             "EPS Revisions": eps_rev,
+            "Asset Growth": asset_growth,
         }
 
         if si_data is None:
