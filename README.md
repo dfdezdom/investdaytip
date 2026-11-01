@@ -34,7 +34,7 @@ own terms) built on this engine; the engine itself stays MIT.
 - 🏦 **Stocks & ETFs** — auto-detected and scored with dedicated models
 - 🌍 **US, European, Asian & Superinvestor markets** — S&P 500, DAX, CAC 40, FTSE 100, Nikkei 225, Hang Seng, NSE, and superinvestor consensus holdings from DataRoma 13F filings
 - 💱 **Currency filter** — narrow by native currency (`USD`, `EUR`, `JPY`, …)
-- ⚡ **Concurrent fetching** — analyzes ~500 tickers in seconds
+- ⚡ **Concurrent fetching** — analyzes ~570 tickers in seconds
 - 📊 **Rich CLI output** — price, 1M/1Y change, score breakdown and rationale
 - 🧾 **Self-contained HTML export** — interactive report with filters and sortable columns
 - 🧪 **Pure scoring functions** — testable without network
@@ -82,7 +82,7 @@ pip install -e ".[dev]"
 investdaytip
 ```
 
-That's it. You'll see the top 5 highest-scoring candidates across the curated universes — ~490 US, EU, Asian & superinvestor tickers before the market-cap filter.
+That's it. You'll see the top 5 highest-scoring candidates across the curated universes — ~570 US, EU, Asian & superinvestor tickers before the market-cap filter.
 
 <p align="center">
   <img src="docs/screenshot-CLI.png" alt="InvestDayTip CLI output" width="90%">
@@ -442,7 +442,7 @@ It works **without an API key** when a local snapshot exists
 (`~/.investdaytip/pit/`) — build one while your StockFit key is valid:
 
 ```bash
-python scripts/pit_snapshot.py          # full US stock universe (196 tickers)
+python scripts/pit_snapshot.py          # full US stock universe (277 tickers)
 python scripts/pit_snapshot.py --status # inspect saved files (offline)
 ```
 
@@ -681,7 +681,7 @@ ETF scoring also switches between two models via `--scoring-model {classic,quant
 
 When no `-t` is given, InvestDayTip uses curated universes:
 
-- **US stocks** — 122 large-caps across all S&P sectors (`src/investdaytip/universe.py`)
+- **US stocks** — 202 large-caps across all S&P sectors (`src/investdaytip/universe.py`)
 - **US ETFs** — 41 broad-market, factor, sector and bond ETFs (`etf_universe.py`)
 - **EU stocks** — 99 large-caps from DAX, CAC, FTSE 100, IBEX, AEX, SMI, FTSE MIB, Euronext Brussels and the Nordics (`eu_universe.py`)
 - **EU UCITS ETFs** — 35 broad, sector and bond UCITS ETFs (`eu_etf_universe.py`)
@@ -689,7 +689,7 @@ When no `-t` is given, InvestDayTip uses curated universes:
 - **Asia ETFs** — 17 broad-market, country-specific, and sector ETFs with significant Asian exposure (`asia_etf_universe.py`)
 - **Superinvestor stocks** — 101 consensus stocks held by ≥2 of ~82 top investors tracked by DataRoma 13F filings (`superinvestor_universe.py`)
 
-Merging the pools for a full scan (`-r all -a all`) yields **492 unique
+Merging the pools for a full scan (`-r all -a all`) yields **572 unique
 tickers** — overlapping tickers and cross-listings (e.g. `TSM` / `2330.TW`,
 `VXUS` in two ETF lists) are deduplicated before fetching.
 
