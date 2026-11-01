@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.18.0 (2026-11-01)
+
+### Changes
+
+- **The US universe expands to close the sector gap** — `DEFAULT_UNIVERSE` grows from 122 to 202 large-caps (the region-`us` pool with `SUPERINVESTOR_UNIVERSE` goes 197 → 277). A live audit found ~80 large-caps absent, concentrated in insurance (`CB`, `PGR`, `TRV`, `AJG`, `MET`, `AIG`, `PRU`, `ACGL`, `PFG`, `L`), banks & asset managers (`STT`, `NDAQ`, `NTRS`, `TROW`, `BNY`, `MRSH`, `FISV`, `BAM`, `APO`, `ARES`, `COIN`), defense & industrials (`LMT`, `GD`, `NOC`, `MMM`, `ITW`, `WM`, `RSG`, `UNP`, `CSX`, `NSC`, `URI`, `TT`, `VRT`, `CTAS`, `ECL`, `APD`, …), consumer staples (`MO`, `MDLZ`, `CL`, `MNST`, `KDP`, `KR`, `HSY`, …) and consumer cyclical (`ROST`, `AZO`, `CMG`, `DHI`, `PHM`, …) — so the "large-cap US stocks across sectors" promise now holds and the site's top-100 no longer under-weights those groups. Threshold ≥ $20B market cap, verified live. Three tickers were **renamed in 2026** and added under their new symbols rather than their dead ones: `BK → BNY` (BNY Mellon, 2026-05-21), `MMC → MRSH` (Marsh McLennan → Marsh, 2026-01-14), `FI → FISV` (Fiserv). No scoring change. Tests: `tests/test_universes.py` (`test_us_renamed_symbols_2026`, `test_us_large_caps_present`).
+
 ## v0.17.15 (2026-10-31)
 
 ### Fixes

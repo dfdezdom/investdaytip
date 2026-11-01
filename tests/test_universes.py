@@ -117,3 +117,31 @@ def test_micro_etfs_removed():
     assert "FXI" in ASIA_ETF_UNIVERSE
     assert "MCHI" in ASIA_ETF_UNIVERSE
     assert "EWS" in ASIA_ETF_UNIVERSE
+
+
+def test_us_renamed_symbols_2026():
+    """2026 renames — the old symbols are dead on Yahoo (empty info/history).
+
+    Verified live 2026-11-01 during the US-universe coverage expansion.
+    """
+    # BNY Mellon: BK -> BNY (2026-05-21)
+    assert "BK" not in DEFAULT_UNIVERSE
+    assert "BNY" in DEFAULT_UNIVERSE
+    # Marsh McLennan -> Marsh: MMC -> MRSH (2026-01-14)
+    assert "MMC" not in DEFAULT_UNIVERSE
+    assert "MRSH" in DEFAULT_UNIVERSE
+    # Fiserv: FI -> FISV (2026)
+    assert "FI" not in DEFAULT_UNIVERSE
+    assert "FISV" in DEFAULT_UNIVERSE
+
+
+def test_us_large_caps_present():
+    """Representative large-caps added in the 2026-11-01 coverage expansion.
+
+    These were absent and skewed the US pool away from insurance, defense,
+    industrials, staples and rails. Guards the expansion against accidental
+    removal.
+    """
+    for t in ("UNP", "PGR", "CB", "LMT", "WM", "MDLZ", "ECL", "APD",
+              "HUM", "ZTS", "SHOP", "COIN", "BAM"):
+        assert t in DEFAULT_UNIVERSE, f"{t} should be in the US universe"

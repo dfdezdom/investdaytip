@@ -989,6 +989,13 @@ dead = [t for t in tickers if data[t]["Close"].dropna().empty]
 
 `tests/test_universes.py::test_delisted_and_renamed_symbols_removed` guards both.
 
+**Coverage expansion (2026-11-01):** the US universe grew 122 → 202 large-caps
+(~80 additions, region-`us` pool 197 → 277). The live sweep that validated the
+additions caught **three 2026 renames** before they could be committed as dead
+symbols: `BK → BNY` (BNY Mellon, 2026-05-21), `MMC → MRSH` (Marsh McLennan →
+Marsh, 2026-01-14), `FI → FISV` (Fiserv). They are added under their new
+symbols; `tests/test_universes.py::test_us_renamed_symbols_2026` guards them.
+
 ### Relevance audit (size + liquidity)
 
 Rank every ticker by **USD market cap** and **3-month average daily turnover** (`volume × close`). FX gotcha: `USD<X>=X` quotes local units **per 1 USD**, so convert with `local / rate` (multiplying inverts it and makes KRW/JPY names look enormous); for `GBp` listings `marketCap` comes back in **GBP** while `price × volume` comes back in **pence**.
@@ -1002,7 +1009,7 @@ Rank every ticker by **USD market cap** and **3-month average daily turnover** (
 | Asia ETFs | 18 → 17 | $6.3B | `ASEA`, `CXSE` |
 
 - Removal criterion for ETFs: **AUM < $500M AND turnover < $1M/day**; index/style coverage survives (`IUES.L`, `QNTM.L`, `FXI`, `MCHI`) and `EWS` replaced `ASEA` as the Southeast Asia representative ($1.25B AUM / $35M per day). Guarded by `tests/test_universes.py::test_micro_etfs_removed`.
-- The US pool reads 122 today (SNDK joined in `4448a09`, after the audit) — the medians in the table are still the ones measured on 2026-09-25 over 121.
+- The US pool read 122 as of the audit; `DEFAULT_UNIVERSE` grew to 202 (region-`us` pool 277) in the 2026-11-01 coverage expansion — the medians in the table are still the ones measured on 2026-09-25 over 121.
 - Stocks stay: the three under the $15M/day bar (`RO.SW`, `UHAL`, `KOF`) are mega/large caps — Yahoo just under-reports SIX volume.
 - **13 EU UCITS ETFs (`CSPX.AS`, `IWDA.AS`, `EUNL.DE`, `SXR8.DE`, `EQQQ.L`, …) return no `totalAssets`** — they are large iShares/Vanguard funds, a Yahoo data gap (their Size factor scores neutral), **not** irrelevance. Never flag them again; fall back to `sharesOutstanding × navPrice` when `totalAssets` is missing.
 
