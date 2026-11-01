@@ -490,7 +490,7 @@ Decision rules:
 
 ### When to use technical indicators
 
-The `--include-technical` flag adds RSI-14 and MACD histogram to the Momentum factor (15% weight, blended at 30%). Under the **quant** model this is now enabled by default; under **classic** it remains opt-in.
+The `--include-technical` flag adds RSI-14 and MACD histogram to the Momentum factor (13.5% weight, blended at 30%). Under the **quant** model this is now enabled by default; under **classic** it remains opt-in.
 
 Backtest validation across four scenarios under the **quant** model shows the flag is generally additive for US screens but mixed for concentrated mega-caps and EU:
 
@@ -613,7 +613,7 @@ Each row includes:
 | **MACD** | MACD histogram % vs price (when `--include-technical` is enabled) |
 | **Superinvestors** | Number of managers holding the stock (HTML only; `-` if not in DataRoma universe) |
 | **Score** | Composite 0-100 weighted score |
-| **Breakdown** | Four sub-scores (shown in a compact single line) |
+| **Breakdown** | The model's sub-scores (six for `quant`, four for `classic`), shown in a compact single line |
 | **Why** | Top 3 rationale notes |
 
 Every figure in a row comes from that row's own price series, and a run built while the market is open describes the **last session to have closed** — a session in progress has no close yet, so it is not a bar (`_drop_partial_session()` drops it). The report says so instead of leaving the reader to infer it from a column called "today":
@@ -628,7 +628,7 @@ That line is the table's caption in the CLI and the footer of an exported HTML r
 
 ## Scoring Model
 
-InvestDayTip supports two stock-scoring models, selectable via `--scoring-model {classic,quant}`. The default is **`quant`**, a five-factor model inspired by Seeking Alpha Quant Ratings (a trademark of its owner; this project is not affiliated with, endorsed by, or connected to Seeking Alpha). The original **`classic`** model (Graham/Buffett + momentum) remains available for backwards compatibility.
+InvestDayTip supports two stock-scoring models, selectable via `--scoring-model {classic,quant}`. The default is **`quant`**, a six-factor model inspired by Seeking Alpha Quant Ratings (a trademark of its owner; this project is not affiliated with, endorsed by, or connected to Seeking Alpha). The original **`classic`** model (Graham/Buffett + momentum) remains available for backwards compatibility.
 
 Each metric is normalized to **0-100** via piecewise-linear functions over empirically reasonable ranges. Missing data contributes a neutral **50** so a ticker isn't penalized for lacking a metric.
 
@@ -636,11 +636,12 @@ Each metric is normalized to **0-100** via piecewise-linear functions over empir
 
 | Factor | Weight | Metrics |
 |---|---|---|
-| **Value** | 25% | trailing P/E, P/B, PEG (derived = P/E ÷ growth %, positive growth only), FCF yield |
-| **Growth** | 20% | earnings growth, revenue growth |
-| **Profitability** | 25% | ROE, ROA, profit margin + a YoY-improvement sub-score (Δgross margin + ΔROA vs last fiscal year; neutral when statements are unavailable) |
-| **Momentum** | 15% | price vs SMA200, 12-month return, SMA200 slope (plus RSI-14 + MACD histogram by default; disable with `--no-include-technical`) |
-| **EPS Revisions** | 15% | average EPS surprise (Reported EPS vs analyst Estimate) over the last four quarters |
+| **Value** | 22.5% | trailing P/E, P/B, PEG (derived = P/E ÷ growth %, positive growth only), FCF yield |
+| **Growth** | 18% | earnings growth, revenue growth |
+| **Profitability** | 22.5% | ROE, ROA, profit margin + a YoY-improvement sub-score (Δgross margin + ΔROA vs last fiscal year; neutral when statements are unavailable) |
+| **Momentum** | 13.5% | price vs SMA200, 12-month return, SMA200 slope (plus RSI-14 + MACD histogram by default; disable with `--no-include-technical`) |
+| **EPS Revisions** | 13.5% | average EPS surprise (Reported EPS vs analyst Estimate) over the last four quarters |
+| **Asset Growth** | 10% | YoY change in total assets — the investment anomaly: slower balance-sheet growth scores higher. A small tilt that rescales the other five weights; never a disqualifier |
 
 The `quant` model uses **disqualifying grades**: if any high-impact factor falls into red-flag territory, the total score is capped at neutral (50). This prevents a strong showing in one area from masking a serious weakness elsewhere.
 
@@ -838,7 +839,7 @@ tests/
 ├── test_main.py           # CLI helper tests
 ├── test_html_export.py    # HTML export tests
 ├── test_scoring.py        # Stock scoring tests
-├── test_scoring_quant.py  # Quant model tests (five factors, improvement sub-score)
+├── test_scoring_quant.py  # Quant model tests (six factors, improvement sub-score)
 ├── test_etf_scoring.py    # ETF scoring tests
 ├── test_financial_health.py # Piotroski / Altman / improvement-flag tests
 ├── test_sentiment.py      # Fear & Greed sentiment tests
@@ -894,7 +895,7 @@ ruff check src tests      # lint
 mypy                      # type-check
 ```
 
-**569 tests** across 26 test files. The scoring engine is purely functional
+**621 tests** across 27 test files. The scoring engine is purely functional
 and tested without network calls; an autouse guard in `tests/conftest.py` fails
 fast if a test reaches yfinance unmocked. Integration tests mock the full
 `recommend()` → `main()` → export pipeline.
