@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.18.2 (2026-11-02)
+
+### Changes
+
+- **`StockData.macd_line` is exposed (the MACD trend, next to the momentum).** `_technical_indicators()` now returns `(rsi_14, macd_line, macd_histogram)`, all as a percentage of price. The **line** (`EMA12 − EMA26`) reads the trend (positive = short average above the long one); the **histogram** (`line − signal`) reads momentum. It is filled by `_fetch_stock`/`_apply_history_common` and by the classic and point-in-time backtest builders via `_derive_stock_data`. The quant model still **scores the histogram** (unchanged); the line is for display — the web's deep-dive now shows **"MACD" (line)** and **"MACD hist." (histogram)**, so a positive histogram next to a falling price no longer reads as a wrong "MACD". Tests: `tests/test_data_source.py` (3-tuple, the line's sign, `_derive_stock_data` wiring).
+
 ## v0.18.1 (2026-11-01)
 
 ### Changes

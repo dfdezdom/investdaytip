@@ -408,11 +408,12 @@ def _compute_historical_eps_surprise(
 
 def _snapshot_price_trend(
     price_history: pd.DataFrame, snapshot_date: datetime
-) -> tuple[Optional[float], tuple, Optional[float], Optional[float]]:
-    """Price, trend metrics, RSI-14 and MACD histogram at *snapshot_date*.
+) -> tuple[Optional[float], tuple, Optional[float], Optional[float], Optional[float]]:
+    """Price, trend metrics, RSI-14, MACD line and MACD histogram at *snapshot_date*.
 
-    Returns ``(price, trend, rsi_14, macd_histogram)`` where ``trend`` is the
-    6-tuple from :func:`_trend_metrics` (all-``None`` when unavailable).
+    Returns ``(price, trend, rsi_14, macd_line, macd_histogram)`` where
+    ``trend`` is the 6-tuple from :func:`_trend_metrics` (all-``None`` when
+    unavailable).
     """
     # Price at snapshot
     close = price_history["Close"].dropna()
@@ -425,10 +426,10 @@ def _snapshot_price_trend(
     hist_slice = price_history.loc[:pd.Timestamp(snapshot_date)].copy()
     trend = _trend_metrics(hist_slice)
     trend_vals = trend if trend else (None, None, None, None, None, None)
-    rsi_14, macd_histogram = _technical_indicators(
+    rsi_14, macd_line, macd_histogram = _technical_indicators(
         hist_slice["Close"].dropna()
-    ) if "Close" in hist_slice else (None, None)
-    return price, trend_vals, rsi_14, macd_histogram
+    ) if "Close" in hist_slice else (None, None, None)
+    return price, trend_vals, rsi_14, macd_line, macd_histogram
 
 
 def _build_historical_stock_data(
@@ -450,7 +451,7 @@ def _build_historical_stock_data(
     statements.  For each metric the value at the most recent fiscal year
     ending on or before *quarter_date* is used.
     """
-    price, trend_vals, rsi_14, macd_histogram = _snapshot_price_trend(
+    price, trend_vals, rsi_14, macd_line, macd_histogram = _snapshot_price_trend(
         price_history, snapshot_date
     )
 
@@ -486,7 +487,7 @@ def _build_historical_stock_data(
     )
     return _derive_stock_data(
         ticker, info, price, trend_vals, rsi_14, macd_histogram,
-        fund, ttm_div, eps_surprise,
+        fund, ttm_div, eps_surprise, macd_line=macd_line,
     )
 
 
@@ -507,7 +508,7 @@ def _build_pit_stock_data(
     dates instead of a fixed reporting-lag assumption.  *reporting_lag_days*
     only affects the EPS-surprise window (yfinance earnings dates).
     """
-    price, trend_vals, rsi_14, macd_histogram = _snapshot_price_trend(
+    price, trend_vals, rsi_14, macd_line, macd_histogram = _snapshot_price_trend(
         price_history, snapshot_date
     )
 
@@ -552,7 +553,7 @@ def _build_pit_stock_data(
     )
     return _derive_stock_data(
         ticker, info, price, trend_vals, rsi_14, macd_histogram,
-        fund, ttm_div, eps_surprise,
+        fund, ttm_div, eps_surprise, macd_line=macd_line,
     )
 
 

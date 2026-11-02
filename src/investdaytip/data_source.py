@@ -133,6 +133,9 @@ class StockData:
     session_date: Optional[str] = None
     # Technical indicators
     rsi_14: Optional[float] = None
+    # MACD line (EMA12 − EMA26 as % of price): reads the **trend** (positive =
+    # short average above the long one).  ``macd_histogram`` reads momentum.
+    macd_line: Optional[float] = None
     macd_histogram: Optional[float] = None
     # 52-week range (low / high of the last ~252 trading sessions), in the
     # asset's currency. None when there was no usable price history.
@@ -173,6 +176,9 @@ class EtfData:
     session_date: Optional[str] = None
     # Technical indicators
     rsi_14: Optional[float] = None
+    # MACD line (EMA12 − EMA26 as % of price): reads the **trend** (positive =
+    # short average above the long one).  ``macd_histogram`` reads momentum.
+    macd_line: Optional[float] = None
     macd_histogram: Optional[float] = None
     # 52-week range (low / high of the last ~252 trading sessions), in the
     # asset's currency. None when there was no usable price history.
@@ -376,19 +382,22 @@ def _trend_metrics(
 
 def _technical_indicators(
     close: pd.Series,
-) -> tuple[Optional[float], Optional[float]]:
-    """Return (rsi_14, macd_histogram_pct).
+) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    """Return ``(rsi_14, macd_line_pct, macd_histogram_pct)``.
 
-    RSI uses a 14-day look-back.  MACD histogram is the difference between
-    the MACD line (EMA12 - EMA26) and its 9-day EMA signal, expressed as
-    a percentage of the latest close so the value is comparable across
-    tickers with different price levels.
+    RSI uses a 14-day look-back.  The **MACD line** is ``EMA12 - EMA26`` and
+    the **histogram** is the MACD line minus its 9-day EMA signal; both are
+    expressed as a percentage of the latest close so the values are comparable
+    across tickers with different price levels.  The line reads the **trend**
+    (positive = short average above the long one); the histogram reads the
+    **momentum** (positive = the line is above its own signal, i.e. the trend
+    is accelerating or the decline is decelerating).
 
-    Both require at least 35 data points; otherwise (None, None) is returned.
+    All three require at least 35 data points; otherwise ``(None, None, None)``.
     """
     clean = close.dropna()
     if len(clean) < 35:
-        return None, None
+        return None, None, None
 
     # RSI(14)
     delta = clean.diff()
@@ -404,16 +413,17 @@ def _technical_indicators(
         rs = avg_gain / avg_loss
         rsi = 100.0 - (100.0 / (1.0 + rs))
 
-    # MACD histogram (normalized by price)
+    # MACD line + histogram (both normalized by price)
     ema_12 = clean.ewm(span=12, adjust=False).mean()
     ema_26 = clean.ewm(span=26, adjust=False).mean()
     macd_line = ema_12 - ema_26
     signal_line = macd_line.ewm(span=9, adjust=False).mean()
     hist = macd_line.iloc[-1] - signal_line.iloc[-1]
     last_price = float(clean.iloc[-1])
+    line_pct = (float(macd_line.iloc[-1]) / last_price) if last_price > 0 else None
     hist_pct = (hist / last_price) if last_price > 0 else None
 
-    return rsi, hist_pct
+    return rsi, line_pct, hist_pct
 
 
 def _quote_timestamp(info: dict) -> Optional[pd.Timestamp]:
@@ -660,9 +670,10 @@ def _apply_history_common(
             data.sharpe_proxy = (r12 - RISK_FREE_RATE) / vol
     if history is not None and not history.empty and "Close" in history:
         close = history["Close"].dropna()
-        rsi, macd = _technical_indicators(close)
+        rsi, macd_line, macd_hist = _technical_indicators(close)
         data.rsi_14 = rsi
-        data.macd_histogram = macd
+        data.macd_line = macd_line
+        data.macd_histogram = macd_hist
         # 52-week low / high: min / max close over the trailing ~252 sessions
         # (a full trading year). Only computed when there is real history —
         # never fabricated from the live quote alone.
@@ -809,6 +820,7 @@ def _derive_stock_data(
     fund: _Fundamentals,
     ttm_div: Optional[float],
     eps_surprise: Optional[float],
+    macd_line: Optional[float] = None,
 ) -> StockData:
     """Derive ``StockData`` metrics from raw fundamentals.
 
@@ -968,6 +980,7 @@ def _derive_stock_data(
         sma200_slope=sma200_slope,
         daily_change=daily_change,
         rsi_14=rsi_14,
+        macd_line=macd_line,
         macd_histogram=macd_histogram,
     )
 

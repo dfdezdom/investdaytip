@@ -275,6 +275,18 @@ def test_derive_stock_data_populates_asset_growth():
     assert d3.asset_growth is None
 
 
+def test_derive_stock_data_passes_macd_line():
+    """The MACD line (trend) travels alongside the histogram (momentum)."""
+    from investdaytip.data_source import _derive_stock_data, _Fundamentals
+
+    d = _derive_stock_data(
+        "T", {"shortName": "T"}, 100.0, (None, None, None, None, None, None),
+        None, 0.012, _Fundamentals(), None, None, macd_line=-0.042,
+    )
+    assert d.macd_line == pytest.approx(-0.042)
+    assert d.macd_histogram == pytest.approx(0.012)
+
+
 def test_derived_peg_stops_at_a_growth_that_is_not_a_rate():
     """A doubling is the widest YoY change a PEG can divide by. Beyond it
     the figure is a base effect, not a rate — INCY as the site published it:
@@ -422,9 +434,10 @@ def test_eps_acceleration_second_derivative():
 
 def test_technical_indicators_returns_none_for_short_series():
     short = pd.Series([100.0] * 10)
-    rsi, macd = _technical_indicators(short)
+    rsi, macd_line, macd_hist = _technical_indicators(short)
     assert rsi is None
-    assert macd is None
+    assert macd_line is None
+    assert macd_hist is None
 
 
 def test_technical_indicators_computes_rsi_and_macd():
@@ -433,21 +446,25 @@ def test_technical_indicators_computes_rsi_and_macd():
     for _ in range(39):
         prices.append(prices[-1] * 0.99)  # ~1% daily decline
     close = pd.Series(prices)
-    rsi, macd = _technical_indicators(close)
+    rsi, macd_line, macd_hist = _technical_indicators(close)
 
     assert rsi is not None
     assert 0.0 <= rsi <= 100.0
     assert rsi < 50.0  # downtrend → RSI below 50
 
-    assert macd is not None
-    assert isinstance(macd, float)
+    assert macd_line is not None
+    assert isinstance(macd_line, float)
+    assert macd_line < 0.0  # steady decline → short average below the long one
+
+    assert macd_hist is not None
+    assert isinstance(macd_hist, float)
 
 
 def test_technical_indicators_oversold_rsi():
     # Sharp 40-day drop to drive RSI very low
     prices = np.linspace(100, 50, 40)
     close = pd.Series(prices)
-    rsi, _ = _technical_indicators(close)
+    rsi, _, _ = _technical_indicators(close)
     assert rsi is not None
     assert rsi < 30.0  # clearly oversold
 
