@@ -236,7 +236,7 @@ def main() -> None:
         ic: dict[str, list[float]] = {c: [] for c in args.candidates}
         used = 0
 
-        for i, sd in enumerate(snaps, 1):
+        for sd in snaps:
             rows: list[tuple[str, object, tuple, dict, Optional[float]]] = []
             for t in universe:
                 td = data.get(t)
