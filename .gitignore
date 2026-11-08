@@ -69,3 +69,4 @@ deep-dive-*.html
 # alloc_probe: precios fijados en disco (generados, reproducen el backtest)
 /alloc-probe-prices.csv
 /alloc-probe-long-prices.csv
+/alloc-probe.json
