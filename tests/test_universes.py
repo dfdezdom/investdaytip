@@ -97,6 +97,22 @@ def test_delisted_and_renamed_symbols_removed():
         assert small not in DEFAULT_UNIVERSE
 
 
+def test_superinvestor_high_conviction_names_present():
+    """Q3 2026 audit (2026-11-12): 40 qualifying tickers were missing.
+
+    The universe is refreshed by hand, so this guards the head of the consensus
+    against accidental deletion rather than pinning all 141 names.
+    """
+    for t in ("ACN", "GEV", "TEL", "MSI", "MICC", "EFX", "DEO", "SAP", "ADP",
+              "GM", "APH", "CHTR", "IDXX", "PSX", "NVS"):
+        assert t in SUPERINVESTOR_UNIVERSE, f"{t} should be in the universe"
+
+    # Still excluded on purpose: a share price that makes a position
+    # unscorable, a merged duplicate, and a Treasury ETF (removed 2026-09-25).
+    for bad in ("BRK-A", "GOOG", "SGOV"):
+        assert bad not in SUPERINVESTOR_UNIVERSE, f"{bad} should stay out"
+
+
 def test_micro_etfs_removed():
     """ETFs too small or too illiquid for the screened pools (audited 2026-09-25).
 

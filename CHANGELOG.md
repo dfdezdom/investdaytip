@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.18.3 (2026-11-12)
+
+### Changes
+
+- **`APA` and `MPC` join the US universe.** Two gaps in the energy cluster, which carried only `COP`/`EOG`/`VLO` beyond the two majors: **APA Corporation** (NASDAQ, Energy, $16.2B) adds exploration & production breadth, and **Marathon Petroleum** (NYSE, Energy, $112.8B) ends a refining monopoly — `VLO` was the only refiner in the pool. Both verified live before adding: a resolvable `info` (185 and 182 keys), a non-empty history and a Yahoo `quoteType` of `EQUITY` — never add a symbol without that check, the dead-ticker sweep exists because a delisted symbol returns a one-key info dict and an empty history. No scoring change.
+- **`SUPERINVESTOR_UNIVERSE` is refreshed against the Q3 2026 filings — 101 → 141 tickers.** The list had been frozen at its June 2026 curation while two 13F cycles went by: every curated symbol was still valid and still held, but **94 tickers that meet the universe's own documented rule (consensus ≥2 managers, ≥$10B) were absent**, 70 of them held by 5+ managers. The 40 that appeared in **no pool at all** are now in: `ACN` (11 managers), `GEV` (9), `TEL`/`MSI`/`MICC`/`EFX`/`DEO` (8), `SAP`/`GM`/`APH`/`SE`/`KSPI` (7), `ADP`/`VEEV`/`SPCX`/`LFUS`/`IDXX`/`ICLR`/`GSK`/`CTSH`/`CNH`/`CHTR` (6) and 18 held by five. The other 54 were already in `DEFAULT_UNIVERSE`, so they only affected `-r superinvestor` and the Superinvestors column — those stay as they are. **The docstring was wrong as well**: it promised "tickers with at least two independent manager positions", which is 794 symbols in the current filings; it now states the real rule (consensus + large cap + stock-not-fund + one share class, with `BRK-A` excluded on purpose). Only `MGM` ($8.4B) sits below the $10B floor. New `scripts/superinvestor_audit.py` reproduces the audit (`--min-market-cap 10`, `--from-json` to re-run offline) — the list is still hand-maintained, so nothing in CI fails when it drifts. Cost: the region-`us` pool goes 279 → 319 tickers, ~40 more fetches per run. Tests: `tests/test_universes.py` (`test_superinvestor_high_conviction_names_present`).
+
 ## v0.18.2 (2026-11-02)
 
 ### Changes

@@ -37,7 +37,7 @@ DEFAULT_UNIVERSE: list[str] = [
     # Industrials / Energy / Materials
     "BA", "CAT", "CRH", "CSTM", "CVX", "GE", "HON", "IAG",
     "LIN", "UPS", "XOM",
-    "COP", "EOG", "VLO", "ETN", "EMR", "PH",
+    "APA", "COP", "EOG", "MPC", "VLO", "ETN", "EMR", "PH",
     # Industrials — transport, defense & machinery
     "AME", "CARR", "CMI", "CPRT", "CSX", "CTAS", "DOV", "EXPD", "FAST",
     "GD", "GWW", "IR", "ITW", "LMT", "LUV", "MMM", "NOC", "NSC", "ODFL",

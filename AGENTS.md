@@ -277,7 +277,11 @@ stored per-ticker as JSON under `~/.investdaytip/pit/` (override with
 - Built while the Pro trial was alive (2026-09-26): **196/196 tickers**
   (1–12 FY each, 2140 fiscal years, 8.2 MB). Entity stitching (XOM, BLK) is
   resolved **at build time**, so the snapshot carries the stitched predecessor
-  CIK and needs no key to read.
+  CIK and needs no key to read. The snapshot predates the universe expansions
+  (`DEFAULT_UNIVERSE` 202 → 204, `SUPERINVESTOR_UNIVERSE` 101 → 141, region-`us`
+  pool now 319), so a PIT backtest over today's pool degrades per ticker to the
+  classic path for everything added since — rebuild it with `--force` while a
+  key is alive if a PIT run has to cover the whole pool.
 
 ### StockFit `lookup/search` HTTP 400 (live-verified 2026-09-26)
 
@@ -997,6 +1001,30 @@ symbols: `BK → BNY` (BNY Mellon, 2026-05-21), `MMC → MRSH` (Marsh McLennan �
 Marsh, 2026-01-14), `FI → FISV` (Fiserv). They are added under their new
 symbols; `tests/test_universes.py::test_us_renamed_symbols_2026` guards them.
 
+**Universe refresh (2026-11-12):** `DEFAULT_UNIVERSE` 202 → 204 (`APA`, `MPC` —
+beyond the two majors the energy cluster held only `COP`/`EOG`/`VLO`, a single
+refiner among them) and `SUPERINVESTOR_UNIVERSE` 101 → 141. The region-`us`
+pool (the union) is now **319**. The superinvestor
+list had been frozen at its June 2026 curation while two 13F cycles went by:
+every symbol was still valid and still held, but 40 tickers that met its own
+rule and appeared in **no pool** were missing (`ACN`, `GEV`, `TEL`, `MSI`,
+`MICC`, `EFX`, `DEO`, `SAP`, `ADP`, …). That list is hand-maintained and drifts
+silently — nothing in CI fails when it goes stale. Re-audit it against live
+DataRoma (no cache) with:
+
+```bash
+PYTHONPATH=src python scripts/superinvestor_audit.py --min-market-cap 10
+```
+
+It reports curated symbols gone from every portfolio, curated symbols below the
+consensus threshold, and qualifying symbols that are missing, splitting the
+last group by whether `DEFAULT_UNIVERSE` already covers them (those only affect
+`-r superinvestor` and the Superinvestors column). Its docstring used to promise
+"tickers with at least two independent manager positions" — 794 symbols meet
+that count in the current filings; the real rule is consensus + ≥$10B +
+stock-not-fund + one share class (`BRK-A` excluded on purpose, its share price
+makes a position unscorable).
+
 ### Relevance audit (size + liquidity)
 
 Rank every ticker by **USD market cap** and **3-month average daily turnover** (`volume × close`). FX gotcha: `USD<X>=X` quotes local units **per 1 USD**, so convert with `local / rate` (multiplying inverts it and makes KRW/JPY names look enormous); for `GBp` listings `marketCap` comes back in **GBP** while `price × volume` comes back in **pence**.
@@ -1010,7 +1038,7 @@ Rank every ticker by **USD market cap** and **3-month average daily turnover** (
 | Asia ETFs | 18 → 17 | $6.3B | `ASEA`, `CXSE` |
 
 - Removal criterion for ETFs: **AUM < $500M AND turnover < $1M/day**; index/style coverage survives (`IUES.L`, `QNTM.L`, `FXI`, `MCHI`) and `EWS` replaced `ASEA` as the Southeast Asia representative ($1.25B AUM / $35M per day). Guarded by `tests/test_universes.py::test_micro_etfs_removed`.
-- The US pool read 122 as of the audit; `DEFAULT_UNIVERSE` grew to 202 (region-`us` pool 277) in the 2026-11-01 coverage expansion — the medians in the table are still the ones measured on 2026-09-25 over 121.
+- The US pool read 122 as of the audit; `DEFAULT_UNIVERSE` grew to 202 (region-`us` pool 277) in the 2026-11-01 coverage expansion and to 204 (pool 319) in the 2026-11-12 refresh — the medians in the table are still the ones measured on 2026-09-25 over 121.
 - Stocks stay: the three under the $15M/day bar (`RO.SW`, `UHAL`, `KOF`) are mega/large caps — Yahoo just under-reports SIX volume.
 - **13 EU UCITS ETFs (`CSPX.AS`, `IWDA.AS`, `EUNL.DE`, `SXR8.DE`, `EQQQ.L`, …) return no `totalAssets`** — they are large iShares/Vanguard funds, a Yahoo data gap (their Size factor scores neutral), **not** irrelevance. Never flag them again; fall back to `sharesOutstanding × navPrice` when `totalAssets` is missing.
 
