@@ -47,6 +47,8 @@ def _run_backtest(args: argparse.Namespace) -> dict[str, Any]:
         cmd.extend(["--scoring-model", args.scoring_model])
     if args.pit_source != "none":
         cmd.extend(["--pit-source", args.pit_source])
+    if args.no_disqualifiers:
+        cmd.append("--no-disqualifiers")
 
     # Run in temp dir so HTML file is captured
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -76,6 +78,7 @@ def _run_backtest(args: argparse.Namespace) -> dict[str, Any]:
                 "regime": args.regime,
                 "scoring_model": args.scoring_model,
                 "pit_source": args.pit_source,
+                "enforce_disqualifiers": not args.no_disqualifiers,
             },
             "html_file": html_file,
         }
@@ -197,6 +200,8 @@ def main() -> None:
                      help="Scoring model to use (default: quant).")
     run.add_argument("--pit-source", choices=["none", "stockfit"], default="none",
                      help="Point-in-time fundamentals via StockFit (default: none).")
+    run.add_argument("--no-disqualifiers", action="store_true",
+                     help="Skip the quant red-flag cap (experiment only).")
     run.add_argument("-o", "--output", default=".")
 
     cmp = sub.add_parser("compare", help="Compare two baseline JSON files")

@@ -449,7 +449,15 @@ class QuantStockScorer:
         *,
         include_technical: bool = False,
         si_data: dict | None = None,
+        enforce_disqualifiers: bool = True,
     ) -> ScoredAsset:
+        """Score one stock with the six-factor ``quant`` model.
+
+        ``enforce_disqualifiers=False`` keeps every factor score and weight
+        identical but skips the red-flag cap (``total = min(total, 50)``) and
+        its notes. Only ``backtest --no-disqualifiers`` turns it off, for the
+        *does the cap add value?* experiment; the default path is unchanged.
+        """
         value, v_notes = self._value_score(data)
         growth, g_notes = self._growth_score(data)
         profitability, p_notes = self._profitability_score(data)
@@ -463,21 +471,22 @@ class QuantStockScorer:
             m_notes.extend(tech_notes)
 
         disqualified = False
-        if growth < self._DISQUALIFY_SOFT:
-            disqualified = True
-            g_notes.append("growth flagged as disqualifying")
-        if momentum < self._DISQUALIFY_SOFT:
-            disqualified = True
-            m_notes.append("momentum flagged as disqualifying")
-        if eps_rev < self._DISQUALIFY_SOFT:
-            disqualified = True
-            e_notes.append("EPS revisions flagged as disqualifying")
-        if value < self._DISQUALIFY_HARD:
-            disqualified = True
-            v_notes.append("valuation flagged as disqualifying")
-        if profitability < self._DISQUALIFY_HARD:
-            disqualified = True
-            p_notes.append("profitability flagged as disqualifying")
+        if enforce_disqualifiers:
+            if growth < self._DISQUALIFY_SOFT:
+                disqualified = True
+                g_notes.append("growth flagged as disqualifying")
+            if momentum < self._DISQUALIFY_SOFT:
+                disqualified = True
+                m_notes.append("momentum flagged as disqualifying")
+            if eps_rev < self._DISQUALIFY_SOFT:
+                disqualified = True
+                e_notes.append("EPS revisions flagged as disqualifying")
+            if value < self._DISQUALIFY_HARD:
+                disqualified = True
+                v_notes.append("valuation flagged as disqualifying")
+            if profitability < self._DISQUALIFY_HARD:
+                disqualified = True
+                p_notes.append("profitability flagged as disqualifying")
 
         total = (
             value * STOCK_WEIGHTS_QUANT["value"]
@@ -712,6 +721,7 @@ def score_stock(
     model: str = "quant",
     include_technical: bool = False,
     si_data: dict | None = None,
+    enforce_disqualifiers: bool = True,
 ) -> ScoredAsset:
     """Score a single stock using the selected model.
 
@@ -720,10 +730,17 @@ def score_stock(
         model: ``"quant"`` (default) or ``"classic"``.
         include_technical: blend RSI/MACD into the trend/momentum component.
         si_data: optional pre-loaded superinvestor data cache.
+        enforce_disqualifiers: apply the ``quant`` red-flag cap. Only the
+            backtest experiment path turns this off; default keeps behavior.
     """
     if model == "classic":
         return ClassicStockScorer().score(data, include_technical=include_technical, si_data=si_data)
-    return QuantStockScorer().score(data, include_technical=include_technical, si_data=si_data)
+    return QuantStockScorer().score(
+        data,
+        include_technical=include_technical,
+        si_data=si_data,
+        enforce_disqualifiers=enforce_disqualifiers,
+    )
 
 
 def score_asset(

@@ -442,6 +442,7 @@ def _run_backtest_cli(args: argparse.Namespace) -> int:
             include_technical=args.include_technical,
             scoring_model=args.scoring_model,
             pit_source=args.pit_source,
+            enforce_disqualifiers=args.enforce_disqualifiers,
         )
 
     # ── Console summary ──
@@ -720,6 +721,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="Point-in-time fundamental source: stockfit uses exact SEC "
                          "filing dates instead of a fixed reporting lag "
                          "(requires STOCKFIT_API_KEY; default: none).")
+    bt.add_argument("--no-disqualifiers", action="store_false", dest="enforce_disqualifiers",
+                    default=True,
+                    help="Skip the quant model's red-flag cap (score capped at 50 "
+                         "when a factor falls below its threshold). Experiment only.")
 
     dd = sub.add_parser(
         "deep-dive",

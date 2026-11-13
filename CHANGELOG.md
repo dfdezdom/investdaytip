@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- **The `quant` red-flag cap is now measurable — `backtest --no-disqualifiers` (experiment only).** `QuantStockScorer.score()` gained `enforce_disqualifiers` (default `True`, so the scored path is byte-identical) which only skips the `min(total, 50)` cap and its notes: same factors, same weights, same rationale lines when it is on. It exists to answer a question the model had never asked, because the thresholds (soft 20 for Growth/Momentum/EPS Revisions, hard 15 for Value/Profitability) were inherited from the Seeking-Alpha-inspired design and never backtested. Result on the full US pool (320 tickers, min-cap 0, `include_technical=True`, 3-month snapshots): at **top-5** the cap is inert — identical picks in all 17 snapshots of 5y, because a capped name sits at ≤50 and never clears the fifth pick; at **top-25** it changed 2/17 snapshots in 5y (`PFE` 2023-12 and `APP` 2025-09 enter only without it, displaced by `EMR` and `B`) and 1/8 in 3y (the same `APP`/`B` swap). Both swaps favoured the cap: 5y alpha 2.56%→2.92%, Sharpe 0.627→0.637, cumulative 212.2%→220.9%; 3y alpha 9.56%→10.16%, cumulative 192.5%→198.9% (Sharpe 2.21→2.11). Win rates and drawdowns unchanged. So the cap is a display effect far more than a selection effect — it neutralises the score of ~CNC-shaped rows (`Profitability` 2.8 → 50.0) without changing the portfolio at the product's N. Tests: `tests/test_scoring_quant.py::test_quant_disqualifier_can_be_disabled_without_moving_factors`. Artifacts: `stockfit/archivo/baseline-cap-{5y,3y}.json`.
+
 ## v0.18.3 (2026-11-12)
 
 ### Changes

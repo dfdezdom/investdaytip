@@ -803,6 +803,7 @@ def run_backtest(
     include_technical: bool | None = None,
     scoring_model: str = "quant",
     pit_source: str | None = None,
+    enforce_disqualifiers: bool = True,
 ) -> BacktestResult:
     """Run a historical backtest of the stock scoring model.
 
@@ -841,6 +842,10 @@ def run_backtest(
         path; ``"stockfit"`` sources fundamentals from StockFit point-in-time
         SEC filings (exact ``dateFiled`` knowledge dates instead of a fixed
         lag, US stocks only).  Requires ``STOCKFIT_API_KEY``.
+    enforce_disqualifiers:
+        Apply the ``quant`` model's red-flag cap (a single factor below its
+        threshold limits the total to 50). ``True`` is the shipped behavior;
+        ``False`` exists only for the *does the cap add value?* experiment.
 
     Returns
     -------
@@ -993,7 +998,14 @@ def run_backtest(
                 ):
                     continue
 
-                scored.append(score_stock(sd_obj, model=scoring_model, include_technical=include_technical))
+                scored.append(
+                    score_stock(
+                        sd_obj,
+                        model=scoring_model,
+                        include_technical=include_technical,
+                        enforce_disqualifiers=enforce_disqualifiers,
+                    )
+                )
 
             scored.sort(key=lambda s: s.total, reverse=True)
             picks = scored[:top_n]

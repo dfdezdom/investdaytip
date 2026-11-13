@@ -91,6 +91,42 @@ def test_quant_weak_stock_is_capped_by_disqualifying_grades():
     assert any("Disqualifying" in note for note in s.rationale)
 
 
+def test_quant_disqualifier_can_be_disabled_without_moving_factors():
+    """The experiment toggle drops only the cap, never a factor score."""
+    # CNC-shaped row: strong value/momentum/EPS with a very weak profitability
+    # factor, so the raw weighted total clears 50 and the cap actually binds.
+    data = StockData(
+        ticker="CNCX",
+        name="CapBinder",
+        trailing_pe=8.0,
+        price_to_book=1.2,
+        return_on_equity=0.06,
+        return_on_assets=0.018,
+        profit_margin=0.007,
+        margin_improving=False,
+        roa_improving=False,
+        earnings_growth=0.0,
+        revenue_growth=0.10,
+        free_cashflow=4_000_000_000,
+        market_cap=35_000_000_000,
+        price_vs_sma200=0.25,
+        return_12m=0.90,
+        return_1m=0.0,
+        sma200_slope=0.40,
+        eps_surprise=100.0,
+        asset_growth=-0.10,
+    )
+    capped = score_stock(data, model="quant")
+    uncapped = score_stock(data, model="quant", enforce_disqualifiers=False)
+
+    assert capped.breakdown == uncapped.breakdown
+    assert uncapped.total > 50.0
+    assert capped.total == 50.0
+    assert any("Disqualifying" in note for note in capped.rationale)
+    assert not any("Disqualifying" in note for note in uncapped.rationale)
+    assert not any("flagged as disqualifying" in note for note in uncapped.rationale)
+
+
 def test_quant_missing_data_gives_neutral_score():
     s = score_stock(StockData(ticker="UNK"), model="quant")
     assert 40 <= s.total <= 60
