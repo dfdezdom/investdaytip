@@ -13,6 +13,7 @@ from __future__ import annotations
 import calendar
 import logging
 import math
+import os
 import re
 import time
 from collections.abc import Callable
@@ -745,19 +746,29 @@ def _fetch_pit_statements(
     tickers: list[str],
     max_workers: int = 6,
 ) -> dict[str, PitStatements]:
-    """Fetch StockFit point-in-time statements for all tickers in parallel.
+    """Fetch point-in-time statements for all tickers in parallel.
 
     Per-ticker soft failures are logged and skipped (the snapshot loop then
     falls back to the classic fixed-lag path for that ticker).  If *every*
     ticker fails, raises :exc:`StockfitError` so a silent full degradation
     can never masquerade as a PIT run.
+
+    ``PIT_SOURCE=edgar`` swaps the provider for SEC EDGAR's free XBRL API.
+    It exists because StockFit's plan caps the annual series at five periods,
+    which leaves every snapshot before ~2021 without fundamentals; EDGAR goes
+    back to ~2009. Same contract, same soft-failure rules — see
+    ``data_source_edgar`` for the concept mapping and what was verified.
     """
+    if os.environ.get("PIT_SOURCE", "stockfit").strip().lower() == "edgar":
+        from investdaytip.data_source_edgar import fetch_pit_statements as fetcher
+    else:
+        fetcher = fetch_pit_statements
     pit_data: dict[str, PitStatements] = {}
     failures: list[str] = []
     total = len(tickers)
     workers = max(1, min(max_workers, 6))
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(fetch_pit_statements, t): t for t in tickers}
+        futures = {pool.submit(fetcher, t): t for t in tickers}
         for future in as_completed(futures):
             t = futures[future]
             try:
