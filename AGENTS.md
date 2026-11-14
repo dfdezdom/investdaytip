@@ -52,6 +52,7 @@ the convention is `Optional[...]` for dataclass fields, not `X | None`.
 | Data fetching | `data_source.py` | yfinance wrapper, dataclasses (`StockData` / `EtfData` / `AssetData`). **All network I/O lives here.** |
 | Yahooquery data source | `data_source_yahooquery.py` | yahooquery batch wrapper, maps `all_modules` to yfinance-style `info`, yfinance fallback |
 | StockFit PIT source | `data_source_stockfit.py` | StockFit annual statements with `dateFiled` for look-ahead-free backtests (`backtest --pit-source stockfit`); also live insight charts (`--fundamental-insights`) |
+| SEC EDGAR PIT source | `data_source_edgar.py` | Keyless EDGAR XBRL `companyfacts` behind the same `fetch_pit_statements()` contract (`backtest --pit-source edgar`), ~20 annual periods per name |
 | FMP data source | `data_source_fmp.py` | FMP wrapper, `fetch_asset()` alternative, 4 endpoints/ticker, rate-limit auto-fallback to yfinance |
 | Caching | `cache.py` | SQLite cache with per-thread connections, WAL mode, write lock |
 | Scoring | `scoring.py` | pure functions only — no I/O, no side effects |
@@ -307,6 +308,25 @@ Inc"` → results. Two defensive fixes shipped with the snapshot block:
   `check_pit_access`, CLI runs with snapshot-but-no-key, script `--status`.
 - The XOM reorg is the regression case for stitching; keep the
   `_search_queries("ExxonMobil Holdings Corp")` assertions green.
+
+## SEC EDGAR PIT Data Source (`backtest --pit-source edgar`)
+
+Keyless alternative to the StockFit PIT source: same `fetch_pit_statements()`
+contract (`PitStatements` / `PitPeriod`), so the scoring math is untouched.
+
+| Aspect | Value |
+|---|---|
+| CLI / API | `investdaytip backtest --pit-source edgar` / `run_backtest(..., pit_source="edgar")` — **no key and no local snapshot**; `check_pit_access()` gates only `stockfit` |
+| Legacy env | `PIT_SOURCE=edgar` still switches a `--pit-source stockfit` run (the only entry point when it landed). An explicit `--pit-source edgar` is never downgraded by the variable — `resolve_pit_source()` in `backtest.py` is the single rule, used by the CLI banner, the gate and the fetcher |
+| Source | `data.sec.gov/api/xbrl/companyfacts` — US filers only, annual 10-K `FY` rows only, ~19-20 fiscal years per name (AAPL FY2007 → FY2026) |
+| Cache | parsed facts only (~7.6 KB/ticker; the multi-MB payload is never stored), `~/.investdaytip/edgar` (`EDGAR_PIT_DIR`), 7 days; ticker→CIK map 30 days; 0.12 s between requests (EDGAR allows 10/s) |
+| Contact | `EDGAR_USER_AGENT` — EDGAR answers 403 to a User-Agent without an email-shaped contact, so the default is a placeholder to override |
+| Facts | 13 US-GAAP concept families resolved into the facts the backtest reads; `grossProfit` (revenue − cost), `totalDebt` (non-lease: `LongTermDebt` or its parts + commercial paper) and `freeCashFlow` (OCF − capex) derived as StockFit does |
+| Period selection | one period per fiscal year dated by **its own** 10-K (comparatives repeat a figure in every later filing: keying on `(end, filed)` gave 156 periods for AAPL instead of 15); quarter-length leaks are dropped by requiring 300 days between periods; `dei` is ignored (cover-page dates created phantom periods) |
+| Gaps (never fabricated) | non-US tickers → empty series → classic path; reorgs that map to a new CIK (XOM → 2115436) have no annuals; REITs that tag no capex leave `freeCashFlow` `None` |
+| Failure model | per-ticker soft failure (cache fallback first); if **every** ticker fails it raises `PitSourceError` (in `data_source_stockfit.py`, deliberately not `StockfitError`) so an EDGAR run never reports a StockFit error — logs and banner label come from `_pit_label()` |
+| Validation | `scripts/edgar_pit_check.py` in the `investnowtip` repo (**outside this workspace**): against 5 years of StockFit, 9 of 11 facts reproduce exactly; scores converge as StockFit's window fills (mean \|Δ total\| 11.12 / 11.17 / 5.13 / 0.79 / 0.05 / 0.04 for 2021→2026). Momentum and eps_revisions are 100% identical throughout (they never come from the statements) |
+| Tests | `tests/test_data_source_edgar.py` — period selection/derivations from payloads, cache freshness/staleness/fallback, CIK map, provider resolution, CLI keyless run (mocked; never HTTP) |
 
 ## StockFit Live Data Source (`--data-source stockfit`)
 
@@ -708,7 +728,7 @@ captures of the same CLI drift apart and someone eventually ships the stale one.
 ### Backtest Module
 - Stocks only (no ETF support); banner says `(stocks only)` at runtime
 - Uses **annual fiscal-year** financial data via `t.income_stmt`, `t.balance_sheet`, `t.cashflow` (yearly properties) — quarterly data (`get_income_stmt(freq="quarterly")`) only returns 5 quarters which is insufficient
-- `--pit-source stockfit` (default `none`) swaps fundamentals for StockFit point-in-time filings — exact `dateFiled` knowledge dates instead of the fixed `--lag-days` assumption; see the StockFit section. Per-ticker degradation to classic; aborts if every ticker fails.
+- `--pit-source stockfit|edgar` (default `none`) swaps fundamentals for point-in-time filings — exact `dateFiled` knowledge dates instead of the fixed `--lag-days` assumption. `stockfit` needs a key or a local snapshot; `edgar` is keyless and reaches ~20 years (see both PIT sections). Per-ticker degradation to classic; aborts if every ticker fails (`StockfitError` for stockfit, `PitSourceError` for EDGAR).
 - Classic and PIT builders share `_derive_stock_data()` — the math is identical, only the input selection differs
 - Internal dict key is `cash_flow` (underscore), matching the cache key; yfinance property is `t.cashflow` (no underscore) — cache read uses `"cash_flow"` to match the write
 - `--cache-clear` and `--no-cache` flags are supported on the backtest subcommand (cache is disabled by default during backtest for reproducibility)

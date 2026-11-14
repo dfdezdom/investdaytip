@@ -1,11 +1,17 @@
 """Point-in-time annual statements from SEC EDGAR's XBRL API.
 
+Entry point: ``investdaytip backtest --pit-source edgar`` (or
+``run_backtest(..., pit_source="edgar")``). Keyless, US filers only. The
+``PIT_SOURCE=edgar`` environment variable remains as the legacy switch for a
+``--pit-source stockfit`` run — see ``backtest.resolve_pit_source``.
+
 Why this exists: StockFit's plan caps the annual series at five periods (Free 1,
 Starter 5, Pro 20+), so ``backtest`` cannot build a snapshot older than ~2021 —
 every fundamental resolves to ``None``, every factor lands on the neutral 50 and
 no score clears the 60 gate. EDGAR's ``companyfacts`` endpoint is free, tags
-every US-GAAP fact with its own ``filed`` date, and reaches back to ~2009, which
-is what makes an out-of-regime test (2018-2022) possible at all.
+every US-GAAP fact with its own ``filed`` date, and reaches back to FY2007
+(~20 annual periods per name), which is what makes an out-of-regime test
+(2018-2022) possible at all.
 
 Scope, deliberately narrow:
 
@@ -157,7 +163,7 @@ def cik_for(ticker: str) -> Optional[int]:
             }
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(mapping))
-        except (OSError, urllib.error.URLError, ValueError) as exc:
+        except (OSError, ValueError) as exc:
             logger.debug("EDGAR ticker map unavailable: %s", exc)
             return None
     cik = mapping.get(ticker)
@@ -329,7 +335,9 @@ def fetch_pit_statements(ticker: str, *, refresh: bool = False) -> PitStatements
         return PitStatements(ticker=ticker)
     try:
         payload = _get_json(f"{BASE}/companyfacts/CIK{cik:010d}.json")
-    except (urllib.error.URLError, ValueError) as exc:
+    except (OSError, ValueError) as exc:
+        # URLError/HTTPError and socket timeouts are all OSError: a per-ticker
+        # soft failure, never a crash that would take the whole run down.
         logger.warning("EDGAR companyfacts failed for %s: %s", ticker, exc)
         if isinstance(cached, dict):
             return _from_cache(ticker, cached)

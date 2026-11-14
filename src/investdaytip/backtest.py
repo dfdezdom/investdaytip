@@ -38,6 +38,7 @@ from investdaytip.data_source import (
     _trend_metrics,
 )
 from investdaytip.data_source_stockfit import (
+    PitSourceError,
     PitStatements,
     StockfitError,
     check_pit_access,
@@ -742,27 +743,64 @@ def _fetch_all_data(
     return all_data
 
 
+PIT_SOURCE_ENV = "PIT_SOURCE"
+
+
+def resolve_pit_source(pit_source: str | None) -> str | None:
+    """Effective PIT provider for *pit_source* (``None``, ``stockfit`` or ``edgar``).
+
+    ``PIT_SOURCE`` was the original, env-only way of switching the provider and
+    still applies to a ``stockfit`` request, because that was the documented
+    entry point when EDGAR landed (``PIT_SOURCE=edgar investdaytip backtest
+    --pit-source stockfit``). An explicit ``"edgar"`` is never downgraded by
+    it: what the user typed on the command line wins over the variable. An
+    unknown value is returned untouched so the caller's validation rejects it.
+    """
+    if pit_source == "none":
+        return None
+    if pit_source != "stockfit":
+        return pit_source
+    override = os.environ.get(PIT_SOURCE_ENV, "").strip().lower()
+    return "edgar" if override == "edgar" else "stockfit"
+
+
+def _pit_label(source: str | None) -> str:
+    """Display/log label for a resolved PIT provider."""
+    return "EDGAR" if source == "edgar" else "StockFit"
+
+
 def _fetch_pit_statements(
     tickers: list[str],
     max_workers: int = 6,
+    source: str = "stockfit",
 ) -> dict[str, PitStatements]:
-    """Fetch point-in-time statements for all tickers in parallel.
+    """Fetch point-in-time statements for *tickers* in parallel.
 
     Per-ticker soft failures are logged and skipped (the snapshot loop then
-    falls back to the classic fixed-lag path for that ticker).  If *every*
-    ticker fails, raises :exc:`StockfitError` so a silent full degradation
-    can never masquerade as a PIT run.
+    falls back to the classic fixed-lag path for that ticker). If *every*
+    ticker fails, raises :exc:`StockfitError` — or :exc:`PitSourceError` when
+    the provider is EDGAR — so a silent full degradation can never masquerade
+    as a PIT run.
 
-    ``PIT_SOURCE=edgar`` swaps the provider for SEC EDGAR's free XBRL API.
-    It exists because StockFit's plan caps the annual series at five periods,
-    which leaves every snapshot before ~2021 without fundamentals; EDGAR goes
-    back to ~2009. Same contract, same soft-failure rules — see
-    ``data_source_edgar`` for the concept mapping and what was verified.
+    *source* is ``"stockfit"`` (default) or ``"edgar"``; ``PIT_SOURCE=edgar``
+    still upgrades a ``stockfit`` request (see :func:`resolve_pit_source`).
+    EDGAR exists because StockFit's plan caps the annual series at five
+    periods, which leaves every snapshot before ~2021 without fundamentals;
+    EDGAR is keyless and reaches back to FY2007. Same contract, same
+    soft-failure rules — see ``data_source_edgar`` for the concept mapping.
     """
-    if os.environ.get("PIT_SOURCE", "stockfit").strip().lower() == "edgar":
-        from investdaytip.data_source_edgar import fetch_pit_statements as fetcher
+    provider = resolve_pit_source(source) or "stockfit"
+    fetcher: Callable[[str], PitStatements]
+    if provider == "edgar":
+        from investdaytip.data_source_edgar import (
+            fetch_pit_statements as fetch_edgar_statements,
+        )
+
+        fetcher = fetch_edgar_statements
     else:
         fetcher = fetch_pit_statements
+    label = _pit_label(provider)
+    fatal = PitSourceError if provider == "edgar" else StockfitError
     pit_data: dict[str, PitStatements] = {}
     failures: list[str] = []
     total = len(tickers)
@@ -776,20 +814,20 @@ def _fetch_pit_statements(
                 if stmts.income:
                     pit_data[t] = stmts
                 else:
-                    logger.warning("No StockFit PIT statements for %s", t)
+                    logger.warning("No %s PIT statements for %s", label, t)
                     failures.append(t)
-            except StockfitError as exc:
-                logger.warning("StockFit PIT fetch failed for %s: %s", t, exc)
+            except (StockfitError, PitSourceError, OSError) as exc:
+                logger.warning("%s PIT fetch failed for %s: %s", label, t, exc)
                 failures.append(t)
     if total and not pit_data:
-        raise StockfitError(
-            f"StockFit PIT fetch failed for all {total} tickers "
+        raise fatal(
+            f"{label} PIT fetch failed for all {total} tickers "
             f"(last failure: {failures[:3]})"
         )
     if failures:
         logger.info(
-            "StockFit PIT: %d/%d tickers unavailable (using classic path for them)",
-            len(failures), total,
+            "%s PIT: %d/%d tickers unavailable (using classic path for them)",
+            label, len(failures), total,
         )
     return pit_data
 
@@ -852,7 +890,9 @@ def run_backtest(
         ``None`` (default) or ``"none"`` for the classic fixed reporting-lag
         path; ``"stockfit"`` sources fundamentals from StockFit point-in-time
         SEC filings (exact ``dateFiled`` knowledge dates instead of a fixed
-        lag, US stocks only).  Requires ``STOCKFIT_API_KEY``.
+        lag, US stocks only) and needs ``STOCKFIT_API_KEY`` or a local
+        snapshot; ``"edgar"`` sources the same contract from SEC EDGAR's free
+        XBRL API — keyless, US stocks only, ~20 annual periods per name.
     enforce_disqualifiers:
         Apply the ``quant`` model's red-flag cap (a single factor below its
         threshold limits the total to 50). ``True`` is the shipped behavior;
@@ -866,11 +906,16 @@ def run_backtest(
 
     if pit_source == "none":
         pit_source = None
-    if pit_source not in (None, "stockfit"):
-        raise ValueError(f"Unsupported pit_source: {pit_source!r}")
+    pit_source = resolve_pit_source(pit_source)
+    if pit_source not in (None, "stockfit", "edgar"):
+        raise ValueError(
+            f"Unsupported pit_source: {pit_source!r} "
+            "(expected 'none', 'stockfit' or 'edgar')"
+        )
     if pit_source == "stockfit":
         # Fail fast before any fetch work starts: a key (live fetch) or a
-        # previously built local snapshot must be available.
+        # previously built local snapshot must be available. EDGAR needs
+        # neither — it is keyless by design.
         check_pit_access()
 
     if min_market_cap is None:
@@ -906,17 +951,20 @@ def run_backtest(
         all_tickers = list(set(universe + [benchmark]))
         data = _fetch_all_data(all_tickers, period, max_workers, on_progress=on_progress)
 
-        # Point-in-time fundamentals (StockFit): exact filing dates per
-        # snapshot instead of a fixed reporting-lag assumption.
+        # Point-in-time fundamentals (StockFit or EDGAR): exact filing dates
+        # per snapshot instead of a fixed reporting-lag assumption.
         pit_data: dict[str, PitStatements] = {}
-        if pit_source == "stockfit":
+        if pit_source is not None:
+            label = _pit_label(pit_source)
             try:
-                pit_data = _fetch_pit_statements(universe, max_workers)
-            except StockfitError as exc:
-                return BacktestResult(snapshots=[], errors=[f"StockFit PIT: {exc}"])
+                pit_data = _fetch_pit_statements(
+                    universe, max_workers, source=pit_source
+                )
+            except (StockfitError, PitSourceError) as exc:
+                return BacktestResult(snapshots=[], errors=[f"{label} PIT: {exc}"])
             logger.info(
-                "StockFit PIT enabled: statements for %d/%d tickers",
-                len(pit_data), len(universe),
+                "%s PIT enabled: statements for %d/%d tickers",
+                label, len(pit_data), len(universe),
             )
 
         bench_history = data.get(benchmark, {}).get("history")

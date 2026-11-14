@@ -41,7 +41,7 @@ own terms) built on this engine; the engine itself stays MIT.
 - 🧠 **Interactive advisor** — market pulse, portfolio review, and model-scored candidate lists via the `advisor` subcommand (decision support, not personal recommendations)
 - 🤖 **AI-powered assistant** — chat in natural language to analyze markets, review portfolios, and explore the model's top-rated candidates — powered by [OpenCode](https://opencode.ai) agents
 - 📊 **Backtest validation** — historical backtesting with automated before/after comparison script
-- 🧾 **StockFit integration (optional)** — point-in-time SEC filing dates for backtests (`--pit-source stockfit`, works offline from a local snapshot), a fundamentals insights section in the HTML report (`--fundamental-insights`), per-ticker `deep-dive` reports and a keyless devil's advocate layer (risk signals). Works on every StockFit plan — and without a key at all (`stockfit-status` shows what yours unlocks)
+- 🧾 **StockFit integration (optional)** — point-in-time SEC filing dates for backtests (`--pit-source stockfit`, works offline from a local snapshot, or keyless from SEC XBRL with `--pit-source edgar`), a fundamentals insights section in the HTML report (`--fundamental-insights`), per-ticker `deep-dive` reports and a keyless devil's advocate layer (risk signals). Works on every StockFit plan — and without a key at all (`stockfit-status` shows what yours unlocks)
 ---
 
 ## Installation
@@ -401,6 +401,7 @@ investdaytip backtest --lag-days 90            # Reporting lag (default: 60)
 investdaytip backtest --period 3y              # Shorter price history
 investdaytip backtest --export-html            # Export to HTML
 investdaytip backtest --pit-source stockfit    # Point-in-time SEC filing dates (StockFit)
+investdaytip backtest --pit-source edgar       # Keyless PIT from SEC XBRL (~20 years)
 investdaytip backtest --no-cache               # Bypass SQLite cache
 investdaytip backtest --cache-clear            # Purge cache before run
 ```
@@ -420,7 +421,7 @@ investdaytip backtest --cache-clear            # Purge cache before run
 | `--benchmark TICKER` | Benchmark for alpha/returns | `SPY` (per region) |
 | `--export-html [PATH]` | Export results to HTML | disabled |
 | `--scoring-model {classic,quant}` | Scoring model to validate | `quant` |
-| `--pit-source {none,stockfit}` | Point-in-time fundamentals (exact SEC filing dates; needs key **or** local snapshot) | `none` |
+| `--pit-source {none,stockfit,edgar}` | Point-in-time fundamentals (exact SEC filing dates; `stockfit` needs a key **or** local snapshot, `edgar` is keyless) | `none` |
 | `--include-technical` / `--no-include-technical` | Force RSI/MACD in/out | model-dependent |
 | `--max-workers N` | Parallel fetch threads | `10` |
 | `--no-cache` / `--cache-clear` | Bypass / purge the SQLite cache | disabled |
@@ -448,6 +449,30 @@ python scripts/pit_snapshot.py --status # inspect saved files (offline)
 
 Resolution order, per ticker: live StockFit (when `STOCKFIT_API_KEY` is set)
 → local snapshot → the classic fixed-lag path.
+
+#### Keyless alternative: SEC EDGAR (`--pit-source edgar`)
+
+`--pit-source edgar` serves the same point-in-time contract straight from SEC
+EDGAR's free XBRL `companyfacts` API — no StockFit key and no local snapshot.
+StockFit's plan caps the annual series at five periods, so EDGAR is what makes
+a pre-2021 snapshot possible at all: it reaches back to FY2007 (~20 annual
+periods per name), still dating every figure by its own 10-K.
+
+US filers only. Thirteen US-GAAP concept families are resolved into the facts
+the backtest reads; `grossProfit`, `totalDebt` (non-lease debt) and
+`freeCashFlow` are derived the same way StockFit does. Parsed facts are cached
+per ticker under `~/.investdaytip/edgar/` (7 days, `EDGAR_PIT_DIR` to
+override) and requests are paced at 0.12 s. Set `EDGAR_USER_AGENT` to your own
+email-shaped contact — SEC answers 403 to a User-Agent without one.
+
+Validated against five years of StockFit: nine of the eleven facts reproduce
+exactly and the scores converge as StockFit's window fills (mean |Δ total|
+11.1 in 2021 → 0.04 in 2026). Known gaps, never fabricated: names that map to
+a new CIK after a reorganisation (XOM) have no annuals and fall back to the
+classic path, and REITs that tag no capex leave `freeCashFlow` empty.
+
+`PIT_SOURCE=edgar` (the original, env-only switch) still upgrades a
+`--pit-source stockfit` run, so older scripts keep working.
 
 #### Backtest-Driven Scoring Validation
 
@@ -816,6 +841,7 @@ src/investdaytip/
 ├── data_source_fmp.py     # FMP wrapper (alternative data source, 6 endpoints/ticker)
 ├── data_source_yahooquery.py # Yahooquery batch data source
 ├── data_source_stockfit.py # StockFit client: PIT statements, insights, plan detection, live source
+├── data_source_edgar.py   # SEC EDGAR XBRL PIT statements (keyless, ~20 annual periods)
 ├── financial_health.py    # Piotroski F-Score, Altman Z, YoY-improvement flags
 ├── deep_dive.py           # Per-ticker deep report (score + research + diagnostics)
 ├── risk_signals.py        # Keyless devil's advocate layer (bear-case bullets)
@@ -849,6 +875,7 @@ tests/
 ├── test_data_source_fmp.py # FMP data fetching tests
 ├── test_data_source_yahooquery.py # Yahooquery data source tests
 ├── test_data_source_stockfit_pit.py # StockFit PIT layer tests (mocked HTTP)
+├── test_data_source_edgar.py # SEC EDGAR PIT parsing, cache and provider wiring
 ├── test_data_source_stockfit_live.py # StockFit live data source tests (mocked HTTP)
 ├── test_fundamental_insights.py # StockFit insights section tests
 ├── test_footnotes.py       # StockFit footnotes parsing / bear-case bullets

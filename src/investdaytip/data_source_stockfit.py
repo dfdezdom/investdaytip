@@ -127,6 +127,17 @@ class StockfitPlanError(StockfitError):
     """Endpoint not available on the caller's plan (HTTP 403)."""
 
 
+class PitSourceError(RuntimeError):
+    """Fatal failure of a point-in-time provider other than StockFit.
+
+    The ``backtest`` engine treats every PIT provider the same way (soft
+    failures fall back to the classic path, a total failure aborts the run),
+    but an EDGAR run must not report a StockFit error: this class exists so
+    ``_fetch_pit_statements`` can abort truthfully. Deliberately **not** a
+    :exc:`StockfitError` — nothing here is StockFit's fault.
+    """
+
+
 # ── Tier awareness ───────────────────────────────────────────────────────────
 # InvestDayTip works on every StockFit tier — and without a key at all:
 # features degrade gracefully and never fabricate.  StockFit exposes no plan

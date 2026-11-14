@@ -27,6 +27,17 @@ def pit_snapshot_dir(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def edgar_env(tmp_path, monkeypatch):
+    """Isolate the EDGAR PIT cache and never inherit ``PIT_SOURCE``.
+
+    Without this a provider resolution could read a developer's exported
+    variable, and a fetch test could touch the real ``~/.investdaytip/edgar``.
+    """
+    monkeypatch.setenv("EDGAR_PIT_DIR", str(tmp_path / "edgar"))
+    monkeypatch.delenv("PIT_SOURCE", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def stockfit_env(monkeypatch):
     """Never inherit a real StockFit key — tests opt in explicitly."""
     monkeypatch.delenv("STOCKFIT_API_KEY", raising=False)

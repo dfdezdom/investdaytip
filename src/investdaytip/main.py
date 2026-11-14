@@ -352,7 +352,7 @@ def _default_backtest_html_filename(now: datetime | None = None) -> str:
 
 def _run_backtest_cli(args: argparse.Namespace) -> int:
     """Execute the ``backtest`` subcommand."""
-    from investdaytip.backtest import run_backtest
+    from investdaytip.backtest import resolve_pit_source, run_backtest
     from investdaytip.recommender import _build_universe
 
     console = Console()
@@ -361,7 +361,8 @@ def _run_backtest_cli(args: argparse.Namespace) -> int:
             f"[red]--interval-months must be >= 1 (got {args.interval_months}).[/red]"
         )
         return 2
-    if args.pit_source == "stockfit":
+    pit_source = resolve_pit_source(args.pit_source)
+    if pit_source == "stockfit":
         try:
             check_pit_access()
         except StockfitError as exc:
@@ -372,9 +373,7 @@ def _run_backtest_cli(args: argparse.Namespace) -> int:
             console.print("  python scripts/pit_snapshot.py")
             return 1
     region_str = ", ".join(args.region) if isinstance(args.region, list) else args.region
-    pit_str = (
-        ", PIT [italic]stockfit[/italic]" if args.pit_source == "stockfit" else ""
-    )
+    pit_str = f", PIT [italic]{pit_source}[/italic]" if pit_source else ""
     console.print(
         f"[bold cyan]InvestDayTip Backtest[/bold cyan] — "
         f"region [italic]{region_str}[/italic], "
@@ -717,10 +716,11 @@ def main(argv: list[str] | None = None) -> int:
                          default=None, help="Exclude RSI and MACD from scoring.")
     bt.add_argument("--scoring-model", choices=["classic", "quant"], default="quant",
                     help="Scoring model to use (default: quant).")
-    bt.add_argument("--pit-source", choices=["none", "stockfit"], default="none",
-                    help="Point-in-time fundamental source: stockfit uses exact SEC "
-                         "filing dates instead of a fixed reporting lag "
-                         "(requires STOCKFIT_API_KEY; default: none).")
+    bt.add_argument("--pit-source", choices=["none", "stockfit", "edgar"], default="none",
+                    help="Point-in-time fundamental source: 'stockfit' uses exact SEC "
+                         "filing dates (needs STOCKFIT_API_KEY or a local snapshot); "
+                         "'edgar' uses SEC EDGAR's free XBRL API (keyless, US stocks "
+                         "only, ~20 annual periods; default: none).")
     bt.add_argument("--no-disqualifiers", action="store_false", dest="enforce_disqualifiers",
                     default=True,
                     help="Skip the quant model's red-flag cap (score capped at 50 "
