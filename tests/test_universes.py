@@ -98,14 +98,23 @@ def test_delisted_and_renamed_symbols_removed():
 
 
 def test_superinvestor_high_conviction_names_present():
-    """Q3 2026 audit (2026-11-12): 40 qualifying tickers were missing.
+    """Q3 2026 audit (2026-11-17, cycle complete): ten names joined the list.
 
     The universe is refreshed by hand, so this guards the head of the consensus
-    against accidental deletion rather than pinning all 141 names.
+    against accidental deletion rather than pinning all 151 names.
     """
     for t in ("ACN", "GEV", "TEL", "MSI", "MICC", "EFX", "DEO", "SAP", "ADP",
               "GM", "APH", "CHTR", "IDXX", "PSX", "NVS"):
         assert t in SUPERINVESTOR_UNIVERSE, f"{t} should be in the universe"
+
+    # Added on 2026-11-17: five managers each and, at the time, in no pool.
+    for t in ("A", "AER", "ALLY", "CCK", "CSL", "DAL", "FTV", "HONA", "MLM",
+              "NEM"):
+        assert t in SUPERINVESTOR_UNIVERSE, f"{t} should be in the universe"
+
+    # CRS dropped to a single manager in Q3 2026 and is kept on purpose — a
+    # $13B large cap that entered on consensus.
+    assert "CRS" in SUPERINVESTOR_UNIVERSE
 
     # Still excluded on purpose: a share price that makes a position
     # unscorable, a merged duplicate, and a Treasury ETF (removed 2026-09-25).

@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 MANAGERS_URL = "https://www.dataroma.com/m/managers.php"
 HOLDINGS_URL = "https://www.dataroma.com/m/holdings.php?m={code}"
 
+# Each holdings page announces the filing it reflects — "Period: Q3 2026
+# Portfolio date: 30 Sep 2026" — which is how a caller tells a finished 13F
+# cycle from one where managers are still on the previous quarter.
+_PERIOD_RE = re.compile(r"Period:\s*(Q[1-4]\s+20\d\d)")
+
 TTL_SUPERINVESTOR = 86400 * 7  # 7 days (quarterly data)
 # v2: GOOG merged into GOOGL; v3: share-class dots normalized to Yahoo dashes
 # (BRK.B → BRK-B) and keys uppercased.
@@ -105,6 +110,18 @@ def fetch_manager_holdings(code: str) -> dict[str, float]:
     """Fetch a single manager's holdings, returning {ticker: portfolio_pct}."""
     html = _fetch(HOLDINGS_URL.format(code=code))
     return _extract_tickers_from_holdings_page(html)
+
+
+def extract_report_period(html: str) -> str | None:
+    """The 13F quarter a holdings page reports (``Q3 2026``), or ``None``.
+
+    A manager's page states its own filing period, so a caller collecting the
+    whole set can tell a finished cycle from one still filling in — the
+    distinction matters, because the aggregate of a half-reported quarter looks
+    exactly like a market that shifted.
+    """
+    match = _PERIOD_RE.search(html)
+    return match.group(1).replace("  ", " ") if match else None
 
 
 def fetch_superinvestor_universe(

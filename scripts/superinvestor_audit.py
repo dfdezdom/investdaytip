@@ -4,7 +4,9 @@ The universe is a hand-curated list, so it drifts as 13F filings come in: names
 enter the consensus and others leave it, and nothing in CI notices. This script
 answers the two questions the curation asks — *is every curated ticker still
 held by enough managers?* and *which qualifying tickers are missing?* — against
-the filings DataRoma shows today.
+the filings DataRoma shows today, and it states which quarter those filings are
+(``Q3 2026 — 82/82 managers``), because a half-reported cycle reads exactly
+like a market that shifted.
 
     python scripts/superinvestor_audit.py                     # fetch + report
     python scripts/superinvestor_audit.py --json out.json     # keep the aggregate
@@ -21,16 +23,16 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 import time
 from pathlib import Path
 from typing import Any
 
 from investdaytip.dataroma import (
-    MANAGERS_URL,
+    HOLDINGS_URL,
+    _extract_tickers_from_holdings_page,
     _fetch,
-    fetch_manager_holdings,
+    extract_report_period,
     fetch_manager_list,
 )
 from investdaytip.superinvestor_universe import SUPERINVESTOR_UNIVERSE
@@ -55,7 +57,9 @@ def build_aggregate(
 
     Mirrors ``dataroma.fetch_superinvestor_universe()`` — same symbol
     normalization (``BRK.B`` → ``BRK-B``) and the same GOOG → GOOGL merge — but
-    bypasses the 7-day cache so an audit always sees the current filings.
+    bypasses the 7-day cache so an audit always sees the current filings. Each
+    manager's own reported period is kept in ``periods`` so the caller can tell
+    a finished 13F cycle from one that is still filling in.
     """
     managers = fetch_manager_list()
     if not managers:
@@ -63,22 +67,27 @@ def build_aggregate(
 
     aggregate: dict[str, int] = {}
     weights: dict[str, float] = {}
+    periods: dict[str, int] = {}
     failed: list[str] = []
 
     for i, (code, name) in enumerate(managers, start=1):
         try:
-            holdings = fetch_manager_holdings(code)
+            html = _fetch(HOLDINGS_URL.format(code=code))
+            holdings = _extract_tickers_from_holdings_page(html)
         except Exception as exc:  # noqa: BLE001 — best effort, reported below
             failed.append(f"{code}: {exc}")
             print(f"[{i}/{len(managers)}] FAIL {code} {name}: {exc}", file=sys.stderr)
             time.sleep(0.5)
             continue
+        period = extract_report_period(html) or "unknown"
+        periods[period] = periods.get(period, 0) + 1
         for ticker, pct in holdings.items():
             sym = ticker.replace(".", "-").upper()
             aggregate[sym] = aggregate.get(sym, 0) + 1
             weights[sym] = weights.get(sym, 0.0) + pct
         print(
-            f"[{i}/{len(managers)}] {code:5} {name[:38]:38} {len(holdings):4} tickers",
+            f"[{i}/{len(managers)}] {code:5} {name[:38]:38} {len(holdings):4} tickers"
+            f"  {period}",
             file=sys.stderr,
         )
         time.sleep(0.5)
@@ -92,17 +101,21 @@ def build_aggregate(
         "failed": failed,
         "aggregate": aggregate,
         "weights": weights,
+        "periods": periods,
     }
 
 
-def _report_quarter() -> str:
-    """The most recent reportable quarter on the managers page, if it says."""
-    try:
-        html = _fetch(MANAGERS_URL)
-    except Exception:  # noqa: BLE001 — a label is a nicety, never a failure
-        return "unknown"
-    quarters = sorted(set(re.findall(r"Q[1-4]\s+20\d\d", html)))
-    return quarters[-1] if quarters else "unknown"
+def _quarter_label(periods: dict[str, int]) -> str:
+    """The quarter most managers report, with any stragglers spelled out."""
+    if not periods:
+        return "unknown (no period stated on the pages)"
+    ordered = sorted(periods.items(), key=lambda kv: (-kv[1], kv[0]))
+    top, count = ordered[0]
+    total = sum(periods.values())
+    if len(ordered) == 1:
+        return f"{top} — {count}/{total} managers"
+    rest = ", ".join(f"{period} ×{n}" for period, n in ordered[1:])
+    return f"{top} — {count}/{total} managers (still on {rest})"
 
 
 def market_cap(ticker: str) -> float | None:
@@ -235,10 +248,11 @@ def main() -> int:
 
     if args.json_in:
         data = json.loads(args.json_in.read_text())
-        quarter = "from saved snapshot"
+        quarter = (_quarter_label(data["periods"]) if data.get("periods")
+                   else "saved snapshot (no period recorded)")
     else:
         data = build_aggregate()
-        quarter = _report_quarter()
+        quarter = _quarter_label(data.get("periods", {}))
         if args.json_out:
             args.json_out.write_text(json.dumps(data, indent=1))
             print(f"\naggregate written to {args.json_out}", file=sys.stderr)

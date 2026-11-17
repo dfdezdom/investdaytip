@@ -1039,11 +1039,27 @@ PYTHONPATH=src python scripts/superinvestor_audit.py --min-market-cap 10
 It reports curated symbols gone from every portfolio, curated symbols below the
 consensus threshold, and qualifying symbols that are missing, splitting the
 last group by whether `DEFAULT_UNIVERSE` already covers them (those only affect
-`-r superinvestor` and the Superinvestors column). Its docstring used to promise
-"tickers with at least two independent manager positions" — 794 symbols meet
-that count in the current filings; the real rule is consensus + ≥$10B +
-stock-not-fund + one share class (`BRK-A` excluded on purpose, its share price
-makes a position unscorable).
+`-r superinvestor` and the Superinvestors column). Its docstring promised
+"tickers with at least two independent manager positions" — 784 symbols meet
+that count in the current filings; **the rule the list actually applies is
+consensus ≥5 managers + ≥$10B + stock-not-fund + one share class** (`BRK-A`
+excluded on purpose, its share price makes a position unscorable). The literal
+≥2 cut matches 375 large-cap stocks today, 236 of them in no pool at all —
+roughly half the US large-cap market, not a consensus list. The script also
+prints the quarter it read (`Q3 2026 — 82/82 managers (still on Q2 2026 ×N)`,
+from `dataroma.extract_report_period()`), so a half-filed cycle can never be
+mistaken for a shift in the market — the 2026-11-12 run could not say.
+
+**Universe refresh (2026-11-17, Q3 2026 cycle complete):** the 45-day deadline
+(2026-09-30 + 45 → Saturday 2026-11-14, observed Monday the 16th) closed the
+quarter the 2026-11-12 pass had seen half-filed, so the audit was re-run:
+82/82 managers, 1,726 symbols, 784 held by ≥2. **Nothing left the list** — all
+141 curated tickers are still held (only `CRS` sits at one manager, kept on
+purpose: a $13B large cap that lives in no other universe) — and
+`SUPERINVESTOR_UNIVERSE` grew 141 → **151** with `A`, `AER`, `ALLY`, `CCK`,
+`CSL`, `DAL`, `FTV`, `HONA`, `MLM`, `NEM`: five managers each, absent from every
+pool, and each verified live (`EQUITY` quote type, real market cap, non-empty
+history) before being added. Region-`us` pool 319 → **329**.
 
 ### Relevance audit (size + liquidity)
 
@@ -1058,7 +1074,7 @@ Rank every ticker by **USD market cap** and **3-month average daily turnover** (
 | Asia ETFs | 18 → 17 | $6.3B | `ASEA`, `CXSE` |
 
 - Removal criterion for ETFs: **AUM < $500M AND turnover < $1M/day**; index/style coverage survives (`IUES.L`, `QNTM.L`, `FXI`, `MCHI`) and `EWS` replaced `ASEA` as the Southeast Asia representative ($1.25B AUM / $35M per day). Guarded by `tests/test_universes.py::test_micro_etfs_removed`.
-- The US pool read 122 as of the audit; `DEFAULT_UNIVERSE` grew to 202 (region-`us` pool 277) in the 2026-11-01 coverage expansion and to 204 (pool 319) in the 2026-11-12 refresh — the medians in the table are still the ones measured on 2026-09-25 over 121.
+- The US pool read 122 as of the audit; `DEFAULT_UNIVERSE` grew to 202 (region-`us` pool 277) in the 2026-11-01 coverage expansion, to 204 (pool 319) in the 2026-11-12 refresh and to `SUPERINVESTOR_UNIVERSE` 151 (pool 329) on 2026-11-17 — the medians in the table are still the ones measured on 2026-09-25 over 121.
 - Stocks stay: the three under the $15M/day bar (`RO.SW`, `UHAL`, `KOF`) are mega/large caps — Yahoo just under-reports SIX volume.
 - **13 EU UCITS ETFs (`CSPX.AS`, `IWDA.AS`, `EUNL.DE`, `SXR8.DE`, `EQQQ.L`, …) return no `totalAssets`** — they are large iShares/Vanguard funds, a Yahoo data gap (their Size factor scores neutral), **not** irrelevance. Never flag them again; fall back to `sharesOutstanding × navPrice` when `totalAssets` is missing.
 

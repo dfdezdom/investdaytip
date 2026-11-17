@@ -34,7 +34,7 @@ own terms) built on this engine; the engine itself stays MIT.
 - 🏦 **Stocks & ETFs** — auto-detected and scored with dedicated models
 - 🌍 **US, European, Asian & Superinvestor markets** — S&P 500, DAX, CAC 40, FTSE 100, Nikkei 225, Hang Seng, NSE, and superinvestor consensus holdings from DataRoma 13F filings
 - 💱 **Currency filter** — narrow by native currency (`USD`, `EUR`, `JPY`, …)
-- ⚡ **Concurrent fetching** — analyzes ~570 tickers in seconds
+- ⚡ **Concurrent fetching** — analyzes ~620 tickers in seconds
 - 📊 **Rich CLI output** — price, 1M/1Y change, score breakdown and rationale
 - 🧾 **Self-contained HTML export** — interactive report with filters and sortable columns
 - 🧪 **Pure scoring functions** — testable without network
@@ -82,7 +82,7 @@ pip install -e ".[dev]"
 investdaytip
 ```
 
-That's it. You'll see the top 5 highest-scoring candidates across the curated universes — ~570 US, EU, Asian & superinvestor tickers before the market-cap filter.
+That's it. You'll see the top 5 highest-scoring candidates across the curated universes — ~620 US, EU, Asian & superinvestor tickers before the market-cap filter.
 
 <p align="center">
   <img src="docs/screenshot-CLI.png" alt="InvestDayTip CLI output" width="90%">
@@ -713,9 +713,9 @@ When no `-t` is given, InvestDayTip uses curated universes:
 - **EU UCITS ETFs** — 35 broad, sector and bond UCITS ETFs (`eu_etf_universe.py`)
 - **Asia stocks** — 110 large-caps from Japan, Hong Kong, Singapore, India, South Korea, Taiwan, and Australia (`asia_universe.py`)
 - **Asia ETFs** — 17 broad-market, country-specific, and sector ETFs with significant Asian exposure (`asia_etf_universe.py`)
-- **Superinvestor stocks** — 101 consensus stocks held by ≥2 of ~82 top investors tracked by DataRoma 13F filings (`superinvestor_universe.py`)
+- **Superinvestor stocks** — 151 consensus stocks, held by ≥5 of the ~82 top investors tracked by DataRoma 13F filings when added (a few older names sit at 2–3) (`superinvestor_universe.py`)
 
-Merging the pools for a full scan (`-r all -a all`) yields **572 unique
+Merging the pools for a full scan (`-r all -a all`) yields **624 unique
 tickers** — overlapping tickers and cross-listings (e.g. `TSM` / `2330.TW`,
 `VXUS` in two ETF lists) are deduplicated before fetching.
 

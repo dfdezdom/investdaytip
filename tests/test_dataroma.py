@@ -9,6 +9,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 from investdaytip.dataroma import (
+    extract_report_period,
     fetch_superinvestor_universe,
     get_superinvestor_data,
 )
@@ -163,3 +164,28 @@ class TestFetchSuperinvestorUniverse:
         assert "AAPL" in tickers
         assert "MSFT" in tickers
         assert "BAD TICKER" not in tickers
+
+
+# ---------------------------------------------------------------------------
+# Filing period
+# ---------------------------------------------------------------------------
+
+
+class TestReportPeriod:
+    """The quarter a manager's page reports — a half-filed cycle looks like a
+    market that shifted, so the audit has to be able to say which one it read."""
+
+    PAGE = (
+        '<div class="box"><b>Warren Buffett - Berkshire Hathaway</b>'
+        "<br>Period: Q3 2026<br>Portfolio date: 30 Sep 2026<br>"
+        "No. of stocks: 30<br>Portfolio value: $300,000</div>"
+        '<td>Berkshire Hathaway Q2 2026 Earnings Report</td>'
+    )
+
+    def test_period_is_the_filing_not_a_headline(self):
+        # The page also carries news headlines mentioning older quarters.
+        assert extract_report_period(self.PAGE) == "Q3 2026"
+
+    def test_missing_period_returns_none(self):
+        assert extract_report_period("<table><tr><td>no period</td></tr></table>") is None
+

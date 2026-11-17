@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.18.5 (2026-11-17)
+
+### Changes
+
+- **`SUPERINVESTOR_UNIVERSE` takes in ten new consensus names — 141 → 151.** The Q3 2026 13F cycle closed on Monday 2026-11-16 (the 45-day deadline fell on Saturday the 14th), so the list was re-audited against the finished filings — 82/82 managers, 1,726 symbols, 784 held by two or more — where the 2026-11-12 pass had seen a quarter still filling in. **No curated ticker had left every portfolio, so nothing was removed.** `A` (Agilent), `AER` (AerCap), `ALLY`, `CCK` (Crown), `CSL` (Carlisle), `DAL` (Delta), `FTV` (Fortive), `HONA` (Honeywell Aerospace), `MLM` (Martin Marietta) and `NEM` (Newmont) join with five managers each and, at the time, no place in any pool; all ten were verified live first (`EQUITY`, a real market cap, non-empty history) because a dead or unlisted symbol is the one failure this list cannot detect on its own. **`CRS` fell to a single manager and is kept on purpose** — a $13B large cap that entered on consensus, where one quarter's filing is not a curation event; dropping it would also have taken it out of the scored US pool entirely, since it lives in no other universe. **The selection rule is now documented as what it is: ≥5 managers for new entries**, not the ≥2 the docstring promised. Under the literal "≥2 managers + ≥$10B + stock + one class" cut, 375 tickers qualify and 236 of them are in no pool — that is not a consensus list, it is most of the US large-cap market, and adding them would take the region-`us` pool from 319 to 555 tickers (~236 more fetches per run). The median curated name is held by seven managers; only `FIVE` and `UHAL` (2) sit below five. Cost of this refresh: the region-`us` pool goes 319 → 329 tickers, ~10 more fetches per run. **The audit now names the quarter it read** — `dataroma.extract_report_period()` parses each manager's own `Period: Q3 2026` line, and the report prints `Q3 2026 — 82/82 managers (still on Q2 2026 ×N)`, because a half-filed cycle and a market that shifted produce the same aggregate. Tests: `tests/test_universes.py::test_superinvestor_high_conviction_names_present`, `tests/test_dataroma.py::TestReportPeriod`. Reproduce with `PYTHONPATH=src python scripts/superinvestor_audit.py --min-market-cap 10`.
+
 ## v0.18.4 (2026-11-14)
 
 ### Changes
